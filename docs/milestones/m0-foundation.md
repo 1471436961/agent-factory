@@ -45,17 +45,18 @@ M0 不实现：
 - [x] FastAPI lifespan 成功迁移数据库并返回 readiness。
 - [x] wheel 与 sdist 构建成功，wheel 包含 `001_initial.sql`。
 - [x] 隔离环境安装 wheel 后可从 package 路径完成 migration。
-- [ ] GitHub Actions 首次远程运行通过。
+- [x] GitHub Actions 首次远程运行通过。
 
-## 5. 阶段报告模板
+## 5. 阶段报告
 
-当前状态：本地验收完成，等待首次提交和 GitHub Actions 远程验收。
+当前状态：M0 本地验收和首次远程 CI 验收已完成，等待项目 owner 审查是否进入 M1。
 
-- 完成时间：待远程 CI 通过后填写。
+- 完成时间：2026-07-18。
 - 交付摘要：已建立 Python 3.11、uv 锁文件、应用配置、系统端口、SQLite migration runner、FastAPI lifespan、健康检查、测试和 CI workflow。
 - 测试结果：11 passed，分支覆盖口径总覆盖率 91%。
 - 静态检查：Ruff format、Ruff lint、mypy strict 全部通过。
 - 打包结果：成功构建 `agent_factory-1.0.0a1` wheel 与 sdist；隔离 Python 3.11 环境安装 wheel 后，从 `site-packages` 内置 SQL 完成 migration 并进入 ready。
 - 运行结果：本地 uvicorn 的 liveness/readiness 均返回 `ok`，数据库已应用 `001_initial.sql`。
-- 未解决风险：远程 CI 尚未运行；SQLite migration runner 暂不支持多进程并发迁移和 downgrade。
-- 进入 M1 的人工结论：待远程 CI 与提交历史审查完成后决定。
+- 远程证据：GitHub Actions [`CI #1`](https://github.com/1471436961/agent-factory/actions/runs/29647313254) 在提交 `712bb32` 上通过，运行耗时 21 秒。
+- 未解决风险：SQLite migration runner 暂不支持多进程并发迁移和 downgrade；当前远程 CI 仅覆盖 Ubuntu + Python 3.11，尚未强制覆盖率门禁和 wheel 隔离安装冒烟测试。
+- 进入 M1 的人工结论：M0 验收证据已齐备，是否进入 M1 由项目 owner 审查后决定。
