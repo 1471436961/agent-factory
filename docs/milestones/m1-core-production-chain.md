@@ -97,7 +97,7 @@ M1 不实现：
 
 ## 7. 阶段报告
 
-当前状态：M1 进行中；M1.3 应用服务已完成本地验收，待提交远程证据后进入 M1.4 核心 REST 契约。
+当前状态：M1 进行中；M1.3 应用服务已完成本地与远程验收，下一个工作包为 M1.4 核心 REST 契约。
 
 - M1.1 完成时间：2026-07-19。
 - M1.1 交付：递归不可变 JSON、canonical checksum、公共类型与枚举、稳定业务异常、JSON Schema 校验、M1 领域快照与 application commands。
@@ -119,6 +119,6 @@ M1 不实现：
 - M1.3 绑定/导出证据：真实 SQLite 测试覆盖 revision 冲突、替换规则、缺失知识、必填槽、未触碰 binding 溯源保持，以及同 revision Spec 只写入和审计一次。
 - M1.3 完整本地门禁：`80 passed`，总分支覆盖率 92%，其中 `application/controller.py` 为 88%；Ruff format/lint、mypy strict、sdist/wheel 构建通过，wheel 核对包含 Controller、幂等、审计、工具目录和两份 migration。
 - M1.3 提交：`83ffc99 feat: add M1 production policies`；`ee40d37 feat: orchestrate M1 production commands`；`090b145 feat: wire M1 controller into SQLite runtime`；`63f73f3 test: cover M1 prototype status transactions`。
-- M1.3 远程证据：待本批文档提交并推送后补充 GitHub Actions 运行链接。
+- M1.3 远程证据：GitHub Actions [`CI #8`](https://github.com/1471436961/agent-factory/actions/runs/29686510642) 在提交 `b7b081b` 上通过。
 - 下一个工作包：M1.4 核心 REST 契约。
 - 进入 M2 的人工结论：待验收证据齐备后由项目 owner 决定。
