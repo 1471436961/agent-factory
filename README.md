@@ -33,6 +33,7 @@ uv run uvicorn agent_factory.interfaces.api.main:app --reload
 - [Domain Contracts 设计说明](docs/design/domain-contracts.md)
 - [SQLite Persistence 设计说明](docs/design/sqlite-persistence.md)
 - [Application Services 设计说明](docs/design/application-services.md)
+- [M1 REST API 设计说明](docs/design/rest-api.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)
 

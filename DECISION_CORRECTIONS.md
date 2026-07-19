@@ -108,3 +108,25 @@
    - 最终修正：M1 Controller 只提供原型、知识、克隆、绑定、导出和审计操作；依赖 UoW、系统端口、四类纯策略/Builder、幂等与审计工厂，不接收 Evaluator。
    - 证据：`src/agent_factory/application/controller.py` 构造签名；`docs/architecture.md` 第 3.4 节；`docs/design/application-services.md` 第 3 节。
    - 对后续路线的影响：M2 引入 Evaluator、技能 DAG 和任务结果时必须先更新阶段设计与验收测试，不能把占位端口视为已有实现。
+
+1. **AgentSpec 导出从 GET 修正为 POST action resource**
+
+   - 日期：2026-07-19
+   - 里程碑：M1.4 核心 REST 契约
+   - 原判断：使用 `GET /instances/{instance_id}/spec?revision=...` 导出或读取 `AgentSpec`，把它视为普通查询。
+   - 原判断的不足：目标 revision 首次导出时会持久化规格并追加 `spec.exported` 审计事件，GET 因此具有服务端写副作用，不满足 HTTP safe method 语义；缓存、预取或爬虫也可能意外触发写入。
+   - 人工 review 结论：首次生成与后续稳定重放应保持同一 application 语义，但 HTTP 入口必须诚实表达该操作可能创建资源。
+   - 最终修正：路由改为 `POST /instances/{instance_id}/spec-exports`，请求体为 `{revision?: PositiveInt}`；同一 revision 的重复请求仍由 Controller 返回已持久化快照且不重复审计。
+   - 证据：`src/agent_factory/interfaces/api/routers/instances.py`；`tests/contract/test_rest_api.py` 的重复导出与 OpenAPI method 断言；`docs/design/rest-api.md` 第 5 节。
+   - 对后续路线的影响：M3 SDK 和 Tool adapter 必须复用“导出 action”语义，不能把该操作重新包装为无副作用 GET；若未来需要纯读取，可另增只读取已存在快照的资源端点。
+
+1. **M1 固定 API key 认证修正为明确延期认证并暴露不可信 actor 标签**
+
+   - 日期：2026-07-19
+   - 里程碑：M1.4 核心 REST 契约
+   - 原判断：Alpha 可先实现固定本地 API key，并由认证依赖生成 `Principal.subject`，审计查询同时按角色授权。
+   - 原判断的不足：M1 阶段范围已明确排除用户认证；临时 API key 若没有密钥生命周期、主体存储、权限模型和轮换机制，只会制造“已经安全”的假象，也扩大核心闭环验收面。
+   - 人工 review 结论：M1 不实现半成品认证，但必须保留 actor 审计字段，并在接口和部署文档中诚实标明其不可信性质。
+   - 最终修正：写路由要求 `X-Actor-ID` 作为 1-128 字符的审计标签；它不参与身份验证或授权。审计查询当前不设角色门槛，服务不得直接暴露到不可信网络。
+   - 证据：`src/agent_factory/interfaces/api/dependencies.py`；`docs/architecture.md` 第 10.2、11.2 节；`docs/design/rest-api.md` 第 1、3 节。
+   - 对后续路线的影响：认证必须作为独立里程碑能力设计；接入后 actor 改为可信 `Principal.subject`，审计读取增加角色授权，并补充 401/403 契约与安全测试。

@@ -7,7 +7,7 @@
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[M1 REST API 设计说明](design/rest-api.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -366,8 +366,10 @@ src/agent_factory/
 │   └── runtime_adapters/
 ├── interfaces/
 │   ├── api/
+│   │   ├── contracts.py
 │   │   ├── dependencies.py
 │   │   ├── errors.py
+│   │   ├── middleware.py
 │   │   ├── main.py
 │   │   └── routers/
 │   ├── sdk/
@@ -2547,12 +2549,7 @@ CREATE TABLE outbox_events (
 
 ```python
 from typing import Annotated
-from pydantic import Field
-
-
-class Principal(FrozenModel):
-    subject: str = Field(min_length=1, max_length=128)
-    roles: frozenset[str] = frozenset()
+from pydantic import Field, PositiveInt
 
 
 class RegisterPrototypeRequest(FrozenModel):
@@ -2571,41 +2568,19 @@ class DeprecatePrototypeRequest(FrozenModel):
 
 
 class BindKnowledgeRequest(FrozenModel):
-    expected_revision: int = Field(ge=1)
-    selections: tuple[KnowledgeSelection, ...]
+    expected_revision: PositiveInt
+    selections: Annotated[
+        tuple[KnowledgeSelection, ...],
+        Field(min_length=1),
+    ]
     replace_existing: bool = False
 
 
-class EvaluateInstanceRequest(FrozenModel):
-    expected_revision: int = Field(ge=1)
-    suite_id: Slug
-    suite_version: SemVer
-    runtime_model: str = Field(min_length=1, max_length=128)
-
-
-class PromoteInstanceRequest(FrozenModel):
-    expected_revision: int = Field(ge=1)
-    target_node_id: Slug
-    evaluation_report_id: UUID
-
-
-class TransitionInstanceRequest(FrozenModel):
-    expected_revision: int = Field(ge=1)
-    target_status: InstanceStatus
-    reason: str = Field(min_length=1, max_length=1_000)
-    retry: bool = False
-
-
-class EvaluateInstanceCommand(FrozenModel):
-    instance_id: UUID
-    expected_revision: int = Field(ge=1)
-    suite_id: Slug
-    suite_version: SemVer
-    runtime_model: str
-    actor: str
+class ExportSpecRequest(FrozenModel):
+    revision: PositiveInt | None = None
 ```
 
-所有请求模型 `extra="forbid"`。客户端提交未知字段时返回 422，避免拼写错误被静默忽略。
+所有请求模型 `extra="forbid"`。客户端提交未知字段时返回 422，避免拼写错误被静默忽略。`BindKnowledgeRequest` 还拒绝完全重复的知识引用；知识槽、版本范围和 cardinality 等业务规则仍由 application policy 校验。评估、晋升和状态迁移 DTO 属于 M2，当前 M1 不声明占位接口。
 
 ### 10.2 FastAPI 应用与依赖
 
@@ -2614,63 +2589,69 @@ from contextlib import asynccontextmanager
 from typing import Annotated, AsyncIterator
 
 from fastapi import Depends, FastAPI, Header, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-
-bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_controller(request: Request) -> FactoryController:
     return request.app.state.container.controller
 
 
-async def get_principal(
-    request: Request,
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None,
-        Depends(bearer_scheme),
+def get_actor(
+    x_actor_id: Annotated[
+        str,
+        Header(alias="X-Actor-ID", min_length=1, max_length=128),
     ],
-) -> Principal:
-    if credentials is None:
-        raise AuthenticationRequiredError()
-    return await request.app.state.authenticator.authenticate(
-        credentials.credentials
-    )
+) -> str:
+    actor = x_actor_id.strip()
+    if not actor:
+        raise ApiContractError(
+            code="INVALID_ACTOR_ID",
+            message="X-Actor-ID must not be blank",
+            status_code=422,
+        )
+    return actor
 
 
 ControllerDep = Annotated[FactoryController, Depends(get_controller)]
-PrincipalDep = Annotated[Principal, Depends(get_principal)]
-IdempotencyKey = Annotated[
+ActorDep = Annotated[str, Depends(get_actor)]
+IdempotencyHeader = Annotated[
     str | None,
     Header(alias="Idempotency-Key", min_length=8, max_length=128),
 ]
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    settings = Settings()
-    container = build_container(settings)
-    app.state.container = container
-    await container.start()
-    try:
-        yield
-    finally:
-        await container.close()
+def create_app(settings: Settings | None = None) -> FastAPI:
+    resolved_settings = settings or Settings()
+    container = build_container(resolved_settings)
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        await container.start()
+        try:
+            yield
+        finally:
+            await container.close()
 
-app = FastAPI(
-    title="Agent Factory",
-    version="1.0.0-alpha",
-    lifespan=lifespan,
-)
+    application = FastAPI(lifespan=lifespan)
+    application.state.container = container
+    install_exception_handlers(application)
+    application.add_middleware(
+        RequestContextMiddleware,
+        correlation_context=container.correlation_context,
+        id_generator=container.id_generator,
+        max_request_bytes=resolved_settings.max_request_bytes,
+    )
+    return application
 ```
 
-Alpha 可用固定本地 API key 实现认证，但 `Principal.subject` 必须来自认证结果，不能信任请求体中的 actor。
+M1 明确不实现认证。`X-Actor-ID` 只是调用方提供的审计标签，不是可信身份或授权依据，因此当前服务不得直接暴露到不可信网络。认证完成后，actor 必须改为从认证后的 `Principal.subject` 获取，不能继续信任该 header。
+
+`RequestContextMiddleware` 在进入 FastAPI 前以 `max_request_bytes` 为上限缓冲并回放请求体，确保声明长度和 chunked body 都不能绕过限制；超限请求不进入 Controller。它还严格校验或生成 `X-Correlation-ID`，写入 `ContextVar`，并在 `finally` 中 reset。
 
 ### 10.3 原型、实例和知识路由
 
 ```python
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, Query, status
 
 prototype_router = APIRouter(prefix="/prototypes", tags=["prototypes"])
 instance_router = APIRouter(prefix="/instances", tags=["instances"])
@@ -2684,22 +2665,17 @@ knowledge_router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 )
 async def register_prototype(
     body: RegisterPrototypeRequest,
-    response: Response,
     controller: ControllerDep,
-    principal: PrincipalDep,
-    idempotency_key: IdempotencyKey = None,
+    actor: ActorDep,
+    idempotency_key: IdempotencyHeader = None,
 ) -> AgentPrototype:
-    result = await controller.register_prototype(
+    return await controller.register_prototype(
         RegisterPrototypeCommand(
             **body.model_dump(),
-            actor=principal.subject,
+            actor=actor,
             idempotency_key=idempotency_key,
         )
     )
-    response.headers["Location"] = (
-        f"/api/v1/prototypes/{result.prototype_id}/versions/{result.version}"
-    )
-    return result
 
 
 @prototype_router.get("", response_model=Page[AgentPrototype])
@@ -2730,14 +2706,14 @@ async def publish_prototype(
     prototype_id: Slug,
     version: SemVer,
     controller: ControllerDep,
-    principal: PrincipalDep,
-    idempotency_key: IdempotencyKey = None,
+    actor: ActorDep,
+    idempotency_key: IdempotencyHeader = None,
 ) -> AgentPrototype:
     return await controller.publish_prototype(
         PublishPrototypeCommand(
             prototype_id=prototype_id,
             version=version,
-            actor=principal.subject,
+            actor=actor,
             idempotency_key=idempotency_key,
         )
     )
@@ -2752,15 +2728,15 @@ async def deprecate_prototype(
     version: SemVer,
     body: DeprecatePrototypeRequest,
     controller: ControllerDep,
-    principal: PrincipalDep,
-    idempotency_key: IdempotencyKey = None,
+    actor: ActorDep,
+    idempotency_key: IdempotencyHeader = None,
 ) -> AgentPrototype:
     return await controller.deprecate_prototype(
         DeprecatePrototypeCommand(
             prototype_id=prototype_id,
             version=version,
             reason=body.reason,
-            actor=principal.subject,
+            actor=actor,
             idempotency_key=idempotency_key,
         )
     )
@@ -2776,15 +2752,15 @@ async def clone_agent(
     version: SemVer,
     body: CloneAgentRequest,
     controller: ControllerDep,
-    principal: PrincipalDep,
-    idempotency_key: IdempotencyKey = None,
+    actor: ActorDep,
+    idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
     return await controller.clone_agent(
         CloneAgentCommand(
             prototype_id=prototype_id,
             prototype_version=version,
             runtime_target=body.runtime_target,
-            actor=principal.subject,
+            actor=actor,
             idempotency_key=idempotency_key,
         )
     )
@@ -2798,8 +2774,8 @@ async def bind_knowledge(
     instance_id: UUID,
     body: BindKnowledgeRequest,
     controller: ControllerDep,
-    principal: PrincipalDep,
-    idempotency_key: IdempotencyKey = None,
+    actor: ActorDep,
+    idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
     return await controller.bind_knowledge(
         BindKnowledgeCommand(
@@ -2807,22 +2783,27 @@ async def bind_knowledge(
             expected_revision=body.expected_revision,
             selections=body.selections,
             replace_existing=body.replace_existing,
-            actor=principal.subject,
+            actor=actor,
             idempotency_key=idempotency_key,
         )
     )
 
 
-@instance_router.get(
-    "/{instance_id}/spec",
+@instance_router.post(
+    "/{instance_id}/spec-exports",
     response_model=AgentSpec,
 )
 async def export_spec(
     instance_id: UUID,
+    body: ExportSpecRequest,
     controller: ControllerDep,
-    revision: Annotated[int | None, Query(ge=1)] = None,
+    actor: ActorDep,
 ) -> AgentSpec:
-    return await controller.export_spec(instance_id, revision=revision)
+    return await controller.export_spec(
+        instance_id,
+        revision=body.revision,
+        actor=actor,
+    )
 ```
 
 知识注册端点：
@@ -2840,91 +2821,27 @@ class RegisterKnowledgeRequest(DomainKnowledgeDraft):
 async def register_knowledge(
     body: RegisterKnowledgeRequest,
     controller: ControllerDep,
-    principal: PrincipalDep,
-    idempotency_key: IdempotencyKey = None,
+    actor: ActorDep,
+    idempotency_key: IdempotencyHeader = None,
 ) -> DomainKnowledge:
     return await controller.register_knowledge(
         RegisterKnowledgeCommand(
             knowledge=DomainKnowledgeDraft.model_validate(
                 body.model_dump()
             ),
-            actor=principal.subject,
+            actor=actor,
             idempotency_key=idempotency_key,
         )
     )
 ```
 
-路由不访问 controller 的 clock 或 repository；创建时间和 `created_by` 只由 controller 注入。
+路由不访问 controller 的 clock 或 repository；创建时间和 `created_by` 只由 controller 注入。规格导出使用 POST，因为首次导出会持久化 `AgentSpec` 并写审计事件，不满足 GET 的 safe method 语义。同一 revision 重复导出仍由 Controller 返回已持久化快照。
+
+审计读取使用 `GET /audit-events`，支持 `entity_type`、`entity_id`、可重复的 `event_type`、`actor`、带时区的时间区间与分页参数，返回 `Page[AuditEvent]`。
 
 ### 10.4 评估、晋升与状态路由
 
-```python
-@instance_router.post(
-    "/{instance_id}/evaluations",
-    response_model=EvaluationReport,
-    status_code=status.HTTP_201_CREATED,
-)
-async def evaluate_instance(
-    instance_id: UUID,
-    body: EvaluateInstanceRequest,
-    controller: ControllerDep,
-    principal: PrincipalDep,
-) -> EvaluationReport:
-    return await controller.evaluate(
-        EvaluateInstanceCommand(
-            instance_id=instance_id,
-            expected_revision=body.expected_revision,
-            suite_id=body.suite_id,
-            suite_version=body.suite_version,
-            runtime_model=body.runtime_model,
-            actor=principal.subject,
-        )
-    )
-
-
-@instance_router.post(
-    "/{instance_id}/promotions",
-    response_model=AgentInstance,
-)
-async def promote_instance(
-    instance_id: UUID,
-    body: PromoteInstanceRequest,
-    controller: ControllerDep,
-    principal: PrincipalDep,
-    idempotency_key: IdempotencyKey = None,
-) -> AgentInstance:
-    return await controller.promote(
-        PromotionCommand(
-            instance_id=instance_id,
-            expected_revision=body.expected_revision,
-            target_node_id=body.target_node_id,
-            evaluation_report_id=body.evaluation_report_id,
-            actor=principal.subject,
-            idempotency_key=idempotency_key,
-        )
-    )
-
-
-@instance_router.post(
-    "/{instance_id}/transitions",
-    response_model=AgentInstance,
-)
-async def transition_instance(
-    instance_id: UUID,
-    body: TransitionInstanceRequest,
-    controller: ControllerDep,
-    principal: PrincipalDep,
-    idempotency_key: IdempotencyKey = None,
-) -> AgentInstance:
-    return await controller.transition_instance(
-        TransitionInstanceCommand(
-            instance_id=instance_id,
-            **body.model_dump(),
-            actor=principal.subject,
-            idempotency_key=idempotency_key,
-        )
-    )
-```
+**当前 Alpha/M1 不实现。** `POST /instances/{id}/evaluations`、`POST /instances/{id}/promotions` 和状态迁移路由只能在 M2 的技能 DAG、Evaluator、状态策略与测试先落地后开放。接口层不提前声明尚无业务实现的占位端点。
 
 ### 10.5 异常模型与稳定错误码
 
@@ -2972,158 +2889,90 @@ class PromotionRejectedError(FactoryError):
     default_message = "Promotion requirements were not satisfied"
 ```
 
-领域异常只携带稳定业务码、消息和结构化详情，不携带 HTTP status。接口层必须按下表显式映射，不允许临时返回自由文本错误；未登记的错误码按 500 处理并记录日志，不将异常字符串返回客户端。
+领域异常只携带稳定业务码、消息和结构化详情，不携带 HTTP status。接口层必须按下表显式映射，不允许临时返回自由文本错误；未登记的错误码按 500 处理并记录日志，不将异常字符串返回客户端。测试必须断言 `ERROR_STATUS_BY_CODE` 与当前 `FactoryError` 子类错误码集合相等，防止新增错误漏配。
 
-| HTTP | 错误码 |
+| HTTP | M1 已实现错误码 |
 | --- | --- |
-| 400 | `DEFINITION_PARSE_FAILED`, `INVALID_OUTPUT_SCHEMA`, `CAPABILITY_CONTRACT_VIOLATION`, `STATE_TRANSITION_REASON_REQUIRED`, `RETRY_FLAG_REQUIRED` |
-| 401 | `AUTHENTICATION_REQUIRED`, `INVALID_CREDENTIALS` |
-| 403 | `TOOL_NOT_GRANTED`, `TOOL_PERMISSION_DENIED`, `PATH_OUTSIDE_WORKSPACE`, `NETWORK_TARGET_DENIED`, `AUDIT_ACCESS_DENIED` |
-| 404 | `PROTOTYPE_NOT_FOUND`, `INSTANCE_NOT_FOUND`, `KNOWLEDGE_NOT_FOUND`, `SKILL_NODE_NOT_FOUND`, `EVALUATION_REPORT_NOT_FOUND` |
-| 409 | `PROTOTYPE_ALREADY_EXISTS`, `PROTOTYPE_NOT_PUBLISHED`, `INVALID_PROTOTYPE_STATUS`, `KNOWLEDGE_ALREADY_EXISTS`, `KNOWLEDGE_ALREADY_BOUND`, `REVISION_CONFLICT`, `INVALID_STATE_TRANSITION`, `INSTANCE_BUSY`, `SKILL_ALREADY_ACTIVE`, `SKILL_CONFIGURATION_CONFLICT`, `IDEMPOTENCY_KEY_REUSED` |
+| 400 | `INVALID_OUTPUT_SCHEMA`, `INVALID_CORRELATION_ID`, `INVALID_CONTENT_LENGTH` |
+| 403 | `TOOL_NOT_GRANTED`, `TOOL_PERMISSION_DENIED` |
+| 404 | `PROTOTYPE_NOT_FOUND`, `INSTANCE_NOT_FOUND`, `KNOWLEDGE_NOT_FOUND`, `ROUTE_NOT_FOUND` |
+| 405 | `METHOD_NOT_ALLOWED` |
+| 409 | `PROTOTYPE_ALREADY_EXISTS`, `PROTOTYPE_NOT_PUBLISHED`, `INVALID_PROTOTYPE_STATUS`, `KNOWLEDGE_ALREADY_EXISTS`, `KNOWLEDGE_ALREADY_BOUND`, `REVISION_CONFLICT`, `INVALID_STATE_TRANSITION`, `INSTANCE_BUSY`, `IDEMPOTENCY_KEY_REUSED` |
 | 413 | `KNOWLEDGE_PAYLOAD_TOO_LARGE`, `REQUEST_TOO_LARGE` |
-| 422 | `REQUEST_VALIDATION_FAILED`, `INSTANCE_NOT_READY`, `UNKNOWN_KNOWLEDGE_SLOT`, `MISSING_KNOWLEDGE_BINDING`, `KNOWLEDGE_KIND_MISMATCH`, `KNOWLEDGE_VERSION_MISMATCH`, `KNOWLEDGE_INJECTION_MODE_MISMATCH`, `KNOWLEDGE_CARDINALITY_INVALID`, `KNOWLEDGE_CHECKSUM_MISMATCH`, `UNKNOWN_TOOL`, `TOOL_INPUT_VALIDATION_FAILED`, `SKILL_DEPENDENCY_MISSING`, `SKILL_TREE_CYCLE`, `EVALUATION_SUITE_MISMATCH`, `STALE_EVALUATION_REPORT`, `PROMOTION_REJECTED` |
-| 502 | `TOOL_EXECUTION_FAILED` |
-| 503 | `REPOSITORY_UNAVAILABLE`, `EVALUATOR_UNAVAILABLE`, `TOOL_UNAVAILABLE` |
-| 504 | `TOOL_TIMEOUT` |
+| 422 | `REQUEST_VALIDATION_FAILED`, `INVALID_ACTOR_ID`, `INSTANCE_NOT_READY`, `UNKNOWN_KNOWLEDGE_SLOT`, `MISSING_KNOWLEDGE_BINDING`, `KNOWLEDGE_KIND_MISMATCH`, `KNOWLEDGE_VERSION_MISMATCH`, `KNOWLEDGE_INJECTION_MODE_MISMATCH`, `KNOWLEDGE_CARDINALITY_INVALID`, `KNOWLEDGE_CHECKSUM_MISMATCH`, `UNKNOWN_TOOL` |
+| 500 | `INTERNAL_ERROR` |
+| 503 | `REPOSITORY_UNAVAILABLE`, `SERVICE_NOT_READY` |
+
+认证、评估和工具执行错误码属于后续里程碑，必须随相应功能和契约测试一起增加，不能在 M1 映射表中预注册未实现能力。
 
 ### 10.6 FastAPI 异常处理
 
 ```python
-from uuid import uuid4
-from fastapi import Request
-from fastapi.exceptions import RequestValidationError
+from uuid import UUID
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-
-from agent_factory.interfaces.api.errors import ERROR_STATUS_BY_CODE
 
 
-class ErrorBody(BaseModel):
+class ErrorBody(FrozenModel):
     code: str
     message: str
     details: JsonObject
-    trace_id: str
+    correlation_id: UUID
 
 
-class ErrorResponse(BaseModel):
+class ErrorResponse(FrozenModel):
     error: ErrorBody
 
 
-def trace_id_for(request: Request) -> str:
-    return getattr(request.state, "trace_id", str(uuid4()))
-
-
-@app.exception_handler(FactoryError)
-async def handle_factory_error(
-    request: Request,
-    exc: FactoryError,
+def error_response(
+    *,
+    status_code: int,
+    code: str,
+    message: str,
+    correlation_id: UUID,
+    details: Mapping[str, object] | None = None,
 ) -> JSONResponse:
     body = ErrorResponse(
         error=ErrorBody(
-            code=exc.code,
-            message=exc.message,
-            details=exc.details,
-            trace_id=trace_id_for(request),
+            code=code,
+            message=message,
+            details=details or {},
+            correlation_id=correlation_id,
         )
     )
     return JSONResponse(
-        status_code=ERROR_STATUS_BY_CODE.get(exc.code, 500),
+        status_code=status_code,
         content=body.model_dump(mode="json"),
-    )
-
-
-@app.exception_handler(RequestValidationError)
-async def handle_validation_error(
-    request: Request,
-    exc: RequestValidationError,
-) -> JSONResponse:
-    details = {
-        "errors": [
-            {
-                "location": list(item["loc"]),
-                "message": item["msg"],
-                "type": item["type"],
-            }
-            for item in exc.errors()
-        ]
-    }
-    body = ErrorResponse(
-        error=ErrorBody(
-            code="REQUEST_VALIDATION_FAILED",
-            message="Request validation failed",
-            details=details,
-            trace_id=trace_id_for(request),
-        )
-    )
-    return JSONResponse(
-        status_code=422,
-        content=body.model_dump(mode="json"),
-    )
-
-
-@app.exception_handler(Exception)
-async def handle_unexpected_error(
-    request: Request,
-    exc: Exception,
-) -> JSONResponse:
-    trace_id = trace_id_for(request)
-    request.app.state.logger.exception(
-        "unhandled_error",
-        extra={"trace_id": trace_id},
-    )
-    body = ErrorResponse(
-        error=ErrorBody(
-            code="INTERNAL_ERROR",
-            message="Internal server error",
-            details={},
-            trace_id=trace_id,
-        )
-    )
-    return JSONResponse(
-        status_code=500,
-        content=body.model_dump(mode="json"),
+        headers={"X-Correlation-ID": str(correlation_id)},
     )
 ```
 
-500 响应不得包含异常字符串、堆栈、SQL、文件路径或密钥。`RepositoryError` 在基础设施层记录原始异常后转换为 `REPOSITORY_UNAVAILABLE`。
+handler 分别处理 `FactoryError`、接口契约错误、`RequestValidationError`、404/405 和未知异常。Pydantic 错误只返回 `location`、`message`、`type`，不回显原始 input。500 响应不得包含异常字符串、堆栈、SQL、文件路径或密钥；服务端日志以 correlation ID 关联原始异常。`RepositoryError` 在基础设施层转换为 `REPOSITORY_UNAVAILABLE`。
 
 ### 10.7 路由装配
 
 ```python
-api_router = APIRouter(prefix="/api/v1")
+api_router = APIRouter()
 api_router.include_router(prototype_router)
 api_router.include_router(instance_router)
 api_router.include_router(knowledge_router)
 api_router.include_router(audit_router)
-app.include_router(api_router)
+application.include_router(
+    api_router,
+    prefix=resolved_settings.api_prefix,
+)
 ```
 
 ### 10.8 Python SDK
 
+**当前 Alpha/M1 不实现。** M3 SDK 必须复用 REST DTO，并在认证方案确定后接入可信 Principal；在此之前不得把 `X-Actor-ID` 包装成认证能力。目标方法保持业务语义：
+
 ```python
-import httpx
-
-
 class AgentFactoryClient:
-    def __init__(
-        self,
-        base_url: str,
-        api_key: str,
-        *,
-        timeout: float = 30.0,
-    ) -> None:
-        self._client = httpx.AsyncClient(
-            base_url=base_url.rstrip("/"),
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=timeout,
-        )
-
     async def register_prototype(
         self,
         request: RegisterPrototypeRequest,
         *,
-        idempotency_key: str,
+        idempotency_key: str | None = None,
     ) -> AgentPrototype: ...
 
     async def clone_agent(
@@ -3132,7 +2981,7 @@ class AgentFactoryClient:
         version: str,
         request: CloneAgentRequest,
         *,
-        idempotency_key: str,
+        idempotency_key: str | None = None,
     ) -> AgentInstance: ...
 
     async def bind_knowledge(
@@ -3140,23 +2989,24 @@ class AgentFactoryClient:
         instance_id: UUID,
         request: BindKnowledgeRequest,
         *,
-        idempotency_key: str,
+        idempotency_key: str | None = None,
     ) -> AgentInstance: ...
 
     async def export_spec(
         self,
         instance_id: UUID,
-        *,
-        revision: int | None = None,
+        request: ExportSpecRequest,
     ) -> AgentSpec: ...
 
     async def close(self) -> None:
         await self._client.aclose()
 ```
 
-SDK 收到非 2xx 响应时解析 `ErrorResponse` 并抛出 `AgentFactoryApiError(code, status_code, details, trace_id)`，不得只调用 `raise_for_status()` 丢失业务错误码。
+`export_spec` 在 SDK 内部必须调用 `POST /instances/{id}/spec-exports`。SDK 收到非 2xx 响应时解析 `ErrorResponse` 并抛出 `AgentFactoryApiError(code, status_code, details, correlation_id)`，不得只调用 `raise_for_status()` 丢失业务错误码。
 
 ### 10.9 面向 Agent 的工具映射
+
+**当前 Alpha/M1 不实现。** M3 工具适配器与 REST 路由共享 request model 和 `FactoryController`，工具层只做参数/返回值转换：
 
 ```python
 class CloneAgentToolInput(FrozenModel):
@@ -3195,7 +3045,7 @@ class CloneAgentTool:
         )
 ```
 
-`list_prototypes`、`clone_agent`、`bind_knowledge`、`apply_promotion`、`query_audit_log` 只做 DTO 转换，不复制业务校验。Alpha 中工具调用者仍需拥有与 REST API 相同的认证主体和权限。
+`list_prototypes`、`clone_agent`、`bind_knowledge`、`apply_promotion`、`query_audit_log` 只做 DTO 转换，不复制业务校验。实现时工具调用者必须拥有与 REST API 相同的可信认证主体和权限；M1 的 `X-Actor-ID` 不能满足该要求。
 
 
 ---
@@ -3277,28 +3127,12 @@ class AuditRepository(Protocol):
     ) -> Page[AuditEvent]: ...
 
 
-def require_role(*allowed_roles: str):
-    async def dependency(principal: PrincipalDep) -> Principal:
-        if set(principal.roles).isdisjoint(allowed_roles):
-            raise AuditAccessDeniedError(
-                details={"required_roles": sorted(allowed_roles)}
-            )
-        return principal
-
-    return dependency
-
-
 audit_router = APIRouter(prefix="/audit-events", tags=["audit"])
-AuditorDep = Annotated[
-    Principal,
-    Depends(require_role("auditor", "admin")),
-]
 
 
 @audit_router.get("", response_model=Page[AuditEvent])
 async def query_audit_events(
     controller: ControllerDep,
-    principal: AuditorDep,
     entity_type: AuditEntityType | None = None,
     entity_id: str | None = Query(default=None, max_length=128),
     event_type: Annotated[
@@ -3325,8 +3159,7 @@ async def query_audit_events(
     )
 ```
 
-审计查询至少要求 `principal.roles` 包含 `auditor` 或 `admin`。无权限返回 `403 AUDIT_ACCESS_DENIED`。
-查询排序固定为 `created_at DESC, event_id DESC`；分页期间新增事件可能进入前页，导出完整审计链时应改用基于 `created_at + event_id` 的游标接口。
+M1 尚未实现认证，因此审计查询当前也未做权限隔离，这是阻止服务暴露到不可信网络的明确限制。M3 接入认证后，审计查询至少要求 `principal.roles` 包含 `auditor` 或 `admin`，无权限返回 `403 AUDIT_ACCESS_DENIED`。查询排序固定为 `created_at DESC, event_id DESC`；分页期间新增事件可能进入前页，导出完整审计链时应改用基于 `created_at + event_id` 的游标接口。
 
 ### 11.3 事件载荷
 
@@ -3348,28 +3181,16 @@ async def query_audit_events(
 ### 11.4 请求关联
 
 ```python
-from uuid import UUID, uuid4
-from fastapi import Request, Response
-
-
-@app.middleware("http")
-async def correlation_middleware(
-    request: Request,
-    call_next,
-) -> Response:
-    incoming = request.headers.get("X-Correlation-Id")
-    try:
-        correlation_id = UUID(incoming) if incoming else uuid4()
-    except ValueError:
-        correlation_id = uuid4()
-    request.state.trace_id = str(correlation_id)
-    request.state.correlation_id = correlation_id
-    response = await call_next(request)
-    response.headers["X-Correlation-Id"] = str(correlation_id)
-    return response
+correlation_id = supplied_uuid_or_generated_id(request.headers)
+request.state.correlation_id = correlation_id
+token = correlation_context.set(str(correlation_id))
+try:
+    await app(scope, receive, send_with_correlation_header)
+finally:
+    correlation_context.reset(token)
 ```
 
-controller 从 request-scoped context 获取 `correlation_id`，同一写命令产生的审计事件和 outbox 事件必须使用同一值。
+实际实现使用 pure ASGI middleware，非法 `X-Correlation-ID` 返回 `400 INVALID_CORRELATION_ID`，而不是静默替换。controller 从 request-scoped `ContextVar` 获取 `correlation_id`，同一写命令产生的审计事件必须使用同一值；响应 header 与错误体也返回该值。`finally + reset(token)` 保证并发请求和测试之间不残留上下文。
 
 ### 11.5 指标
 
@@ -3394,7 +3215,7 @@ controller 从 request-scoped context 获取 `correlation_id`，同一写命令�
   "timestamp": "2026-07-15T02:30:00Z",
   "level": "INFO",
   "event": "skill.promoted",
-  "trace_id": "b20b1c6d-c2b1-4fd0-914e-766e94798227",
+  "correlation_id": "b20b1c6d-c2b1-4fd0-914e-766e94798227",
   "entity_type": "instance",
   "entity_id": "8f8af6cc-d9f1-464b-97b2-f57a7fa388fa",
   "revision": 4,
@@ -3721,16 +3542,17 @@ async def test_missing_knowledge_returns_stable_error(
     async with AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"Authorization": "Bearer test-key"},
+        headers={"X-Actor-ID": "contract-test"},
     ) as client:
-        response = await client.get(
-            f"/api/v1/instances/{unbound_instance.instance_id}/spec"
+        response = await client.post(
+            f"/api/v1/instances/{unbound_instance.instance_id}/spec-exports",
+            json={},
         )
 
     assert response.status_code == 422
     payload = response.json()
     assert payload["error"]["code"] == "MISSING_KNOWLEDGE_BINDING"
-    assert "trace_id" in payload["error"]
+    assert "correlation_id" in payload["error"]
     assert "Traceback" not in response.text
 
 

@@ -97,7 +97,7 @@ M1 不实现：
 
 ## 7. 阶段报告
 
-当前状态：M1 进行中；M1.3 应用服务已完成本地与远程验收，下一个工作包为 M1.4 核心 REST 契约。
+当前状态：M1 进行中；M1.4 核心 REST 契约已完成本地与远程验收，下一个工作包为 M1.5 闭环验收。
 
 - M1.1 完成时间：2026-07-19。
 - M1.1 交付：递归不可变 JSON、canonical checksum、公共类型与枚举、稳定业务异常、JSON Schema 校验、M1 领域快照与 application commands。
@@ -120,5 +120,13 @@ M1 不实现：
 - M1.3 完整本地门禁：`80 passed`，总分支覆盖率 92%，其中 `application/controller.py` 为 88%；Ruff format/lint、mypy strict、sdist/wheel 构建通过，wheel 核对包含 Controller、幂等、审计、工具目录和两份 migration。
 - M1.3 提交：`83ffc99 feat: add M1 production policies`；`ee40d37 feat: orchestrate M1 production commands`；`090b145 feat: wire M1 controller into SQLite runtime`；`63f73f3 test: cover M1 prototype status transactions`。
 - M1.3 远程证据：GitHub Actions [`CI #8`](https://github.com/1471436961/agent-factory/actions/runs/29686510642) 在提交 `b7b081b` 上通过。
-- 下一个工作包：M1.4 核心 REST 契约。
+- M1.4 完成时间：2026-07-19。
+- M1.4 交付：严格 Pydantic HTTP DTO、依赖注入、领域错误显式映射、统一错误 envelope、pure ASGI correlation/请求体上限 middleware、M1 核心 REST 路由和独立 app factory。
+- M1.4 接口证据：真实 SQLite 契约测试从 HTTP 完成注册、幂等重放、列表、发布、知识注册、克隆、绑定、规格导出、废弃与审计查询；同一 correlation ID 在响应 header、错误体和审计事件中一致。
+- M1.4 失败路径证据：覆盖缺失/空 actor、未知字段、非法 correlation ID、404、405、领域 404/409、未知异常脱敏、lifespan 前 readiness 503，以及声明长度和 chunked 请求体超限。超限请求在路由执行前返回 413。
+- M1.4 边界：`X-Actor-ID` 只是不可信审计标签，M1 不实现认证或授权；规格导出改为 `POST /instances/{id}/spec-exports`，因为首次导出会持久化并写审计。
+- M1.4 完整本地门禁：`87 passed`，总分支覆盖率 92%，其中 API middleware 88%、errors 81%、dependencies 86%；Ruff format/lint 和 mypy strict 通过；sdist/wheel 构建成功，wheel 已核对包含全部 REST 模块与两份 migration。
+- M1.4 提交：`e0e4aa4 feat: define M1 REST transport contracts`；`78b54e0 feat: expose M1 production REST routes`；`3e0c149 test: verify M1 REST contracts`。
+- M1.4 远程证据：GitHub Actions [`CI #10`](https://github.com/1471436961/agent-factory/actions/runs/29688549492) 在提交 `3e0c149` 上通过。
+- 下一个工作包：M1.5 闭环验收。
 - 进入 M2 的人工结论：待验收证据齐备后由项目 owner 决定。
