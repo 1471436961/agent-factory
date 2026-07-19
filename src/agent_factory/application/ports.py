@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from agent_factory.domain.models import ResolvedToolSpec
+
 
 class Clock(Protocol):
     """Provide timezone-aware timestamps."""
@@ -31,3 +33,13 @@ class CorrelationContext(Protocol):
 
     def reset(self, token: Token[str | None]) -> None:
         """Restore the context value represented by ``token``."""
+
+
+class ToolCatalog(Protocol):
+    """Resolve immutable tool metadata without exposing executable handlers."""
+
+    def get(self, name: str) -> ResolvedToolSpec | None:
+        """Return the registered tool specification, if it exists."""
+
+    def names(self) -> frozenset[str]:
+        """Return all registered tool names."""

@@ -119,6 +119,11 @@ class InstanceNotReadyError(FactoryError):
     default_message = "Agent instance is not ready for this operation"
 
 
+class InvalidStateTransitionError(FactoryError):
+    code = "INVALID_STATE_TRANSITION"
+    default_message = "Agent instance state transition is not allowed"
+
+
 class RevisionConflictError(FactoryError):
     code = "REVISION_CONFLICT"
     default_message = "Instance revision no longer matches"
@@ -132,6 +137,16 @@ class IdempotencyKeyReusedError(FactoryError):
 class ToolNotGrantedError(FactoryError):
     code = "TOOL_NOT_GRANTED"
     default_message = "Tool is not granted to this instance"
+
+
+class UnknownToolError(FactoryError):
+    code = "UNKNOWN_TOOL"
+    default_message = "Tool is not registered in the catalog"
+
+
+class ToolPermissionDeniedError(FactoryError):
+    code = "TOOL_PERMISSION_DENIED"
+    default_message = "Tool requests a permission that is not allowed"
 
 
 class RepositoryUnavailableError(FactoryError):

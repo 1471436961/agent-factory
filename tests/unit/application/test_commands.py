@@ -76,3 +76,27 @@ def test_bind_command_requires_positive_revision() -> None:
             ),
             actor="owner",
         )
+
+
+def test_bind_command_requires_non_empty_unique_selections() -> None:
+    instance_id = UUID("00000000-0000-0000-0000-000000000001")
+    selection = KnowledgeSelection(
+        slot_name="product-docs",
+        knowledge_id="agent-factory-docs",
+        version="1.0.0",
+    )
+
+    with pytest.raises(ValidationError, match="at least 1"):
+        BindKnowledgeCommand(
+            instance_id=instance_id,
+            expected_revision=1,
+            selections=(),
+            actor="owner",
+        )
+    with pytest.raises(ValidationError, match="duplicate knowledge references"):
+        BindKnowledgeCommand(
+            instance_id=instance_id,
+            expected_revision=1,
+            selections=(selection, selection),
+            actor="owner",
+        )

@@ -1,9 +1,9 @@
 """Validated application inputs for the M1 production chain."""
 
-from typing import TypeAlias
+from typing import Annotated, TypeAlias
 from uuid import UUID
 
-from pydantic import Field, PositiveInt
+from pydantic import Field, PositiveInt, field_validator
 
 from agent_factory.domain.common import (
     Actor,
@@ -64,7 +64,21 @@ class KnowledgeSelection(FrozenModel):
 class BindKnowledgeCommand(FrozenModel):
     instance_id: UUID
     expected_revision: PositiveInt
-    selections: tuple[KnowledgeSelection, ...]
+    selections: Annotated[tuple[KnowledgeSelection, ...], Field(min_length=1)]
     replace_existing: bool = False
     actor: Actor
     idempotency_key: OptionalIdempotencyKey = None
+
+    @field_validator("selections")
+    @classmethod
+    def selections_must_be_unique(
+        cls,
+        value: tuple[KnowledgeSelection, ...],
+    ) -> tuple[KnowledgeSelection, ...]:
+        keys = {
+            (selection.slot_name, selection.knowledge_id, selection.version)
+            for selection in value
+        }
+        if len(keys) != len(value):
+            raise ValueError("selections contains duplicate knowledge references")
+        return value
