@@ -11,10 +11,10 @@
 | 里程碑 | 核心交付物 | 退出证据 |
 | --- | --- | --- |
 | M0 | 工程骨架、配置、迁移、基础端口、CI | 应用启动；空库迁移；质量检查通过 |
-| M1 | 原型、知识、实例、AgentSpec 与仓储 | 注册、克隆、绑定、导出集成测试 |
+| M1 | 原型、知识、实例、AgentSpec、仓储与核心 REST | 注册、克隆、绑定、导出及重启重放测试 |
 | M2 | 技能 DAG、评估、晋升与降级 | 决策、并发和回退测试 |
-| M3 | REST、SDK、Tool adapter 与 Demo | 三种入口产生同构结果 |
-| M4 | 完整质量门禁 | 单元、集成、契约、安全测试和覆盖率达标 |
+| M3 | 完整 REST、SDK、Tool adapter 与 Demo | 三种入口产生同构结果 |
+| M4 | 完整安全与回归门禁 | 安全测试、OpenAPI/回归快照和部署检查通过 |
 | M5 | 对照实验与分析 | 原始数据、执行配置和统计结果可复算 |
 | M6 | 开源准备 | 新环境按文档在 30 分钟内跑通 Demo |
 
@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前里程碑：M1，详见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)。M0 已于 2026-07-18 通过项目 owner 验收，阶段报告见 [`docs/milestones/m0-foundation.md`](../milestones/m0-foundation.md)。
+当前里程碑：M1，技术验收证据已齐备，等待项目 owner 作出阶段退出决定；详见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)。M0 已于 2026-07-18 通过项目 owner 验收，阶段报告见 [`docs/milestones/m0-foundation.md`](../milestones/m0-foundation.md)。
 
 ## 5. 最终展示物
 

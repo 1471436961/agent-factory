@@ -190,6 +190,7 @@ async def bind_knowledge(
 自动化测试覆盖：
 
 - 真实 SQLite 上的注册、幂等重放、列表、发布、知识注册、克隆、绑定、规格导出、废弃和审计查询。
+- 关闭并重建 app 后，使用同一数据库恢复原型、规格和审计；重复导出不新增 `spec.exported`。
 - 缺失 actor、未知字段、非法 correlation ID、404、405、领域 404/409、500 脱敏。
 - `Content-Length` 与 chunked body 超限，包括下游不会读取 body 的端点。
 - correlation response header、错误体和审计事件一致，ContextVar 在请求后恢复。

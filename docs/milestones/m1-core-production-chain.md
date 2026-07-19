@@ -73,17 +73,33 @@ M1 不实现：
 
 ## 5. 验收标准
 
-- [ ] 所有 M1 Pydantic 模型的有效输入与边界失败路径有单元测试。
-- [ ] 只有 `PUBLISHED` 原型可克隆，实例保留不可变的原型 ID、版本和 checksum。
-- [ ] 知识绑定强制校验槽位、kind、SemVer 范围、注入模式和基数。
-- [ ] 实例每次变更产生 `revision + 1` 的完整快照，并可按历史 revision 读取。
-- [ ] 未绑定必填知识时 `export_spec` 失败；绑定完整后返回结构稳定且持久化的 `AgentSpec`。
-- [ ] 每个成功写操作至少产生一条同事务审计事件，回滚时业务数据与审计数据均不留存。
-- [ ] 幂等重放、幂等冲突和 revision 冲突有可重复的自动化证据。
-- [ ] 核心 REST 路由与应用服务返回同构对象，已知领域异常不泄露堆栈、SQL 或本地路径。
-- [ ] `test_register_clone_bind_export` 从空 SQLite 数据库通过。
-- [ ] `uv run ruff format --check src tests`、`uv run ruff check src tests`、`uv run mypy src tests` 和 `uv run pytest -q` 全部通过。
-- [ ] wheel/sdist 构建成功，GitHub Actions 在 M1 退出提交上通过。
+- [x] 所有 M1 Pydantic 模型的有效输入与边界失败路径有单元测试。
+- [x] 只有 `PUBLISHED` 原型可克隆，实例保留不可变的原型 ID、版本和 checksum。
+- [x] 知识绑定强制校验槽位、kind、SemVer 范围、注入模式和基数。
+- [x] 实例每次变更产生 `revision + 1` 的完整快照，并可按历史 revision 读取。
+- [x] 未绑定必填知识时 `export_spec` 失败；绑定完整后返回结构稳定且持久化的 `AgentSpec`。
+- [x] 每个成功写操作至少产生一条同事务审计事件，回滚时业务数据与审计数据均不留存。
+- [x] 幂等重放、幂等冲突和 revision 冲突有可重复的自动化证据。
+- [x] 核心 REST 路由与应用服务返回同构对象，已知领域异常不泄露堆栈、SQL 或本地路径。
+- [x] `test_register_clone_bind_export` 从空 SQLite 数据库通过，并在 app 重启后重放持久化规格与审计。
+- [x] Ruff format/lint、mypy strict、pytest 和三层 branch coverage 门槛全部通过。
+- [x] wheel/sdist 构建成功，GitHub Actions 在 M1 退出候选提交上通过。
+
+### 5.1 验收证据矩阵
+
+| 验收面 | 主要自动化证据 |
+| --- | --- |
+| Pydantic 与不可变量 | `tests/unit/domain/test_common.py`、`test_models.py`、`test_validation.py` |
+| 原型状态与不可变来源 | `tests/integration/test_factory_controller.py::test_controller_publishes_deprecates_and_replays_status_changes` |
+| 知识槽完整校验 | `tests/unit/domain/test_services.py` 与 Controller 未知槽回滚路径 |
+| revision 与历史快照 | `tests/integration/test_sqlite_repositories.py`、`test_factory_controller.py` |
+| 持久化规格与审计链 | `tests/contract/test_rest_api.py::test_register_clone_bind_export` |
+| 事务原子性 | `tests/integration/test_sqlite_repositories.py` 的业务/审计共同回滚用例 |
+| 幂等与并发冲突 | `tests/unit/application/test_idempotency.py`、Controller 集成测试 |
+| REST 错误稳定性与脱敏 | `tests/contract/test_rest_api.py::test_rest_errors_are_stable_correlated_and_redacted` |
+| 覆盖率、构建与 wheel 内容 | `.github/workflows/ci.yml`；GitHub Actions `CI #12` |
+
+勾选表示技术验收项已有可重复证据，不表示 M1 已自动退出，也不表示覆盖率能够替代需求评审。
 
 ## 6. 已知风险与处理
 
@@ -97,7 +113,7 @@ M1 不实现：
 
 ## 7. 阶段报告
 
-当前状态：M1 进行中；M1.4 核心 REST 契约已完成本地与远程验收，下一个工作包为 M1.5 闭环验收。
+当前状态：M1.5 技术验收证据已齐备，等待项目 owner 人工决定是否退出 M1 并进入 M2。
 
 - M1.1 完成时间：2026-07-19。
 - M1.1 交付：递归不可变 JSON、canonical checksum、公共类型与枚举、稳定业务异常、JSON Schema 校验、M1 领域快照与 application commands。
@@ -128,5 +144,11 @@ M1 不实现：
 - M1.4 完整本地门禁：`87 passed`，总分支覆盖率 92%，其中 API middleware 88%、errors 81%、dependencies 86%；Ruff format/lint 和 mypy strict 通过；sdist/wheel 构建成功，wheel 已核对包含全部 REST 模块与两份 migration。
 - M1.4 提交：`e0e4aa4 feat: define M1 REST transport contracts`；`78b54e0 feat: expose M1 production REST routes`；`3e0c149 test: verify M1 REST contracts`。
 - M1.4 远程证据：GitHub Actions [`CI #10`](https://github.com/1471436961/agent-factory/actions/runs/29688549492) 在提交 `3e0c149` 上通过。
-- 下一个工作包：M1.5 闭环验收。
-- 进入 M2 的人工结论：待验收证据齐备后由项目 owner 决定。
+- M1.5 技术验收时间：2026-07-19。
+- M1.5 退出测试：`test_register_clone_bind_export` 从空 SQLite 经 REST 完成注册、幂等重放、发布、知识注册、克隆、未绑定导出失败、绑定、规格导出、废弃和审计查询；关闭并重建 app 后，原型、规格和审计仍可读取，同 revision 再次导出不重复写审计。
+- M1.5 失败路径矩阵：原型状态、未知知识槽、kind、SemVer、注入模式、基数、缺失必填绑定、checksum、幂等键复用和 revision 冲突均有 unit、integration 或 contract 层证据；未知槽失败后仍可用 revision 1 成功绑定，证明事务未推进实例。
+- M1.5 本地质量证据：`87 passed`；branch coverage 为 domain 96%、application 93%、项目总计 92%，分别高于 90%、85%、80% 门槛；Ruff format/lint 和 mypy strict 通过。
+- M1.5 产物证据：sdist 与 wheel 构建成功；CI 检查 wheel 包含两份 migration 以及 contracts、errors、middleware、app factory 和全部 M1 业务 router。
+- M1.5 提交：`1674578 test: complete M1 exit verification`；`2da9e86 ci: enforce M1 quality gates`。
+- M1.5 远程证据：GitHub Actions [`CI #12`](https://github.com/1471436961/agent-factory/actions/runs/29690700275) 在提交 `2da9e86` 上通过。
+- 进入 M2 的人工结论：尚未作出；自动化技术验收通过不替代项目 owner 的阶段退出判断。

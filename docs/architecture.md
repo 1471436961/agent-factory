@@ -3427,73 +3427,28 @@ async def unbound_instance(
 
 每个测试使用独立数据库文件，避免 SQLite 内存数据库因多连接产生不同 database。migration 必须使用生产同一套脚本。
 
-### 12.5 完整生产链集成测试
+### 12.5 完整生产链退出测试
 
-```python
-@pytest.mark.asyncio
-async def test_register_clone_bind_export(
-    app_container,
-    writer_definition: AgentDefinition,
-    product_knowledge_draft: DomainKnowledgeDraft,
-) -> None:
-    controller = app_container.controller
-    prototype = await controller.register_prototype(
-        RegisterPrototypeCommand(
-            prototype_id="technical-writer",
-            version="1.0.0",
-            definition=writer_definition,
-            publish=True,
-            actor="tester",
-        )
-    )
-    product_knowledge = await controller.register_knowledge(
-        RegisterKnowledgeCommand(
-            knowledge=product_knowledge_draft,
-            actor="tester",
-        )
-    )
-    instance = await controller.clone_agent(
-        CloneAgentCommand(
-            prototype_id=prototype.prototype_id,
-            prototype_version=prototype.version,
-            actor="tester",
-        )
-    )
+正式退出测试固定为 `tests/contract/test_rest_api.py::test_register_clone_bind_export`。它使用真实文件型 SQLite、生产 migration、`create_app(settings)` 和 ASGI lifespan，从空库只通过公开 REST 接口执行：
 
-    with pytest.raises(MissingKnowledgeBindingError):
-        await controller.export_spec(instance.instance_id)
-
-    bound = await controller.bind_knowledge(
-        BindKnowledgeCommand(
-            instance_id=instance.instance_id,
-            expected_revision=1,
-            selections=(
-                KnowledgeSelection(
-                    slot_name="product-docs",
-                    knowledge_id=product_knowledge.knowledge_id,
-                    version=product_knowledge.version,
-                ),
-            ),
-            actor="tester",
-        )
-    )
-    spec = await controller.export_spec(bound.instance_id)
-
-    assert bound.revision == 2
-    assert spec.instance_id == bound.instance_id
-    assert spec.revision == 2
-    assert spec.prototype.checksum == prototype.checksum
-    assert spec.knowledge[0].checksum == product_knowledge.checksum
-
-    events = await controller.query_audit(
-        AuditQuery(entity_id=str(bound.instance_id), page_size=100)
-    )
-    assert [event.event_type for event in reversed(events.items)] == [
-        AuditEventType.INSTANCE_CLONED,
-        AuditEventType.KNOWLEDGE_BOUND,
-        AuditEventType.SPEC_EXPORTED,
-    ]
+```text
+register draft -> idempotent replay -> publish -> register knowledge
+-> clone -> export rejected while unbound -> bind at revision 1
+-> export revision 2 -> deprecate -> query audit
+-> close app -> recreate app with the same database
+-> readiness -> list persisted prototype -> replay persisted spec/audit
 ```
+
+退出断言必须同时满足：
+
+- 注册和克隆的相同幂等请求返回同构响应，且不重复审计。
+- 未绑定必填知识时返回 `422 MISSING_KNOWLEDGE_BINDING`，不生成规格。
+- 绑定后实例 revision 为 2，规格引用原型与知识的稳定 checksum。
+- instance 审计链只包含 `instance.cloned`、`knowledge.bound`、`spec.exported`，顺序可重放。
+- 关闭第一个 app、重新执行 migration 并创建第二个 app 后，原型、规格和审计仍存在。
+- 重启后再次导出同一 revision 返回字节等价 JSON，`spec.exported` 总数仍为 1。
+
+这不是外部网络部署测试，但已经贯穿 HTTP adapter、application service、domain policy、SQLite repository、migration 和 lifespan。真实 Uvicorn 进程、认证及运行时执行不属于 M1 退出范围。
 
 ### 12.6 并发与事务测试
 
@@ -3581,10 +3536,13 @@ OpenAPI 快照发生变化时，PR 必须说明属于 PATCH、MINOR 还是 MAJOR
 ### 12.9 测试命令
 
 ```bash
-pytest -q --cov=agent_factory --cov-branch --cov-report=term-missing --cov-fail-under=80
+uv run pytest -q --cov --cov-report=term-missing
+uv run coverage report --include="src/agent_factory/domain/*" --fail-under=90
+uv run coverage report --include="src/agent_factory/application/*" --fail-under=85
+uv run coverage report --fail-under=80
 ```
 
-默认测试使用 `FakeEvaluator` 和假 Runtime Adapter，不访问互联网。真实模型冒烟测试使用单独标记 `@pytest.mark.live_model`，CI 默认排除。
+branch coverage 由 `pyproject.toml` 的 `[tool.coverage.run]` 开启。三个阈值分别约束 domain、application 和全项目，防止总体数字掩盖核心层回退。覆盖率只证明代码路径被执行，不替代需求完整性、断言充分性或人工评审。M1 测试不接入 Evaluator、Runtime Adapter 或互联网。
 
 
 ---

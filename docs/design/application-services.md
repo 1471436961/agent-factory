@@ -166,4 +166,6 @@ M1 `ToolCatalog` 只返回 `ResolvedToolSpec`：名称、版本、描述、输�
 - 文件型 SQLite 集成测试覆盖完整 M1.3 链、重复请求不重复审计、revision 冲突、替换绑定、缺失知识、未绑定禁止导出、失败回滚和旧 binding 溯源保持。
 - M1.3 本地完整门禁为 `80 passed`，总分支覆盖率 92%，其中 `application/controller.py` 为 88%；Ruff、mypy strict、sdist/wheel 构建和 wheel 内容检查通过。
 
-当前限制：SQLite 写事务串行；幂等响应只在 TTL 内保证重放；URI 知识不下载验证内容；没有 REST 错误映射、认证或工具执行；正式命名的端到端 M1 退出测试与 API 契约留在 M1.4/M1.5。
+本文固定的是 M1.3 application service 的交付边界。REST 错误映射和 API 契约已在 M1.4 实现，正式命名的跨应用重启退出测试由 M1.5 补齐。
+
+当前仍存在的限制：SQLite 写事务串行；幂等响应只在 TTL 内保证重放；URI 知识不下载验证内容；没有认证、授权或工具执行。后续里程碑不得把 `X-Actor-ID` 审计标签描述为可信身份。
