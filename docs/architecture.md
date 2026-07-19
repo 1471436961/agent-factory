@@ -505,9 +505,6 @@ class UnitOfWork(Protocol):
     instances: "InstanceRepository"
     specs: "AgentSpecRepository"
     knowledge: "KnowledgeRepository"
-    skills: "SkillRepository"
-    evaluations: "EvaluationRepository"
-    outcomes: "TaskOutcomeRepository"
     audit: "AuditRepository"
     idempotency: "IdempotencyRepository"
 
@@ -523,7 +520,17 @@ class UnitOfWork(Protocol):
     async def commit(self) -> None: ...
 
     async def rollback(self) -> None: ...
+
+
+class UnitOfWorkFactory(Protocol):
+    def __call__(
+        self,
+        *,
+        read_only: bool = False,
+    ) -> UnitOfWork: ...
 ```
+
+M1 的 UoW 只暴露核心生产链需要的六类仓储；技能、评估和任务结果仓储在 M2 实现时再扩展。每次调用 factory 创建独立连接和事务：写事务使用 `BEGIN IMMEDIATE`，只读事务使用 `BEGIN` 与 `PRAGMA query_only = ON`。Repository、审计与幂等记录共享同一连接；未显式 `commit()` 或上下文抛出异常时统一回滚。
 
 ### 3.6 配置
 
@@ -549,6 +556,7 @@ class Settings(BaseSettings):
     default_page_size: int = 20
     max_page_size: int = 100
     idempotency_ttl_seconds: int = 86_400
+    sqlite_busy_timeout_ms: int = 5_000
     audit_log_level: str = "INFO"
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
@@ -1283,14 +1291,11 @@ class PrototypeRepository(Protocol):
         self, query: PrototypeListQuery
     ) -> Page[AgentPrototype]: ...
 
-    async def set_status(
+    async def replace(
         self,
-        prototype_id: str,
-        version: str,
-        from_status: PrototypeStatus,
-        to_status: PrototypeStatus,
-        at: datetime,
-    ) -> AgentPrototype: ...
+        prototype: AgentPrototype,
+        expected_status: PrototypeStatus,
+    ) -> bool: ...
 
 
 class InstanceRepository(Protocol):
@@ -1314,7 +1319,7 @@ class AgentSpecRepository(Protocol):
         revision: int,
     ) -> AgentSpec | None: ...
 
-    async def add(self, spec: AgentSpec) -> None: ...
+    async def add_if_absent(self, spec: AgentSpec) -> bool: ...
 
 
 class KnowledgeRepository(Protocol):
@@ -1329,7 +1334,7 @@ class KnowledgeRepository(Protocol):
     ) -> tuple[DomainKnowledge, ...]: ...
 ```
 
-仓储的 `get` 不存在时返回 `None`；由 controller 转换为领域异常。仓储不抛 HTTP 异常。
+仓储的 `get` 不存在时返回 `None`；由 controller 转换为领域异常。原型状态转换由应用层构造新的完整 `AgentPrototype` 快照，`replace()` 只按 `expected_status` 执行 compare-and-swap，避免仓储层猜测 `published_at` 或 `deprecation_reason`。仓储不抛 HTTP 异常。
 
 ### 6.4 注册与克隆实现
 
@@ -1418,7 +1423,7 @@ async def clone_agent(self, command: CloneAgentCommand) -> AgentInstance:
         return instance
 ```
 
-若写请求带 `Idempotency-Key`，controller 必须先查询 `idempotency_records`。相同 key、相同请求哈希返回首次响应；相同 key、不同请求哈希返回 `IDEMPOTENCY_KEY_REUSED`。
+若写请求带 `Idempotency-Key`，controller 必须先查询 `idempotency_records`。记录保存 application operation、请求哈希和结构化响应，不保存 HTTP status。相同 key、相同 operation 与请求哈希返回首次响应；相同 key 对应不同 operation 或请求哈希时返回 `IDEMPOTENCY_KEY_REUSED`。HTTP status 由 M1.4 接口层根据端点和结果决定。
 
 注册前查询只用于提供清晰错误；数据库唯一键才是并发下的最终裁决。基础设施层捕获 prototype/knowledge 主键的 `IntegrityError`，分别转换为 `PrototypeAlreadyExistsError` 或 `KnowledgeAlreadyExistsError`。
 
@@ -1488,6 +1493,7 @@ CREATE TABLE audit_events (
     entity_revision INTEGER,
     actor TEXT NOT NULL,
     correlation_id TEXT NOT NULL,
+    causation_id TEXT,
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -1497,14 +1503,20 @@ CREATE INDEX idx_audit_entity
 
 CREATE TABLE idempotency_records (
     idempotency_key TEXT PRIMARY KEY,
+    operation TEXT NOT NULL,
     request_hash TEXT NOT NULL,
-    response_status INTEGER NOT NULL,
     response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL
 );
+
+CREATE INDEX idx_idempotency_expires_at
+    ON idempotency_records(expires_at);
 ```
 
-技能树、评估报告和工具定义使用独立表，结构在对应章节定义。所有 JSON 入库前调用 `model_dump_json()`，读取后调用对应模型的 `model_validate_json()`。
+上表表示应用 `001_initial.sql` 与 `002_persistence_contracts.sql` 后的最终结构。已执行 migration 不允许修改；`002` 在重建旧幂等表前断言其为空，若检测到未知旧记录则中止并回滚，不静默丢数据。
+
+技能树、评估报告和工具定义使用独立表，结构在对应章节定义。模型入库前先执行 `model_dump(mode="json")`，再使用项目 canonical JSON 编码；读取后调用对应模型的 `model_validate_json()`，并校验结构化投影列与 payload 中的 ID、版本、状态和 checksum 一致。解析失败或投影不一致统一转换为 `REPOSITORY_UNAVAILABLE`，对外不暴露 SQL、驱动错误和本地路径。
 
 ### 6.6 乐观并发
 
@@ -1521,7 +1533,7 @@ SET current_revision = ?, updated_at = ?
 WHERE instance_id = ? AND current_revision = ?;
 ```
 
-第二条语句 `rowcount != 1` 时抛出 `RevisionConflictError` 并回滚整个事务，因此第一条 INSERT 不会残留。客户端收到当前 revision 后重新读取并决定是否重试；服务端不自动合并两个技能或知识变更。
+第二条语句 `rowcount != 1` 时抛出 `RevisionConflictError` 并回滚整个事务，因此第一条 INSERT 不会残留。两个并发写入生成相同 `N+1` 快照时，后执行者也可能先命中快照主键冲突；基础设施层同样转换为 `RevisionConflictError`。客户端收到冲突后重新读取并决定是否重试；服务端不自动合并两个技能或知识变更。
 
 ### 6.7 AgentSpec 构建与持久化
 
@@ -1596,7 +1608,7 @@ class AgentSpecBuilder:
         )
 ```
 
-`FactoryController.export_spec` 先按 `instance_id + revision` 查询 `agent_specs`。存在则原样返回；不存在则解析工具、调用 builder，并在同一事务写入 spec 和 `spec.exported` 审计事件。并发首次导出由 `agent_specs` 主键裁决，唯一键冲突的一方回滚后重新读取已保存规格。这样同一 revision 的 `generated_at` 和 `spec_checksum` 永远稳定，重复 GET 不重复写审计。
+`FactoryController.export_spec` 先按 `instance_id + revision` 查询 `agent_specs`。存在则原样返回；不存在则解析工具、调用 builder，并在同一事务调用 `add_if_absent()` 写入 spec 和 `spec.exported` 审计事件。并发首次导出由 `agent_specs` 主键裁决；返回 `False` 的一方回滚后重新读取已保存规格。这样同一 revision 的 `generated_at` 和 `spec_checksum` 永远稳定，重复 GET 不重复写审计，也不把预期内的唯一键竞争当作异常控制流。
 
 
 ---

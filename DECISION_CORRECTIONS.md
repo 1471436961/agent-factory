@@ -64,3 +64,25 @@
    - 最终修正：从 `FactoryError` 及子类移除 `status_code`，FastAPI handler 通过 `ERROR_STATUS_BY_CODE` 映射，未登记代码安全降级为 500。
    - 证据：`docs/architecture.md` 第 10.5、10.6 节的异常模型与 handler 规格。
    - 对后续路线的影响：M1.4 必须建立完整映射与契约测试；Python SDK 和 Tool adapter 可直接消费稳定业务码，不需要理解 HTTP status。
+
+1. **原型状态变更从仓储内构造修正为应用层快照加 CAS**
+
+   - 日期：2026-07-19
+   - 里程碑：M1.2 端口与持久化
+   - 原判断：`PrototypeRepository.set_status()` 接收原型 ID、旧状态、新状态和时间，由仓储更新并返回新的原型。
+   - 原判断的不足：该签名无法提供废弃原因，也迫使仓储理解 `published_at`、`deprecation_reason` 等领域不变量；仓储会同时承担状态策略和持久化职责。
+   - 人工 review 结论：状态转换和完整新快照应由 M1.3 应用服务构造，仓储只负责带 expected status 的原子替换。
+   - 最终修正：端口改为 `replace(prototype, expected_status) -> bool`；返回 false 表示 compare-and-swap 未命中，由应用服务重新读取并映射领域冲突。
+   - 证据：`docs/architecture.md` 第 6.3 节；`src/agent_factory/application/repositories.py` 与 SQLite 实现。
+   - 对后续路线的影响：M1.3 的发布/废弃策略保持可单元测试，Repository 不创建领域对象；未来新增状态元数据时无需扩张仓储方法参数。
+
+1. **幂等持久化从 HTTP 响应修正为传输无关结果**
+
+   - 日期：2026-07-19
+   - 里程碑：M1.2 端口与持久化
+   - 原判断：`idempotency_records` 保存 `response_status` 和 `response_json`，由 Controller 重放首次 HTTP 响应。
+   - 原判断的不足：M1.3 Controller 和 Repository 会提前依赖 HTTP status，与已经确认的领域异常传输中立原则矛盾，也使未来 SDK/Tool adapter 继承 REST 概念。
+   - 人工 review 结论：幂等层只保存 application operation、请求哈希和结构化结果；HTTP status 应由 M1.4 接口适配器决定。
+   - 最终修正：新增 forward-only `002_persistence_contracts.sql`，将记录调整为 `operation`、`request_hash`、`response_json`、`created_at` 和 `expires_at`；未知旧数据会阻止迁移而非被静默删除。
+   - 证据：`docs/architecture.md` 第 6.4、6.5 节；`docs/design/sqlite-persistence.md` 第 6 节；migration 原子回滚集成测试。
+   - 对后续路线的影响：M1.3 幂等服务可被 REST、SDK 和 Tool 共享；M1.4 单独决定成功状态码并建立 HTTP 契约测试。

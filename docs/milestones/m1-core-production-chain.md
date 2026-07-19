@@ -97,7 +97,7 @@ M1 不实现：
 
 ## 7. 阶段报告
 
-当前状态：M1 进行中；M1.1 领域契约已完成，待进入 M1.2 端口与持久化。
+当前状态：M1 进行中；M1.2 端口与持久化已完成本地验收，等待远程 CI 证据。
 
 - M1.1 完成时间：2026-07-19。
 - M1.1 交付：递归不可变 JSON、canonical checksum、公共类型与枚举、稳定业务异常、JSON Schema 校验、M1 领域快照与 application commands。
@@ -106,5 +106,12 @@ M1 不实现：
 - 静态与产物：Ruff format/lint、mypy strict 通过；wheel/sdist 构建成功，wheel 包含全部 M1.1 契约模块，Pydantic JSON Schema 生成冒烟测试通过。
 - 代码提交：`8db26b4 feat: add immutable domain primitives`；`a865672 feat: define M1 production contracts`。
 - 远程证据：GitHub Actions [`CI #4`](https://github.com/1471436961/agent-factory/actions/runs/29679135107) 在提交 `a865672` 上通过，运行耗时 23 秒。
-- 下一个工作包：M1.2 端口与持久化。
+- M1.2 完成时间：2026-07-19。
+- M1.2 交付：六类 Repository Protocol、读写 Unit of Work、canonical SQLite codec、`002_persistence_contracts.sql`、快照/head 乐观并发、审计同事务写入、传输中立幂等记录、Container 组装与 wheel 资源检查。
+- M1.2 定向测试：`14 passed`，覆盖 migration 原子回滚、六类仓储往返、原型状态 CAS、SemVer 排序、实例历史 revision、并发 revision 冲突、业务/审计共同回滚、只读事务、坏数据拒绝和 UoW 生命周期。
+- M1.2 完整本地门禁：`57 passed`；项目总分支覆盖率 91%，其中 SQLite codec 91%、repositories 81%、Unit of Work 86%。覆盖率是路径执行证据，不替代需求完整性证明。
+- M1.2 静态与产物：Ruff format/lint、mypy strict 通过；sdist/wheel 构建成功，wheel 已核对包含新增 application/domain/infrastructure 模块与 `001`、`002` 两个 migration 资源。
+- M1.2 代码提交：`c1f8348 feat: define M1 persistence ports`；`7750072 feat: implement SQLite unit of work`。
+- M1.2 远程证据：待本批提交推送后核验。
+- 下一个工作包：M1.3 应用服务。
 - 进入 M2 的人工结论：待验收证据齐备后由项目 owner 决定。
