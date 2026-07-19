@@ -1,31 +1,27 @@
-"""FastAPI application factory and M0 health endpoints."""
+"""FastAPI application factory for the M1 REST contract."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict
+from fastapi import FastAPI
 
 from agent_factory import __version__
-from agent_factory.container import Container, build_container
+from agent_factory.container import build_container
+from agent_factory.interfaces.api.errors import install_exception_handlers
+from agent_factory.interfaces.api.middleware import RequestContextMiddleware
+from agent_factory.interfaces.api.routers import api_router
+from agent_factory.interfaces.api.routers.health import router as health_router
 from agent_factory.settings import Settings
-
-
-class HealthResponse(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    status: Literal["ok"] = "ok"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Create an app whose lifespan owns migration and process readiness."""
 
+    resolved_settings = settings or Settings()
+    container = build_container(resolved_settings)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        resolved_settings = settings or Settings()
-        container = build_container(resolved_settings)
-        app.state.container = container
         await container.start()
         try:
             yield
@@ -37,35 +33,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=__version__,
         lifespan=lifespan,
     )
-
-    @application.get(
-        "/health/live",
-        response_model=HealthResponse,
-        tags=["health"],
+    application.state.container = container
+    install_exception_handlers(application)
+    application.add_middleware(
+        RequestContextMiddleware,
+        correlation_context=container.correlation_context,
+        id_generator=container.id_generator,
+        max_request_bytes=resolved_settings.max_request_bytes,
     )
-    async def liveness() -> HealthResponse:
-        return HealthResponse()
-
-    @application.get(
-        "/health/ready",
-        response_model=HealthResponse,
-        tags=["health"],
-    )
-    async def readiness(request: Request) -> HealthResponse:
-        container = _get_container(request)
-        if not container.ready or not await container.migration_runner.ping():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="service is not ready",
-            )
-        return HealthResponse()
+    application.include_router(health_router)
+    application.include_router(api_router, prefix=resolved_settings.api_prefix)
 
     return application
-
-
-def _get_container(request: Request) -> Container:
-    container: Container = request.app.state.container
-    return container
 
 
 app = create_app()
