@@ -9,6 +9,7 @@ import pytest
 
 from agent_factory.infrastructure.sqlite import (
     MigrationChecksumError,
+    MigrationExecutionError,
     SqliteMigrationRunner,
 )
 
@@ -29,10 +30,10 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
     first = await runner.migrate()
     second = await runner.migrate()
 
-    assert first.applied_versions == (1,)
-    assert first.current_version == 1
+    assert first.applied_versions == (1, 2)
+    assert first.current_version == 2
     assert second.applied_versions == ()
-    assert second.current_version == 1
+    assert second.current_version == 2
 
     async with aiosqlite.connect(database_path) as connection:
         cursor = await connection.execute(
@@ -44,8 +45,13 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
         )
         tables = {str(row[0]) for row in await cursor.fetchall()}
 
-    assert len(history) == 1
+    assert len(history) == 2
     assert tuple(history[0]) == (1, "initial", "2026-07-17T12:00:00Z")
+    assert tuple(history[1]) == (
+        2,
+        "persistence_contracts",
+        "2026-07-17T12:00:00Z",
+    )
     assert {"prototypes", "knowledge_packages", "agent_specs"} <= tables
 
 
@@ -71,3 +77,55 @@ async def test_modified_applied_migration_is_rejected(
 
     with pytest.raises(MigrationChecksumError, match="checksum changed"):
         await runner.migrate()
+
+
+@pytest.mark.asyncio
+async def test_transport_neutral_migration_rejects_unknown_legacy_records_atomically(
+    tmp_path: Path,
+    migrations_dir: Path,
+) -> None:
+    copied_migrations = tmp_path / "migrations"
+    copied_migrations.mkdir()
+    shutil.copy2(
+        migrations_dir / "001_initial.sql",
+        copied_migrations / "001_initial.sql",
+    )
+    database_path = tmp_path / "factory.db"
+    runner = SqliteMigrationRunner(database_path, copied_migrations, FrozenClock())
+    await runner.migrate()
+
+    async with aiosqlite.connect(database_path) as connection:
+        await connection.execute(
+            """
+            INSERT INTO idempotency_records (
+                idempotency_key, request_hash, response_status,
+                response_json, expires_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            ("legacy-key", "a" * 64, 201, "{}", "2026-07-18T12:00:00Z"),
+        )
+        await connection.commit()
+
+    shutil.copy2(
+        migrations_dir / "002_persistence_contracts.sql",
+        copied_migrations / "002_persistence_contracts.sql",
+    )
+    with pytest.raises(MigrationExecutionError, match="002_persistence_contracts"):
+        await runner.migrate()
+
+    async with aiosqlite.connect(database_path) as connection:
+        cursor = await connection.execute("PRAGMA table_info(audit_events)")
+        audit_columns = {str(row[1]) for row in await cursor.fetchall()}
+        cursor = await connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        )
+        versions = tuple(int(row[0]) for row in await cursor.fetchall())
+        cursor = await connection.execute(
+            "SELECT response_status FROM idempotency_records"
+        )
+        legacy_row = await cursor.fetchone()
+
+    assert "causation_id" not in audit_columns
+    assert versions == (1,)
+    assert legacy_row is not None
+    assert int(legacy_row[0]) == 201

@@ -53,4 +53,8 @@ jobs:
           uv run python -c "import glob, zipfile;
           wheel = glob.glob('dist/*.whl')[0];
           names = zipfile.ZipFile(wheel).namelist();
-          assert 'agent_factory/infrastructure/sqlite/sql/001_initial.sql' in names"
+          expected = {
+            'agent_factory/infrastructure/sqlite/sql/001_initial.sql',
+            'agent_factory/infrastructure/sqlite/sql/002_persistence_contracts.sql'
+          };
+          assert expected <= set(names)"

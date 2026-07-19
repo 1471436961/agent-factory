@@ -14,6 +14,8 @@ def test_settings_defaults_are_safe_for_local_development() -> None:
     assert settings.anthropic_api_key is None
     assert settings.default_page_size <= settings.max_page_size
     assert (settings.migrations_dir / "001_initial.sql").is_file()
+    assert (settings.migrations_dir / "002_persistence_contracts.sql").is_file()
+    assert settings.sqlite_busy_timeout_ms == 5_000
 
 
 def test_settings_read_prefixed_environment_variables(

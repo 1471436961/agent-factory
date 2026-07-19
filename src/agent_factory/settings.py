@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     default_page_size: int = Field(default=20, ge=1)
     max_page_size: int = Field(default=100, ge=1)
     idempotency_ttl_seconds: int = Field(default=86_400, ge=60)
+    sqlite_busy_timeout_ms: int = Field(default=5_000, ge=100, le=60_000)
     audit_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None

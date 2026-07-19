@@ -3,7 +3,11 @@
 from dataclasses import dataclass, field
 
 from agent_factory.application.ports import Clock, CorrelationContext, IdGenerator
-from agent_factory.infrastructure.sqlite import SqliteMigrationRunner
+from agent_factory.application.unit_of_work import UnitOfWorkFactory
+from agent_factory.infrastructure.sqlite import (
+    SqliteMigrationRunner,
+    SqliteUnitOfWorkFactory,
+)
 from agent_factory.infrastructure.system import (
     ContextVarCorrelationContext,
     SystemClock,
@@ -21,6 +25,7 @@ class Container:
     id_generator: IdGenerator
     correlation_context: CorrelationContext
     migration_runner: SqliteMigrationRunner
+    uow_factory: UnitOfWorkFactory
     _ready: bool = field(default=False, init=False)
 
     @property
@@ -39,14 +44,19 @@ def build_container(settings: Settings) -> Container:
     """Build the M0 dependency graph without performing I/O."""
 
     clock = SystemClock()
+    migration_runner = SqliteMigrationRunner.from_database_url(
+        database_url=settings.database_url,
+        migrations_dir=settings.migrations_dir,
+        clock=clock,
+    )
     return Container(
         settings=settings,
         clock=clock,
         id_generator=UUID4Generator(),
         correlation_context=ContextVarCorrelationContext(),
-        migration_runner=SqliteMigrationRunner.from_database_url(
-            database_url=settings.database_url,
-            migrations_dir=settings.migrations_dir,
-            clock=clock,
+        migration_runner=migration_runner,
+        uow_factory=SqliteUnitOfWorkFactory(
+            migration_runner.database_path,
+            busy_timeout_ms=settings.sqlite_busy_timeout_ms,
         ),
     )

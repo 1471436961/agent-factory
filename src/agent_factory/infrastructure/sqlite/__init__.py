@@ -10,6 +10,10 @@ from agent_factory.infrastructure.sqlite.migrations import (
     MigrationResult,
     SqliteMigrationRunner,
 )
+from agent_factory.infrastructure.sqlite.unit_of_work import (
+    SqliteUnitOfWork,
+    SqliteUnitOfWorkFactory,
+)
 
 __all__ = [
     "MigrationChecksumError",
@@ -20,4 +24,6 @@ __all__ = [
     "MigrationHistoryError",
     "MigrationResult",
     "SqliteMigrationRunner",
+    "SqliteUnitOfWork",
+    "SqliteUnitOfWorkFactory",
 ]
