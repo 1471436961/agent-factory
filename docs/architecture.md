@@ -7,6 +7,8 @@
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+
 ---
 
 ## 目录
@@ -58,7 +60,7 @@
   - [7.5 观察期与降级](#75-观察期与降级)
 - [第八章 工具绑定与安全执行](#第八章-工具绑定与安全执行)
   - [8.1 工具模型](#81-工具模型)
-  - [8.2 注册表与权限解析](#82-注册表与权限解析)
+  - [8.2 元数据目录与权限解析](#82-元数据目录与权限解析)
   - [8.3 安全执行器](#83-安全执行器)
   - [8.4 工具安全规则](#84-工具安全规则)
   - [8.5 工具表](#85-工具表)
@@ -193,9 +195,9 @@ flowchart TB
 
 | 决策 | 决策函数 | 禁止的替代方式 |
 | --- | --- | --- |
-| 能否注册原型 | `PrototypePolicy.validate_registration` | 让 LLM 阅读定义后判断 |
-| 能否绑定知识 | `KnowledgeBindingPolicy.validate` | 按语义相似度自动绑定 |
-| 能否授权工具 | `ToolPolicy.resolve_effective_tools` | 运行时动态请求未知工具 |
+| 能否注册原型 | `PrototypePolicy.validate_definition` | 让 LLM 阅读定义后判断 |
+| 能否绑定知识 | `KnowledgeBindingPolicy.validate_and_build` | 按语义相似度自动绑定 |
+| 能否授权工具 | `ToolPolicy.resolve` | 运行时动态请求未知工具 |
 | 能否晋升 | `PromotionPolicy.decide` | 仅凭 LLM-as-Judge 分数 |
 | 是否降级 | `DegradationPolicy.should_degrade` | 模型自行声明能力下降 |
 | 状态能否迁移 | `LifecyclePolicy.transition` | 直接修改 status 字段 |
@@ -402,7 +404,7 @@ sequenceDiagram
     A-->>C: 201 Created
 ```
 
-任何验证失败都在写入前发生；仓储失败时 `UnitOfWork.rollback()`，不得留下没有审计记录的实例。
+任何验证或仓储失败都必须发生在事务提交前；`UnitOfWork.__aexit__()` 回滚未提交事务，不得留下没有审计记录的实例。
 
 ### 3.4 应用服务签名
 
@@ -414,11 +416,18 @@ from uuid import UUID
 class FactoryController:
     def __init__(
         self,
+        *,
         uow_factory: "UnitOfWorkFactory",
-        evaluator: "EvaluatorPort",
-        tool_registry: "ToolRegistry",
         clock: "Clock",
         id_generator: "IdGenerator",
+        correlation_context: "CorrelationContext",
+        prototype_policy: "PrototypePolicy",
+        knowledge_policy: "KnowledgeBindingPolicy",
+        tool_policy: "ToolPolicy",
+        spec_builder: "AgentSpecBuilder",
+        idempotency: "IdempotencyService",
+        audit_factory: "AuditEventFactory",
+        max_inline_knowledge_bytes: int,
     ) -> None: ...
 
     async def register_prototype(
@@ -452,9 +461,16 @@ class FactoryController:
     async def export_spec(
         self,
         instance_id: UUID,
+        *,
         revision: int | None = None,
+        actor: str,
     ) -> "AgentSpec": ...
 
+    async def query_audit(
+        self, query: "AuditQuery"
+    ) -> "Page[AuditEvent]": ...
+
+    # 以下操作在 M2 扩展，不属于 M1 Controller。
     async def transition_instance(
         self, command: "TransitionInstanceCommand"
     ) -> "AgentInstance": ...
@@ -471,10 +487,9 @@ class FactoryController:
         self, command: "RecordTaskOutcomeCommand"
     ) -> "DegradationCheckResult": ...
 
-    async def query_audit(
-        self, query: "AuditQuery"
-    ) -> "Page[AuditEvent]": ...
 ```
+
+M1 Controller 只注入当前生产闭环实际使用的端口和策略。`EvaluatorPort`、技能树仓储和任务结果仓储在 M2 引入；它们不得作为未使用参数提前进入构造函数。
 
 ### 3.5 端口与工作单元
 
@@ -553,6 +568,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./agent_factory.db"
     api_prefix: str = "/api/v1"
     max_request_bytes: int = 1_048_576
+    max_inline_knowledge_bytes: int = 262_144
     default_page_size: int = 20
     max_page_size: int = 100
     idempotency_ttl_seconds: int = 86_400
@@ -1065,19 +1081,20 @@ async def register_knowledge(
 
 ### 5.3 绑定策略
 
-绑定只允许实例处于 `CREATED`、`WAITING` 或 `DEGRADED`。`RUNNING` 返回 `409 INSTANCE_BUSY`，`COMPLETED` 或 `TERMINATED` 返回 `409 INVALID_STATE_TRANSITION`。
+绑定只允许实例处于 `CREATED`、`WAITING` 或 `DEGRADED`。`RUNNING` 返回 `INSTANCE_BUSY`，`FAILED`、`COMPLETED` 或 `TERMINATED` 返回 `INVALID_STATE_TRANSITION`；HTTP status 由 M1.4 接口层映射。
 
 ```python
 class KnowledgeBindingPolicy:
-    def validate(
+    def validate_and_build(
         self,
-        slots: tuple[KnowledgeSlot, ...],
-        packages: tuple[DomainKnowledge, ...],
-        selections: tuple[KnowledgeSelection, ...],
         *,
+        definition: AgentDefinition,
+        selections: Iterable[KnowledgeSelectionLike],
+        packages: Iterable[DomainKnowledge],
         bound_at: datetime,
-        actor: str,
+        bound_by: str,
     ) -> tuple[KnowledgeBinding, ...]:
+        slots = definition.knowledge_slots
         slot_map = {slot.name: slot for slot in slots}
         package_map = {
             (item.knowledge_id, item.version): item for item in packages
@@ -1146,14 +1163,14 @@ class KnowledgeBindingPolicy:
                 knowledge_checksum=package.checksum,
                 injection_mode=slot_map[selection.slot_name].injection_mode,
                 bound_at=bound_at,
-                bound_by=actor,
+                bound_by=bound_by,
             )
             for selection in selections
             for package in [package_map[(selection.knowledge_id, selection.version)]]
         )
 ```
 
-`version_in_slot_range` 的边界为 `min_version <= version < max_version_exclusive`。controller 先把现有绑定转换为 `KnowledgeSelection`，再与本次 selections 合并，将“最终选择集合”传入 policy。`replace_existing=False` 时，对已绑定槽再次绑定返回 `KNOWLEDGE_ALREADY_BOUND`；为 true 时先移除本次涉及槽的旧选择，再加入新选择。最终集合必须满足全部 required slot 与 cardinality 约束。变更成功后生成新实例 revision，并保留旧绑定审计。
+版本边界为 `min_version <= version < max_version_exclusive`。controller 先把现有绑定转换为 `KnowledgeSelection`，再与本次 selections 合并，将“最终选择集合”传入 policy。`replace_existing=False` 时，对已绑定槽再次绑定返回 `KNOWLEDGE_ALREADY_BOUND`；为 true 时先移除本次涉及槽的旧选择，再加入新选择。最终集合必须满足全部 required slot 与 cardinality 约束。变更成功后生成 `revision + 1` 完整快照；未触碰槽位复用原 binding，保留原始 `bound_at/bound_by`，本次触碰槽位才生成新 binding 和审计事件。
 
 ### 5.4 注入物化
 
@@ -1541,10 +1558,10 @@ WHERE instance_id = ? AND current_revision = ?;
 class AgentSpecBuilder:
     def build(
         self,
-        instance: AgentInstance,
-        resolved_tools: tuple[ResolvedToolSpec, ...],
         *,
-        now: datetime,
+        instance: AgentInstance,
+        tools: tuple[ResolvedToolSpec, ...],
+        generated_at: datetime,
     ) -> AgentSpec:
         slot_map = {
             slot.name: slot
@@ -1589,26 +1606,27 @@ class AgentSpecBuilder:
             agent_type=instance.configuration.agent_type,
             role=instance.configuration.role,
             system_prompt=instance.configuration.system_prompt,
-            tools=resolved_tools,
+            tools=tools,
             knowledge=knowledge_refs,
             output_schema=instance.configuration.output_schema,
             active_skill_nodes=instance.active_skill_nodes,
             runtime_target=instance.runtime_target,
-            generated_at=now,
+            generated_at=generated_at,
             spec_checksum="0" * 64,
             metadata=instance.configuration.metadata,
         )
-        return unsigned.model_copy(
-            update={
+        return AgentSpec.model_validate(
+            {
+                **unsigned.model_dump(mode="python"),
                 "spec_checksum": sha256_model(
                     unsigned,
                     exclude={"spec_checksum"},
-                )
+                ),
             }
         )
 ```
 
-`FactoryController.export_spec` 先按 `instance_id + revision` 查询 `agent_specs`。存在则原样返回；不存在则解析工具、调用 builder，并在同一事务调用 `add_if_absent()` 写入 spec 和 `spec.exported` 审计事件。并发首次导出由 `agent_specs` 主键裁决；返回 `False` 的一方回滚后重新读取已保存规格。这样同一 revision 的 `generated_at` 和 `spec_checksum` 永远稳定，重复 GET 不重复写审计，也不把预期内的唯一键竞争当作异常控制流。
+`FactoryController.export_spec` 先在只读 UoW 按 `instance_id + revision` 查询 `agent_specs`。存在则原样返回；不存在则进入写 UoW 后二次检查，重新校验知识绑定和工具权限，调用 builder，并通过 `add_if_absent()` 持久化 spec。只有当前事务首次插入成功时才追加 `spec.exported` 审计并提交；若发现已有记录则返回已保存规格并让当前事务退出回滚。这样同一 revision 的 `generated_at` 和 `spec_checksum` 稳定，重复导出不重复写审计。
 
 
 ---
@@ -2080,6 +2098,8 @@ CREATE INDEX idx_outcomes_window
 
 ## 第八章 工具绑定与安全执行
 
+本章分为两个边界：M1 生产层只实现工具元数据白名单和权限解析；工具 handler、参数执行、超时和沙箱属于 M3 运行接口，当前 Alpha 不实现。
+
 ### 8.1 工具模型
 
 ```python
@@ -2155,81 +2175,55 @@ class RegisteredTool:
     handler: ToolHandler
 ```
 
-`ToolDefinition` 可持久化；`RegisteredTool` 只在进程内存在。启动时校验 Pydantic 模型生成的 JSON Schema 与定义中的 schema 完全一致，否则拒绝启动。
+`ResolvedToolSpec` 已在 M1 实现并进入 `AgentSpec`。`ToolDefinition`、`ToolCallRequest`、`RegisteredTool` 和 handler 执行是 M3 规格，当前 Alpha 不实现。
 
-### 8.2 注册表与权限解析
+### 8.2 元数据目录与权限解析
 
 ```python
-class ToolRegistry:
-    def __init__(self) -> None:
-        self._tools: dict[str, RegisteredTool] = {}
+class ToolCatalog(Protocol):
+    def get(self, name: str) -> ResolvedToolSpec | None: ...
 
-    def register(self, tool: RegisteredTool) -> None:
-        name = tool.definition.name
-        if name in self._tools:
-            raise DuplicateToolRegistrationError(details={"tool_name": name})
-        if not tool.definition.enabled:
-            raise DisabledToolRegistrationError(details={"tool_name": name})
-        self._tools[name] = tool
-
-    def get(self, name: str) -> RegisteredTool | None:
-        return self._tools.get(name)
-
-    def names(self) -> frozenset[str]:
-        return frozenset(self._tools)
+    def names(self) -> frozenset[str]: ...
 
 
 class ToolPolicy:
     def __init__(
         self,
-        registry: ToolRegistry,
+        catalog: ToolCatalog,
+        *,
         allowed_permissions: frozenset[ToolPermission],
     ) -> None:
-        self.registry = registry
-        self.allowed_permissions = allowed_permissions
+        self._catalog = catalog
+        self._allowed_permissions = allowed_permissions
 
-    def validate_declared_tools(self, names: tuple[str, ...]) -> None:
-        unknown = set(names) - set(self.registry.names())
-        if unknown:
-            raise UnknownToolError(details={"tools": sorted(unknown)})
-
-    def resolve_effective_tools(
+    def resolve(
         self,
-        names: set[str],
+        names: Iterable[str],
     ) -> tuple[ResolvedToolSpec, ...]:
         resolved: list[ResolvedToolSpec] = []
-        for name in sorted(names):
-            tool = self.registry.get(name)
+        for name in names:
+            tool = self._catalog.get(name)
             if tool is None:
                 raise UnknownToolError(details={"tool_name": name})
-            denied = (
-                set(tool.definition.permission_tags)
-                - set(self.allowed_permissions)
-            )
+            denied = tool.permission_tags - self._allowed_permissions
             if denied:
                 raise ToolPermissionDeniedError(
-                    details={"tool_name": name, "permissions": sorted(denied)}
+                    details={
+                        "tool_name": name,
+                        "denied_permissions": sorted(
+                            permission.value for permission in denied
+                        ),
+                    }
                 )
-            resolved.append(
-                ResolvedToolSpec.model_validate(
-                    tool.definition.model_dump(
-                        include={
-                            "name",
-                            "version",
-                            "description",
-                            "input_schema",
-                            "output_schema",
-                            "permission_tags",
-                        }
-                    )
-                )
-            )
-        return tuple(resolved)
+            resolved.append(tool)
+        return tuple(sorted(resolved, key=lambda item: item.name))
 ```
 
-原型工具和所有 active skill 节点授权工具取并集后调用 `resolve_effective_tools`。运行时不得提交临时工具名。
+M1 默认 `InMemoryToolCatalog` 只注册 metadata-only 的 `document-search@1.0.0`，权限为 `read-only`；它没有 handler，不能据此宣称工具已可执行。原型注册、克隆和规格导出都会调用 `resolve()`，因此未知工具或超出权限上限的工具不能进入已导出的 `AgentSpec`。M2 技能节点引入后，再对原型工具和 active skill 授权工具取并集。
 
 ### 8.3 安全执行器
+
+**当前 Alpha 版本不实现。** 以下是 M3 的接口规格，不属于 M1 `ToolCatalog`。
 
 ```python
 import asyncio
@@ -2627,7 +2621,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_controller(request: Request) -> FactoryController:
-    return request.app.state.factory_controller
+    return request.app.state.container.controller
 
 
 async def get_principal(
@@ -2655,14 +2649,13 @@ IdempotencyKey = Annotated[
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = Settings()
-    container = await build_container(settings)
-    await container.database.migrate()
-    await container.validate_tool_registry()
-    app.state.factory_controller = container.factory_controller
-    app.state.authenticator = container.authenticator
-    app.state.logger = container.logger
-    yield
-    await container.close()
+    container = build_container(settings)
+    app.state.container = container
+    await container.start()
+    try:
+        yield
+    finally:
+        await container.close()
 
 
 app = FastAPI(
@@ -2989,7 +2982,7 @@ class PromotionRejectedError(FactoryError):
 | 404 | `PROTOTYPE_NOT_FOUND`, `INSTANCE_NOT_FOUND`, `KNOWLEDGE_NOT_FOUND`, `SKILL_NODE_NOT_FOUND`, `EVALUATION_REPORT_NOT_FOUND` |
 | 409 | `PROTOTYPE_ALREADY_EXISTS`, `PROTOTYPE_NOT_PUBLISHED`, `INVALID_PROTOTYPE_STATUS`, `KNOWLEDGE_ALREADY_EXISTS`, `KNOWLEDGE_ALREADY_BOUND`, `REVISION_CONFLICT`, `INVALID_STATE_TRANSITION`, `INSTANCE_BUSY`, `SKILL_ALREADY_ACTIVE`, `SKILL_CONFIGURATION_CONFLICT`, `IDEMPOTENCY_KEY_REUSED` |
 | 413 | `KNOWLEDGE_PAYLOAD_TOO_LARGE`, `REQUEST_TOO_LARGE` |
-| 422 | `REQUEST_VALIDATION_FAILED`, `INSTANCE_NOT_READY`, `UNKNOWN_KNOWLEDGE_SLOT`, `MISSING_KNOWLEDGE_BINDING`, `KNOWLEDGE_KIND_MISMATCH`, `KNOWLEDGE_VERSION_MISMATCH`, `KNOWLEDGE_CARDINALITY_INVALID`, `KNOWLEDGE_CHECKSUM_MISMATCH`, `TOOL_INPUT_VALIDATION_FAILED`, `SKILL_DEPENDENCY_MISSING`, `SKILL_TREE_CYCLE`, `EVALUATION_SUITE_MISMATCH`, `STALE_EVALUATION_REPORT`, `PROMOTION_REJECTED` |
+| 422 | `REQUEST_VALIDATION_FAILED`, `INSTANCE_NOT_READY`, `UNKNOWN_KNOWLEDGE_SLOT`, `MISSING_KNOWLEDGE_BINDING`, `KNOWLEDGE_KIND_MISMATCH`, `KNOWLEDGE_VERSION_MISMATCH`, `KNOWLEDGE_INJECTION_MODE_MISMATCH`, `KNOWLEDGE_CARDINALITY_INVALID`, `KNOWLEDGE_CHECKSUM_MISMATCH`, `UNKNOWN_TOOL`, `TOOL_INPUT_VALIDATION_FAILED`, `SKILL_DEPENDENCY_MISSING`, `SKILL_TREE_CYCLE`, `EVALUATION_SUITE_MISMATCH`, `STALE_EVALUATION_REPORT`, `PROMOTION_REJECTED` |
 | 502 | `TOOL_EXECUTION_FAILED` |
 | 503 | `REPOSITORY_UNAVAILABLE`, `EVALUATOR_UNAVAILABLE`, `TOOL_UNAVAILABLE` |
 | 504 | `TOOL_TIMEOUT` |
@@ -3592,7 +3585,7 @@ async def unbound_instance(
     app_container,
     writer_definition: AgentDefinition,
 ) -> AgentInstance:
-    controller = app_container.factory_controller
+    controller = app_container.controller
     await controller.register_prototype(
         RegisterPrototypeCommand(
             prototype_id="unbound-writer",
@@ -3622,7 +3615,7 @@ async def test_register_clone_bind_export(
     writer_definition: AgentDefinition,
     product_knowledge_draft: DomainKnowledgeDraft,
 ) -> None:
-    controller = app_container.factory_controller
+    controller = app_container.controller
     prototype = await controller.register_prototype(
         RegisterPrototypeCommand(
             prototype_id="technical-writer",

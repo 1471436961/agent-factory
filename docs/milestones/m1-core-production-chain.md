@@ -97,7 +97,7 @@ M1 不实现：
 
 ## 7. 阶段报告
 
-当前状态：M1 进行中；M1.2 端口与持久化已完成本地与远程验收，待进入 M1.3 应用服务。
+当前状态：M1 进行中；M1.3 应用服务已完成本地验收，待提交远程证据后进入 M1.4 核心 REST 契约。
 
 - M1.1 完成时间：2026-07-19。
 - M1.1 交付：递归不可变 JSON、canonical checksum、公共类型与枚举、稳定业务异常、JSON Schema 校验、M1 领域快照与 application commands。
@@ -113,5 +113,12 @@ M1 不实现：
 - M1.2 静态与产物：Ruff format/lint、mypy strict 通过；sdist/wheel 构建成功，wheel 已核对包含新增 application/domain/infrastructure 模块与 `001`、`002` 两个 migration 资源。
 - M1.2 提交：`c1f8348 feat: define M1 persistence ports`；`7750072 feat: implement SQLite unit of work`；`00b8e0b docs: document M1.2 persistence design`。
 - M1.2 远程证据：GitHub Actions [`CI #6`](https://github.com/1471436961/agent-factory/actions/runs/29681223005) 在提交 `00b8e0b` 上通过，运行耗时 21 秒。
-- 下一个工作包：M1.3 应用服务。
+- M1.3 完成时间：2026-07-19。
+- M1.3 交付：纯原型/知识/工具策略、`AgentSpecBuilder`、metadata-only `ToolCatalog`、typed idempotency replay、allowlisted `AuditEventFactory`、完整 `FactoryController` 和 Container 组装。
+- M1.3 事务证据：成功写操作在同一 UoW 提交业务快照、审计与幂等响应；相同 key/request 重放原对象且不重复审计，不同 request 冲突；失败校验不留业务或审计数据。
+- M1.3 绑定/导出证据：真实 SQLite 测试覆盖 revision 冲突、替换规则、缺失知识、必填槽、未触碰 binding 溯源保持，以及同 revision Spec 只写入和审计一次。
+- M1.3 完整本地门禁：`80 passed`，总分支覆盖率 92%，其中 `application/controller.py` 为 88%；Ruff format/lint、mypy strict、sdist/wheel 构建通过，wheel 核对包含 Controller、幂等、审计、工具目录和两份 migration。
+- M1.3 提交：`83ffc99 feat: add M1 production policies`；`ee40d37 feat: orchestrate M1 production commands`；`090b145 feat: wire M1 controller into SQLite runtime`；`63f73f3 test: cover M1 prototype status transactions`。
+- M1.3 远程证据：待本批文档提交并推送后补充 GitHub Actions 运行链接。
+- 下一个工作包：M1.4 核心 REST 契约。
 - 进入 M2 的人工结论：待验收证据齐备后由项目 owner 决定。

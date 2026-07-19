@@ -86,3 +86,25 @@
    - 最终修正：新增 forward-only `002_persistence_contracts.sql`，将记录调整为 `operation`、`request_hash`、`response_json`、`created_at` 和 `expires_at`；未知旧数据会阻止迁移而非被静默删除。
    - 证据：`docs/architecture.md` 第 6.4、6.5 节；`docs/design/sqlite-persistence.md` 第 6 节；migration 原子回滚集成测试。
    - 对后续路线的影响：M1.3 幂等服务可被 REST、SDK 和 Tool 共享；M1.4 单独决定成功状态码并建立 HTTP 契约测试。
+
+1. **M1 工具依赖从可执行 Registry 修正为元数据 Catalog**
+
+   - 日期：2026-07-19
+   - 里程碑：M1.3 应用服务
+   - 原判断：`FactoryController` 直接依赖同时保存 `ToolDefinition`、Pydantic 输入/输出模型和 executable handler 的 `ToolRegistry`，生产时从中解析 `AgentSpec`。
+   - 原判断的不足：M1 只需要证明原型声明的工具存在且权限不越界；提前引入 handler、超时和执行副作用会把生产治理层与 M3 运行接口耦合，并造成“目录中有工具等于工具已经可执行”的错误表述。
+   - 人工 review 结论：M1 只实现 metadata-only `ToolCatalog`，返回不可变 `ResolvedToolSpec`；可执行 Registry 与安全执行器留到 M3。
+   - 最终修正：application 定义 `ToolCatalog` Protocol，infrastructure 提供 `InMemoryToolCatalog`；默认只注册无 handler 的 `document-search@1.0.0`，`ToolPolicy` 负责未知工具和权限上限校验。
+   - 证据：`src/agent_factory/application/ports.py`、`application/tooling.py`、`infrastructure/tool_catalog.py`；`docs/design/application-services.md` 第 9 节。
+   - 对后续路线的影响：M1.4 REST 只暴露规格中的工具元数据；M3 设计 executable Registry 时必须通过独立适配边界消费 `AgentSpec`，不能把 handler 注入 M1 Controller。
+
+1. **M1 Controller 从预注入未来端口修正为只依赖当前能力**
+
+   - 日期：2026-07-19
+   - 里程碑：M1.3 应用服务
+   - 原判断：`FactoryController.__init__` 在 M1 就接收 `EvaluatorPort`、`ToolRegistry` 等未来依赖，并同时声明评估、晋升和降级方法。
+   - 原判断的不足：未使用依赖没有可验证行为，会扩大构造和测试表面，也模糊 M1 与 M2 的退出条件；Evaluator 还可能让人误以为核心生产决策依赖 LLM。
+   - 人工 review 结论：Controller 只注入当前里程碑真实调用的端口与纯策略；新能力在进入对应里程碑时再扩展。
+   - 最终修正：M1 Controller 只提供原型、知识、克隆、绑定、导出和审计操作；依赖 UoW、系统端口、四类纯策略/Builder、幂等与审计工厂，不接收 Evaluator。
+   - 证据：`src/agent_factory/application/controller.py` 构造签名；`docs/architecture.md` 第 3.4 节；`docs/design/application-services.md` 第 3 节。
+   - 对后续路线的影响：M2 引入 Evaluator、技能 DAG 和任务结果时必须先更新阶段设计与验收测试，不能把占位端口视为已有实现。
