@@ -31,6 +31,7 @@ from agent_factory.domain.errors import (
     MissingKnowledgeBindingError,
     PrototypeNotPublishedError,
     RevisionConflictError,
+    UnknownKnowledgeSlotError,
     UnknownToolError,
 )
 from agent_factory.domain.models import (
@@ -256,6 +257,21 @@ async def test_controller_enforces_binding_revision_and_replacement_rules(
                     instance_id=instance.instance_id,
                     expected_revision=2,
                     selections=(selection,),
+                    actor="owner",
+                )
+            )
+        with pytest.raises(UnknownKnowledgeSlotError):
+            await controller.bind_knowledge(
+                BindKnowledgeCommand(
+                    instance_id=instance.instance_id,
+                    expected_revision=1,
+                    selections=(
+                        KnowledgeSelection(
+                            slot_name="unknown-slot",
+                            knowledge_id=knowledge.knowledge_id,
+                            version=knowledge.version,
+                        ),
+                    ),
                     actor="owner",
                 )
             )

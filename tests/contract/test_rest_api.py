@@ -75,7 +75,7 @@ def _headers(
 
 
 @pytest.mark.asyncio
-async def test_rest_api_runs_the_m1_production_contract(
+async def test_register_clone_bind_export(
     tmp_path: Path,
     migrations_dir: Path,
     writer_definition: AgentDefinition,
@@ -137,6 +137,14 @@ async def test_rest_api_runs_the_m1_production_contract(
         assert cloned.status_code == 201
         instance_id = cloned.json()["instance_id"]
 
+        unbound_export = await client.post(
+            f"/api/v1/instances/{instance_id}/spec-exports",
+            json={},
+            headers=_headers(),
+        )
+        assert unbound_export.status_code == 422
+        assert unbound_export.json()["error"]["code"] == "MISSING_KNOWLEDGE_BINDING"
+
         bound = await client.post(
             f"/api/v1/instances/{instance_id}/knowledge-bindings",
             json={
@@ -167,6 +175,7 @@ async def test_rest_api_runs_the_m1_production_contract(
         assert first_spec.status_code == 200
         assert second_spec.json() == first_spec.json()
         assert first_spec.json()["tools"][0]["name"] == "document-search"
+        first_spec_payload = first_spec.json()
 
         deprecated = await client.post(
             "/api/v1/prototypes/writer-agent/versions/1.0.0/deprecate",
@@ -189,6 +198,55 @@ async def test_rest_api_runs_the_m1_production_contract(
             params={"page_size": 100},
         )
         assert all_audit.json()["total"] == 7
+
+        instance_audit = await client.get(
+            "/api/v1/audit-events",
+            params={
+                "entity_type": "instance",
+                "entity_id": instance_id,
+                "page_size": 100,
+            },
+        )
+        assert [
+            event["event_type"] for event in reversed(instance_audit.json()["items"])
+        ] == [
+            "instance.cloned",
+            "knowledge.bound",
+            "spec.exported",
+        ]
+
+    async with _running_client(settings) as (client, _):
+        readiness = await client.get("/health/ready")
+        assert readiness.status_code == 200
+
+        persisted_prototypes = await client.get(
+            "/api/v1/prototypes",
+            params={"status": "deprecated"},
+        )
+        assert persisted_prototypes.status_code == 200
+        assert persisted_prototypes.json()["total"] == 1
+
+        persisted_spec = await client.post(
+            f"/api/v1/instances/{instance_id}/spec-exports",
+            json={"revision": 2},
+            headers=_headers(),
+        )
+        assert persisted_spec.status_code == 200
+        assert persisted_spec.json() == first_spec_payload
+
+        persisted_audit = await client.get(
+            "/api/v1/audit-events",
+            params={"page_size": 100},
+        )
+        assert persisted_audit.status_code == 200
+        assert persisted_audit.json()["total"] == 7
+        assert (
+            sum(
+                event["event_type"] == "spec.exported"
+                for event in persisted_audit.json()["items"]
+            )
+            == 1
+        )
 
 
 @pytest.mark.asyncio
