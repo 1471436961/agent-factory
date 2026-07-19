@@ -7,7 +7,9 @@ import pytest
 from agent_factory.application.commands import (
     BindKnowledgeCommand,
     CloneAgentCommand,
+    DeprecatePrototypeCommand,
     KnowledgeSelection,
+    PublishPrototypeCommand,
     RegisterKnowledgeCommand,
     RegisterPrototypeCommand,
 )
@@ -22,6 +24,7 @@ from agent_factory.domain.enums import (
 )
 from agent_factory.domain.errors import (
     IdempotencyKeyReusedError,
+    InvalidPrototypeStatusError,
     KnowledgeAlreadyBoundError,
     KnowledgeChecksumMismatchError,
     KnowledgeNotFoundError,
@@ -413,5 +416,104 @@ async def test_binding_preserves_untouched_slot_provenance(
         )
         assert preserved == original_product_binding
         assert preserved.bound_by == "owner"
+    finally:
+        await container.close()
+
+
+@pytest.mark.asyncio
+async def test_controller_publishes_deprecates_and_replays_status_changes(
+    tmp_path: Path,
+    migrations_dir: Path,
+    writer_definition: AgentDefinition,
+) -> None:
+    container = await _container(tmp_path, migrations_dir)
+    controller = container.controller
+
+    try:
+        draft = await controller.register_prototype(
+            RegisterPrototypeCommand(
+                prototype_id="writer-agent",
+                version="1.0.0",
+                definition=writer_definition,
+                actor="owner",
+            )
+        )
+        publish = PublishPrototypeCommand(
+            prototype_id=draft.prototype_id,
+            version=draft.version,
+            actor="owner",
+            idempotency_key="publish-prototype-1",
+        )
+        published = await controller.publish_prototype(publish)
+        assert await controller.publish_prototype(publish) == published
+        assert published.status is PrototypeStatus.PUBLISHED
+
+        deprecate = DeprecatePrototypeCommand(
+            prototype_id=published.prototype_id,
+            version=published.version,
+            reason="Replaced by version 2.",
+            actor="owner",
+            idempotency_key="deprecate-prototype-1",
+        )
+        deprecated = await controller.deprecate_prototype(deprecate)
+        assert await controller.deprecate_prototype(deprecate) == deprecated
+        assert deprecated.status is PrototypeStatus.DEPRECATED
+        assert deprecated.deprecation_reason == deprecate.reason
+
+        with pytest.raises(InvalidPrototypeStatusError):
+            await controller.publish_prototype(
+                PublishPrototypeCommand(
+                    prototype_id=deprecated.prototype_id,
+                    version=deprecated.version,
+                    actor="owner",
+                )
+            )
+        with pytest.raises(PrototypeNotPublishedError):
+            await controller.clone_agent(
+                CloneAgentCommand(
+                    prototype_id=deprecated.prototype_id,
+                    prototype_version=deprecated.version,
+                    actor="owner",
+                )
+            )
+
+        audit = await controller.query_audit(AuditQuery(page_size=100))
+        assert {event.event_type for event in audit.items} == {
+            AuditEventType.PROTOTYPE_REGISTERED,
+            AuditEventType.PROTOTYPE_PUBLISHED,
+            AuditEventType.PROTOTYPE_DEPRECATED,
+        }
+        assert audit.total == 3
+    finally:
+        await container.close()
+
+
+@pytest.mark.asyncio
+async def test_invalid_correlation_rolls_back_staged_business_write(
+    tmp_path: Path,
+    migrations_dir: Path,
+    writer_definition: AgentDefinition,
+) -> None:
+    container = await _container(tmp_path, migrations_dir)
+    token = container.correlation_context.set("not-a-uuid")
+
+    try:
+        with pytest.raises(RuntimeError, match="must contain a UUID"):
+            await container.controller.register_prototype(
+                RegisterPrototypeCommand(
+                    prototype_id="writer-agent",
+                    version="1.0.0",
+                    definition=writer_definition,
+                    actor="owner",
+                )
+            )
+    finally:
+        container.correlation_context.reset(token)
+
+    try:
+        prototypes = await container.controller.list_prototypes(PrototypeListQuery())
+        audit = await container.controller.query_audit(AuditQuery())
+        assert prototypes.total == 0
+        assert audit.total == 0
     finally:
         await container.close()
