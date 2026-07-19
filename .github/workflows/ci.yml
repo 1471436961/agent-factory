@@ -42,8 +42,23 @@ jobs:
       - name: Type check
         run: uv run mypy src tests
 
-      - name: Test
-        run: uv run pytest -q
+      - name: Test and collect branch coverage
+        run: uv run pytest -q --cov --cov-report=term-missing
+
+      - name: Enforce domain coverage
+        run: >-
+          uv run coverage report
+          --include="src/agent_factory/domain/*"
+          --fail-under=90
+
+      - name: Enforce application coverage
+        run: >-
+          uv run coverage report
+          --include="src/agent_factory/application/*"
+          --fail-under=85
+
+      - name: Enforce total coverage
+        run: uv run coverage report --fail-under=80
 
       - name: Build distributions
         run: uv build
@@ -54,6 +69,14 @@ jobs:
           wheel = glob.glob('dist/*.whl')[0];
           names = zipfile.ZipFile(wheel).namelist();
           expected = {
+            'agent_factory/interfaces/api/contracts.py',
+            'agent_factory/interfaces/api/errors.py',
+            'agent_factory/interfaces/api/main.py',
+            'agent_factory/interfaces/api/middleware.py',
+            'agent_factory/interfaces/api/routers/audit.py',
+            'agent_factory/interfaces/api/routers/instances.py',
+            'agent_factory/interfaces/api/routers/knowledge.py',
+            'agent_factory/interfaces/api/routers/prototypes.py',
             'agent_factory/infrastructure/sqlite/sql/001_initial.sql',
             'agent_factory/infrastructure/sqlite/sql/002_persistence_contracts.sql'
           };
