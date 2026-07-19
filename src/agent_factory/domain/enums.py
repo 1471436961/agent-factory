@@ -41,3 +41,27 @@ class ToolPermission(StrEnum):
     NETWORK = "network"
     FILESYSTEM = "filesystem"
     WRITE_EXTERNAL = "write-external"
+
+
+class AuditEntityType(StrEnum):
+    PROTOTYPE = "prototype"
+    INSTANCE = "instance"
+    KNOWLEDGE = "knowledge"
+    SKILL = "skill"
+    TOOL_CALL = "tool-call"
+    EVALUATION = "evaluation"
+
+
+class AuditEventType(StrEnum):
+    PROTOTYPE_REGISTERED = "prototype.registered"
+    PROTOTYPE_PUBLISHED = "prototype.published"
+    PROTOTYPE_DEPRECATED = "prototype.deprecated"
+    KNOWLEDGE_REGISTERED = "knowledge.registered"
+    INSTANCE_CLONED = "instance.cloned"
+    KNOWLEDGE_BOUND = "knowledge.bound"
+    SPEC_EXPORTED = "spec.exported"
+    INSTANCE_TRANSITIONED = "instance.transitioned"
+    EVALUATION_COMPLETED = "evaluation.completed"
+    SKILL_PROMOTED = "skill.promoted"
+    SKILL_DEGRADED = "skill.degraded"
+    TOOL_CALLED = "tool.called"
