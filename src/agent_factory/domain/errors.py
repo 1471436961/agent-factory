@@ -89,6 +89,11 @@ class KnowledgeVersionMismatchError(FactoryError):
     default_message = "Knowledge version is outside the slot range"
 
 
+class KnowledgeInjectionModeMismatchError(FactoryError):
+    code = "KNOWLEDGE_INJECTION_MODE_MISMATCH"
+    default_message = "Knowledge binding injection mode no longer matches its slot"
+
+
 class KnowledgeCardinalityError(FactoryError):
     code = "KNOWLEDGE_CARDINALITY_INVALID"
     default_message = "Knowledge binding cardinality is invalid"
