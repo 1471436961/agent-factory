@@ -26,6 +26,7 @@ from agent_factory.domain.audit import AuditEvent
 from agent_factory.domain.common import (
     canonical_json_bytes,
     checksum_knowledge_content,
+    semver_tuple,
     sha256_model,
 )
 from agent_factory.domain.enums import InstanceStatus, PrototypeStatus
@@ -420,12 +421,36 @@ class FactoryController:
                     for selection in final_selections
                 )
             )
-            bindings = self._knowledge_policy.validate_and_build(
+            validated = self._knowledge_policy.validate_and_build(
                 definition=current.configuration,
                 selections=final_selections,
                 packages=packages,
                 bound_at=now,
                 bound_by=command.actor,
+            )
+            validated_by_ref = {
+                (
+                    binding.slot_name,
+                    binding.knowledge_id,
+                    binding.knowledge_version,
+                ): binding
+                for binding in validated
+            }
+            new_bindings = tuple(
+                validated_by_ref[
+                    (selection.slot_name, selection.knowledge_id, selection.version)
+                ]
+                for selection in command.selections
+            )
+            bindings = tuple(
+                sorted(
+                    (*retained, *new_bindings),
+                    key=lambda binding: (
+                        binding.slot_name,
+                        binding.knowledge_id,
+                        semver_tuple(binding.knowledge_version),
+                    ),
+                )
             )
             updated = AgentInstance.model_validate(
                 {

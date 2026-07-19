@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./data/agent_factory.db"
     api_prefix: str = "/api/v1"
     max_request_bytes: int = Field(default=1_048_576, ge=1_024)
+    max_inline_knowledge_bytes: int = Field(default=262_144, ge=1_024)
     default_page_size: int = Field(default=20, ge=1)
     max_page_size: int = Field(default=100, ge=1)
     idempotency_ttl_seconds: int = Field(default=86_400, ge=60)
