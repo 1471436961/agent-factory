@@ -97,10 +97,14 @@ M1 不实现：
 
 ## 7. 阶段报告
 
-当前状态：M1 已启动，尚未产生业务代码交付证据。
+当前状态：M1 进行中；M1.1 领域契约已完成，待进入 M1.2 端口与持久化。
 
-- 已完成：M0 退出审查、M1 范围固定、实施批次与验收基线。
-- 下一个工作包：M1.1 领域契约。
-- 测试结果：待 M1 实现后按实际命令回填。
-- 远程证据：待 M1 退出提交的 GitHub Actions 运行链接回填。
+- M1.1 完成时间：2026-07-19。
+- M1.1 交付：递归不可变 JSON、canonical checksum、公共类型与枚举、稳定业务异常、JSON Schema 校验、M1 领域快照与 application commands。
+- 本地测试：完整套件 `45 passed`；M1.1 定向套件 `34 passed`。
+- 覆盖率：项目总分支覆盖率 93.45%；`domain/common.py` 90%，`domain/models.py` 93%。
+- 静态与产物：Ruff format/lint、mypy strict 通过；wheel/sdist 构建成功，wheel 包含全部 M1.1 契约模块，Pydantic JSON Schema 生成冒烟测试通过。
+- 代码提交：`8db26b4 feat: add immutable domain primitives`；`a865672 feat: define M1 production contracts`。
+- 远程证据：GitHub Actions [`CI #4`](https://github.com/1471436961/agent-factory/actions/runs/29679135107) 在提交 `a865672` 上通过，运行耗时 23 秒。
+- 下一个工作包：M1.2 端口与持久化。
 - 进入 M2 的人工结论：待验收证据齐备后由项目 owner 决定。
