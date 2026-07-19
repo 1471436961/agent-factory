@@ -230,10 +230,13 @@ class FrozenModel(BaseModel):
         frozen=True,
         extra="forbid",
         str_strip_whitespace=True,
+        validate_default=True,
     )
 ```
 
-更新操作必须使用 `model_copy(update={...})` 生成新对象，并由仓储执行乐观并发写入。禁止在 controller 内修改 Pydantic 对象内部字典。
+`frozen=True` 只禁止字段重新赋值，不会递归冻结嵌套 `dict` 和 `list`。因此领域字段不得直接保存可变 JSON 容器；`JsonObject` 使用 `FrozenJsonObject`，在校验时将 object 递归转为只读 mapping、将 array 转为 tuple，并在 Pydantic 序列化时还原为标准 JSON object/array。非有限浮点数和非 JSON 类型必须在边界处拒绝。
+
+更新操作必须使用 `model_copy(update={...})` 生成新对象，并由仓储执行乐观并发写入。禁止在 controller 内修改 Pydantic 对象内部容器。
 
 ### 2.4 版本与兼容性
 
@@ -568,11 +571,12 @@ class Settings(BaseSettings):
 ```python
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import AfterValidator, Field, PlainSerializer
 
 
 Slug = Annotated[
@@ -587,8 +591,14 @@ SemVer = Annotated[
     str,
     Field(pattern=r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"),
 ]
-JsonObject = dict[str, Any]
+JsonObject = Annotated[
+    Mapping[str, object],
+    AfterValidator(freeze_json_object),
+    PlainSerializer(serialize_json_object, when_used="always"),
+]
 ```
+
+`JsonObject` 的对外静态类型是只读 `Mapping[str, object]`，validator 的运行时结果是 `FrozenJsonObject`。这样 Python 调用方可传入普通字典，而消费方的类型契约不暴露可变操作。`model_dump(mode="json")` 必须输出普通 `dict`/`list`，canonical JSON 必须固定使用 UTF-8、字典键排序和紧凑分隔符。
 
 Alpha 不接受 `v1.2.3`、预发布版本或构建元数据。版本比较必须先拆成三个整数，禁止按字符串比较。
 
@@ -2914,13 +2924,11 @@ async def transition_instance(
 ### 10.5 异常模型与稳定错误码
 
 ```python
-from http import HTTPStatus
 from typing import ClassVar
 
 
 class FactoryError(Exception):
     code: ClassVar[str] = "FACTORY_ERROR"
-    status_code: ClassVar[int] = HTTPStatus.BAD_REQUEST
     default_message: ClassVar[str] = "Agent Factory operation failed"
 
     def __init__(
@@ -2936,35 +2944,30 @@ class FactoryError(Exception):
 
 class PrototypeNotFoundError(FactoryError):
     code = "PROTOTYPE_NOT_FOUND"
-    status_code = HTTPStatus.NOT_FOUND
     default_message = "Prototype was not found"
 
 
 class PrototypeAlreadyExistsError(FactoryError):
     code = "PROTOTYPE_ALREADY_EXISTS"
-    status_code = HTTPStatus.CONFLICT
     default_message = "Prototype version already exists"
 
 
 class RevisionConflictError(FactoryError):
     code = "REVISION_CONFLICT"
-    status_code = HTTPStatus.CONFLICT
     default_message = "Instance revision no longer matches"
 
 
 class ToolNotGrantedError(FactoryError):
     code = "TOOL_NOT_GRANTED"
-    status_code = HTTPStatus.FORBIDDEN
     default_message = "Tool is not granted to this instance"
 
 
 class PromotionRejectedError(FactoryError):
     code = "PROMOTION_REJECTED"
-    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
     default_message = "Promotion requirements were not satisfied"
 ```
 
-其余异常必须遵循下表，不允许临时返回自由文本错误：
+领域异常只携带稳定业务码、消息和结构化详情，不携带 HTTP status。接口层必须按下表显式映射，不允许临时返回自由文本错误；未登记的错误码按 500 处理并记录日志，不将异常字符串返回客户端。
 
 | HTTP | 错误码 |
 | --- | --- |
@@ -2987,6 +2990,8 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from agent_factory.interfaces.api.errors import ERROR_STATUS_BY_CODE
 
 
 class ErrorBody(BaseModel):
@@ -3018,7 +3023,7 @@ async def handle_factory_error(
         )
     )
     return JSONResponse(
-        status_code=int(exc.status_code),
+        status_code=ERROR_STATUS_BY_CODE.get(exc.code, 500),
         content=body.model_dump(mode="json"),
     )
 

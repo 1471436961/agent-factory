@@ -30,6 +30,7 @@ uv run uvicorn agent_factory.interfaces.api.main:app --reload
 - [M0 里程碑](docs/milestones/m0-foundation.md)
 - [M1 里程碑](docs/milestones/m1-core-production-chain.md)
 - [Migration Runner 设计说明](docs/design/migration-runner.md)
+- [Domain Contracts 设计说明](docs/design/domain-contracts.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)
 

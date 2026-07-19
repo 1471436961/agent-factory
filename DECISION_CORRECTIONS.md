@@ -42,3 +42,25 @@
    - 最终修正：后续采用两层讲解。主线层固定覆盖“解决的问题、执行流程、关键代码、设计取舍、测试证明”；深入层只在影响正确性、面试答辩或 owner 主动追问时展开。checksum、事务原子性、幂等和测试隔离属于主线，正则逐字符解析和基础 API 用法降为按需内容。
    - 证据：M0 第 4.1 节讲解后，owner 明确指出整体粒度偏细，并确认后续采用更紧凑的两层结构。
    - 对后续路线的影响：M0 后续代码带读、阶段复盘和新增学习材料均按主线优先组织；AI 在增加细节前先判断该细节是否影响设计理解、正确性验证或项目答辩。
+
+1. **领域快照从字段冻结修正为递归不可变**
+
+   - 日期：2026-07-19
+   - 里程碑：M1.1 领域契约
+   - 原判断：使用 Pydantic `ConfigDict(frozen=True)` 即可把领域模型视为不可变快照，JSON 字段可继续使用 `dict[str, Any]`。
+   - 原判断的不足：`frozen=True` 只阻止字段重新赋值，嵌套 `dict` 和 `list` 仍可原地修改；已计算 checksum 的对象因此可在不生成新 revision 的情况下变化。
+   - 人工 review 结论：M1 的可追溯快照必须对 JSON 容器实现递归不可变，不能只依赖团队约定不去修改字典。
+   - 最终修正：引入不增加第三方依赖的 `FrozenJsonObject`，输入时递归冻结 mapping/array，序列化时还原标准 JSON 容器。
+   - 证据：本地 Pydantic 实验显示 frozen model 的嵌套字典可从 `1` 原地修改为 `2`；`docs/architecture.md` 第 2.3、4.1 节已修正契约。
+   - 对后续路线的影响：AgentDefinition、知识内容、工具 Schema 和 AgentSpec 等 JSON 字段统一使用冻结表示；仓储边界只接收序列化后的普通 JSON。
+
+1. **领域异常从自带 HTTP 状态修正为接口层映射**
+
+   - 日期：2026-07-19
+   - 里程碑：M1.1 领域契约
+   - 原判断：`FactoryError` 子类同时声明稳定错误码和 HTTP status，FastAPI handler 直接读取 `exc.status_code`。
+   - 原判断的不足：错误码是应用契约，HTTP status 是 REST 传输语义；把两者放在领域异常中，会使未来 SDK、Tool adapter 和非 HTTP 调用继承不必要的 HTTP 概念。
+   - 人工 review 结论：领域/应用异常仅携带 `code`、`message` 和 `details`；REST 层在 M1.4 显式维护错误码到 HTTP status 的映射。
+   - 最终修正：从 `FactoryError` 及子类移除 `status_code`，FastAPI handler 通过 `ERROR_STATUS_BY_CODE` 映射，未登记代码安全降级为 500。
+   - 证据：`docs/architecture.md` 第 10.5、10.6 节的异常模型与 handler 规格。
+   - 对后续路线的影响：M1.4 必须建立完整映射与契约测试；Python SDK 和 Tool adapter 可直接消费稳定业务码，不需要理解 HTTP status。
