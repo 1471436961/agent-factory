@@ -2,14 +2,14 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M0**。现阶段目标是建立可复现的工程骨架，不宣称已经具备完整的 Agent 生产能力。
+当前仓库处于 **Alpha / M1**。M0 工程基线已通过本地与远程 CI 验收，现阶段正在实现原型、知识、实例、`AgentSpec` 与仓储构成的核心生产链。
 
 ## 核心边界
 
 - 工厂控制器是确定性代码系统，不依赖 LLM 做内部治理决策。
 - 工厂输出运行时无关的 `AgentSpec`，不替代 LangGraph、AutoGen 等运行时。
 - 知识绑定保证版本和槽位关系可验证，不保证模型一定正确使用知识。
-- M0 不接入真实 LLM、Gradio、多 Agent 协作或分布式基础设施。
+- M1 不接入真实 LLM、技能晋升、Gradio、多 Agent 协作或分布式基础设施。
 
 ## 本地开发
 
@@ -28,6 +28,7 @@ uv run uvicorn agent_factory.interfaces.api.main:app --reload
 - [架构设计](docs/architecture.md)
 - [项目路线图](docs/project/PROJECT_ROADMAP.md)
 - [M0 里程碑](docs/milestones/m0-foundation.md)
+- [M1 里程碑](docs/milestones/m1-core-production-chain.md)
 - [Migration Runner 设计说明](docs/design/migration-runner.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)

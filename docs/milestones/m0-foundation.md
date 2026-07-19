@@ -49,7 +49,7 @@ M0 不实现：
 
 ## 5. 阶段报告
 
-当前状态：M0 本地验收和首次远程 CI 验收已完成，等待项目 owner 审查是否进入 M1。
+当前状态：已完成并封存；项目已进入 M1。
 
 - 完成时间：2026-07-18。
 - 交付摘要：已建立 Python 3.11、uv 锁文件、应用配置、系统端口、SQLite migration runner、FastAPI lifespan、健康检查、测试和 CI workflow。
@@ -59,4 +59,4 @@ M0 不实现：
 - 运行结果：本地 uvicorn 的 liveness/readiness 均返回 `ok`，数据库已应用 `001_initial.sql`。
 - 远程证据：GitHub Actions [`CI #1`](https://github.com/1471436961/agent-factory/actions/runs/29647313254) 在提交 `712bb32` 上通过，运行耗时 21 秒。
 - 未解决风险：SQLite migration runner 暂不支持多进程并发迁移和 downgrade；当前远程 CI 仅覆盖 Ubuntu + Python 3.11，尚未强制覆盖率门禁和 wheel 隔离安装冒烟测试。
-- 进入 M1 的人工结论：M0 验收证据已齐备，是否进入 M1 由项目 owner 审查后决定。
+- 进入 M1 的人工结论：项目 owner 于 2026-07-18 确认 M0 验收通过，正式进入 M1。

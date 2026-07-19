@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前里程碑：M0，详见 [`docs/milestones/m0-foundation.md`](../milestones/m0-foundation.md)。
+当前里程碑：M1，详见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)。M0 已于 2026-07-18 通过项目 owner 验收，阶段报告见 [`docs/milestones/m0-foundation.md`](../milestones/m0-foundation.md)。
 
 ## 5. 最终展示物
 
