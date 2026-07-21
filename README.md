@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha**。M1 核心生产链已于 2026-07-21 通过项目 owner 人工验收并封存：原型、知识、实例、`AgentSpec`、SQLite 持久化与核心 REST 构成的生产闭环已具备本地及远程技术验收证据。下一里程碑为 M2 技能治理，其范围与实施计划尚待 owner 确认，当前尚未开始实现。
+当前仓库处于 **Alpha / M2**。M1 核心生产链已于 2026-07-21 通过项目 owner 人工验收并封存：原型、知识、实例、`AgentSpec`、SQLite 持久化与核心 REST 构成的生产闭环已具备本地及远程技术验收证据。M2 技能治理规划已经 owner 确认，当前进入领域契约与纯算法工作包，尚未宣称技能治理能力已经实现。
 
 ## 核心边界
 
@@ -29,11 +29,13 @@ uv run uvicorn agent_factory.interfaces.api.main:app --reload
 - [项目路线图](docs/project/PROJECT_ROADMAP.md)
 - [M0 里程碑](docs/milestones/m0-foundation.md)
 - [M1 里程碑](docs/milestones/m1-core-production-chain.md)
+- [M2 里程碑](docs/milestones/m2-skill-governance.md)
 - [Migration Runner 设计说明](docs/design/migration-runner.md)
 - [Domain Contracts 设计说明](docs/design/domain-contracts.md)
 - [SQLite Persistence 设计说明](docs/design/sqlite-persistence.md)
 - [Application Services 设计说明](docs/design/application-services.md)
 - [M1 REST API 设计说明](docs/design/rest-api.md)
+- [M2 技能治理设计说明](docs/design/skill-governance.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)
 

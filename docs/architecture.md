@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha，验证单机条件下的最小生产闭环
+**当前阶段**：Alpha / M2，核心生产链已完成，正在实现确定性技能治理
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[M1 REST API 设计说明](design/rest-api.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[M1 REST API 设计说明](design/rest-api.md)、[M2 技能治理设计说明](design/skill-governance.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -135,7 +135,7 @@ Alpha 必须交付以下可执行能力：
 | AF-02 | 克隆实例 | `CloneAgentCommand` | `AgentInstance` | 实例保留不可变的原型来源 |
 | AF-03 | 绑定知识 | `BindKnowledgeCommand` | 新 `AgentInstance` 快照 | 必填槽、类型、版本全部校验 |
 | AF-04 | 导出规格 | `instance_id` | `AgentSpec` | 缺知识或越权工具时拒绝导出 |
-| AF-05 | 技能晋升 | `PromotionCommand` | 新配置快照 | 依赖满足且硬规则通过 |
+| AF-05 | 技能晋升 | `PromoteAgentCommand` | 新配置快照 | 依赖满足且硬规则通过 |
 | AF-06 | 技能降级 | 运行评估窗口 | 新配置快照 | 达到降级阈值后回退并审计 |
 | AF-07 | 审计追溯 | 实体 ID 与筛选条件 | `AuditEvent` 列表 | 每次写操作至少产生一条事件 |
 | AF-08 | 多入口调用 | REST / Python SDK / Tool | 同构结果 | 三种入口复用同一应用服务 |
@@ -243,7 +243,7 @@ class FrozenModel(BaseModel):
 ### 2.4 版本与兼容性
 
 - 原型和知识包使用严格语义化版本 `MAJOR.MINOR.PATCH`。
-- `AgentSpec.schema_version` 独立版本化，Alpha 固定为 `1.0`。
+- `AgentSpec.schema_version` 独立版本化；M1 历史规格为 `1.0`，M2 增加可选技能树来源后使用 `1.1`。
 - MAJOR：删除字段、改变字段语义或收紧已有输入。
 - MINOR：新增可选字段或新增兼容能力。
 - PATCH：文档、默认值或不改变契约的实现修复。
@@ -477,12 +477,12 @@ class FactoryController:
         self, command: "TransitionInstanceCommand"
     ) -> "AgentInstance": ...
 
-    async def evaluate(
+    async def evaluate_instance(
         self, command: "EvaluateInstanceCommand"
     ) -> "EvaluationReport": ...
 
-    async def promote(
-        self, command: "PromotionCommand"
+    async def promote_agent(
+        self, command: "PromoteAgentCommand"
     ) -> "AgentInstance": ...
 
     async def record_task_outcome(
@@ -509,11 +509,15 @@ class RuntimeAdapter(Protocol):
 
 
 class EvaluatorPort(Protocol):
-    async def evaluate(
+    def evaluate(
         self,
-        spec: "AgentSpec",
+        *,
         suite: "EvaluationSuite",
-        cases: tuple["EvaluationCase", ...],
+        submission: "EvaluationSubmission",
+        report_id: UUID,
+        spec_checksum: str,
+        started_at: datetime,
+        completed_at: datetime,
     ) -> "EvaluationReport": ...
 
 
@@ -547,7 +551,7 @@ class UnitOfWorkFactory(Protocol):
     ) -> UnitOfWork: ...
 ```
 
-M1 的 UoW 只暴露核心生产链需要的六类仓储；技能、评估和任务结果仓储在 M2 实现时再扩展。每次调用 factory 创建独立连接和事务：写事务使用 `BEGIN IMMEDIATE`，只读事务使用 `BEGIN` 与 `PRAGMA query_only = ON`。Repository、审计与幂等记录共享同一连接；未显式 `commit()` 或上下文抛出异常时统一回滚。
+M1 的 UoW 只暴露核心生产链需要的六类仓储；M2 按已确认的[技能治理设计说明](design/skill-governance.md)增加技能树、评估套件、评估报告、复核和任务结果仓储。默认 `EvaluatorPort` 实现只对外部提交的 case result 做确定性纯计算，不执行 Agent，也不调用真实模型。每次调用 factory 创建独立连接和事务：写事务使用 `BEGIN IMMEDIATE`，只读事务使用 `BEGIN` 与 `PRAGMA query_only = ON`。Repository、审计与幂等记录共享同一连接；未显式 `commit()` 或上下文抛出异常时统一回滚。
 
 ### 3.6 配置
 
@@ -760,12 +764,19 @@ class PrototypeRef(FrozenModel):
     checksum: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
 
 
+class SkillTreeRef(FrozenModel):
+    tree_id: Slug
+    version: SemVer
+    checksum: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+
+
 class AgentPrototype(FrozenModel):
     prototype_id: Slug
     version: SemVer
     status: PrototypeStatus = PrototypeStatus.DRAFT
     definition: AgentDefinition
     checksum: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+    skill_tree: SkillTreeRef | None = None
     created_at: datetime
     created_by: str = Field(min_length=1, max_length=128)
     published_at: datetime | None = None
@@ -781,7 +792,7 @@ class KnowledgeRef(FrozenModel):
 
 
 class AgentSpec(FrozenModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.1"
     instance_id: UUID
     revision: PositiveInt
     prototype: PrototypeRef
@@ -791,6 +802,7 @@ class AgentSpec(FrozenModel):
     tools: tuple["ResolvedToolSpec", ...]
     knowledge: tuple[KnowledgeRef, ...]
     output_schema: JsonObject
+    skill_tree: SkillTreeRef | None = None
     active_skill_nodes: frozenset[Slug] = frozenset()
     runtime_target: Slug | None = None
     generated_at: datetime
@@ -821,7 +833,7 @@ def sha256_model(model: BaseModel, *, exclude: set[str] | None = None) -> str:
     return hashlib.sha256(encoded).hexdigest()
 ```
 
-生成 `AgentSpec` 时，`spec_checksum` 的计算排除自身字段，但不排除 `generated_at`；同一 revision 的规格必须从持久化快照返回，禁止每次请求重新生成时间戳。
+生成 `AgentSpec` 时，`spec_checksum` 的计算排除自身字段，但不排除 `generated_at`；同一 revision 的规格必须从持久化快照返回，禁止每次请求重新生成时间戳。M1 历史规格保持 `schema_version="1.0"` 并允许缺失 `skill_tree`；M2 新规格使用 `1.1`。原型 `checksum` 继续表示 definition checksum，技能树来源由独立 ref checksum 追溯。
 
 ### 4.5 能力协议注册
 
@@ -1223,6 +1235,7 @@ class RegisterPrototypeCommand(FrozenModel):
     prototype_id: Slug
     version: SemVer
     definition: AgentDefinition
+    skill_tree: SkillTreeRef | None = None
     publish: bool = False
     actor: str = Field(min_length=1, max_length=128)
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
@@ -1257,6 +1270,7 @@ class AgentInstance(FrozenModel):
     revision: PositiveInt
     status: InstanceStatus
     configuration: AgentDefinition
+    skill_tree: SkillTreeRef | None = None
     knowledge_bindings: tuple[KnowledgeBinding, ...] = ()
     active_skill_nodes: frozenset[Slug] = frozenset()
     runtime_target: Slug | None = None
@@ -1265,7 +1279,7 @@ class AgentInstance(FrozenModel):
     created_by: str = Field(min_length=1, max_length=128)
 ```
 
-实例表存储完整 `configuration` 快照，而不是只存差异。这样降级、审计和历史重放不依赖旧代码中的 patch 算法。
+实例表存储完整 `configuration` 快照，而不是只存差异。这样降级、审计和历史重放不依赖旧代码中的 patch 算法。`skill_tree` 也随 revision 保存；只有 `active_skill_nodes` 而没有 tree ID、version 和 checksum 不构成完整来源链。
 
 原型状态只允许 `DRAFT -> PUBLISHED -> DEPRECATED`。发布和废弃只修改状态元数据，不修改 `definition` 或 checksum；其他迁移返回 `INVALID_PROTOTYPE_STATUS`。已废弃原型不能创建新实例，但历史实例仍可读取和导出旧 revision 的 Spec。
 
@@ -1372,12 +1386,13 @@ async def register_prototype(
         if command.publish
         else PrototypeStatus.DRAFT
     )
-    prototype = AgentPrototype(
+        prototype = AgentPrototype(
         prototype_id=command.prototype_id,
         version=command.version,
         status=status,
         definition=command.definition,
         checksum=sha256_model(command.definition),
+        skill_tree=command.skill_tree,
         created_at=now,
         created_by=command.actor,
         published_at=now if command.publish else None,
@@ -1429,6 +1444,7 @@ async def clone_agent(self, command: CloneAgentCommand) -> AgentInstance:
             revision=1,
             status=InstanceStatus.CREATED,
             configuration=prototype.definition,
+            skill_tree=prototype.skill_tree,
             runtime_target=command.runtime_target,
             created_at=now,
             updated_at=now,
@@ -1602,6 +1618,7 @@ class AgentSpecBuilder:
             )
         )
         unsigned = AgentSpec(
+            schema_version="1.1",
             instance_id=instance.instance_id,
             revision=instance.revision,
             prototype=instance.prototype,
@@ -1611,6 +1628,7 @@ class AgentSpecBuilder:
             tools=tools,
             knowledge=knowledge_refs,
             output_schema=instance.configuration.output_schema,
+            skill_tree=instance.skill_tree,
             active_skill_nodes=instance.active_skill_nodes,
             runtime_target=instance.runtime_target,
             generated_at=generated_at,
@@ -1662,11 +1680,24 @@ class EvaluationRule(FrozenModel):
 class EvaluationCase(FrozenModel):
     case_id: Slug
     input: str = Field(min_length=1, max_length=64_000)
-    expected_facts: tuple[str, ...] = ()
-    metadata: dict[str, str] = Field(default_factory=dict)
+    metadata: JsonObject = Field(default_factory=FrozenJsonObject)
 
 
-class EvaluationSuite(FrozenModel):
+class SubmittedCaseResult(FrozenModel):
+    case_id: Slug
+    output_text: str = Field(max_length=64_000)
+    structured_output: JsonObject | None = None
+    called_tools: tuple[Slug, ...] = ()
+    artifact_uri: AnyHttpUrl | None = None
+
+
+class EvaluationSuiteRef(FrozenModel):
+    suite_id: Slug
+    version: SemVer
+    checksum: Sha256
+
+
+class EvaluationSuiteDraft(FrozenModel):
     suite_id: Slug
     version: SemVer
     rules: Annotated[tuple[EvaluationRule, ...], Field(min_length=1)]
@@ -1675,7 +1706,7 @@ class EvaluationSuite(FrozenModel):
     require_manual_review: bool = False
 
     @model_validator(mode="after")
-    def require_unique_ids(self) -> "EvaluationSuite":
+    def require_unique_ids(self) -> "EvaluationSuiteDraft":
         rule_ids = [item.rule_id for item in self.rules]
         case_ids = [item.case_id for item in self.cases]
         if len(rule_ids) != len(set(rule_ids)):
@@ -1685,12 +1716,35 @@ class EvaluationSuite(FrozenModel):
         return self
 
 
+class EvaluationSuite(EvaluationSuiteDraft):
+    checksum: Sha256
+    created_at: AwareDatetime
+    created_by: Actor
+
+
+class EvaluationSubmission(FrozenModel):
+    instance_id: UUID
+    instance_revision: PositiveInt
+    suite: EvaluationSuiteRef
+    runtime_model: str = Field(min_length=1, max_length=128)
+    case_results: Annotated[
+        tuple[SubmittedCaseResult, ...],
+        Field(min_length=1),
+    ]
+
+
+class CaseResultRef(FrozenModel):
+    case_id: Slug
+    checksum: Sha256
+    artifact_uri: AnyHttpUrl | None = None
+
+
 class RuleResult(FrozenModel):
     rule_id: Slug
     case_id: Slug
     passed: bool
     score: float = Field(ge=0, le=1)
-    evidence: JsonObject = Field(default_factory=dict)
+    evidence: JsonObject = Field(default_factory=FrozenJsonObject)
 
 
 class JudgeSignal(FrozenModel):
@@ -1702,18 +1756,6 @@ class JudgeSignal(FrozenModel):
     rationale: str = Field(max_length=4_000)
 
 
-class ManualReviewDecision(StrEnum):
-    APPROVED = "approved"
-    REJECTED = "rejected"
-
-
-class ManualReview(FrozenModel):
-    reviewer: str = Field(min_length=1, max_length=128)
-    decision: ManualReviewDecision
-    comment: str = Field(max_length=2_000)
-    reviewed_at: datetime
-
-
 class EvaluationDecision(StrEnum):
     PASS = "pass"
     FAIL = "fail"
@@ -1723,18 +1765,19 @@ class EvaluationDecision(StrEnum):
 class EvaluationReport(FrozenModel):
     report_id: UUID
     instance_id: UUID
-    instance_revision: int = Field(ge=1)
-    suite_id: Slug
-    suite_version: SemVer
+    instance_revision: PositiveInt
+    agent_spec_checksum: Sha256
+    skill_tree: SkillTreeRef
+    suite: EvaluationSuiteRef
     runtime_model: str = Field(min_length=1, max_length=128)
+    case_results: tuple[CaseResultRef, ...]
     rule_results: Annotated[tuple[RuleResult, ...], Field(min_length=1)]
     judge_signals: tuple[JudgeSignal, ...] = ()
-    manual_review: ManualReview | None = None
     hard_rules_passed: bool
     soft_score: float = Field(ge=0, le=1)
     decision: EvaluationDecision
-    started_at: datetime
-    completed_at: datetime
+    started_at: AwareDatetime
+    completed_at: AwareDatetime
 
     @model_validator(mode="after")
     def validate_timing(self) -> "EvaluationReport":
@@ -1746,15 +1789,32 @@ class EvaluationReport(FrozenModel):
         ):
             raise ValueError("PASS requires all hard rules to pass")
         return self
+
+
+class ReviewDecision(StrEnum):
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class EvaluationReview(FrozenModel):
+    review_id: UUID
+    report_id: UUID
+    reviewer: Actor
+    decision: ReviewDecision
+    comment: str = Field(default="", max_length=2_000)
+    reviewed_at: AwareDatetime
 ```
 
-`hard_rules_passed` 必须由规则执行器计算，不接受 API 调用方直接提交。`decision` 的计算规则固定为：
+规则引擎必须接收 `EvaluationSubmission` 中每个 case 的实际输出；只给 AgentSpec、suite 和 case 定义无法执行评估。`hard_rules_passed`、`soft_score` 和 `decision` 必须由规则执行器计算，不接受 API 调用方直接提交。报告只保存 case result checksum、可选 artifact URI 和脱敏的 bounded evidence，不保存完整 output text。
+
+`decision` 的计算规则固定为：
 
 1. 任一 hard rule 失败：`FAIL`。
 2. hard rules 全过但 soft score 未达阈值：`FAIL`。
-3. 套件要求人工复核且尚无复核：`REVIEW_REQUIRED`。
-4. 人工复核拒绝：`FAIL`。
-5. 其余情况：`PASS`。
+3. 套件要求人工复核：`REVIEW_REQUIRED`。
+4. 其余情况：`PASS`。
+
+人工复核使用独立不可变 `EvaluationReview`，不修改报告。晋升时 REVIEW_REQUIRED 报告必须关联 APPROVED review；REJECTED review 禁止晋升。JudgeSignal 不参与上述计算，也不能单独触发晋升。
 
 ### 7.2 技能树模型与 DAG 校验
 
@@ -1782,35 +1842,37 @@ class SkillNode(FrozenModel):
     granted_tools: frozenset[Slug] = frozenset()
     added_knowledge_slots: tuple[KnowledgeSlot, ...] = ()
     output_schema_override: JsonObject | None = None
-    evaluation_suite_id: Slug
-    evaluation_suite_version: SemVer
+    evaluation_suite: EvaluationSuiteRef
     observation_policy: ObservationPolicy = Field(
         default_factory=ObservationPolicy
     )
 
 
-class SkillTree(FrozenModel):
+class SkillTreeDraft(FrozenModel):
     tree_id: Slug
     version: SemVer
-    nodes: dict[Slug, SkillNode]
+    nodes: Annotated[tuple[SkillNode, ...], Field(min_length=1)]
 
     @model_validator(mode="after")
-    def validate_dag(self) -> "SkillTree":
-        ids = set(self.nodes)
-        for key, node in self.nodes.items():
-            if key != node.node_id:
-                raise ValueError(f"node key {key} does not match node_id")
+    def validate_dag(self) -> "SkillTreeDraft":
+        by_id = {node.node_id: node for node in self.nodes}
+        if len(by_id) != len(self.nodes):
+            raise ValueError("skill node ids must be unique")
+        ids = set(by_id)
+        for node in self.nodes:
             missing = set(node.parents) - ids
             if missing:
                 raise ValueError(
-                    f"node {key} has missing parents: {sorted(missing)}"
+                    f"node {node.node_id} has missing parents: {sorted(missing)}"
                 )
-            if key in node.parents:
-                raise ValueError(f"node {key} cannot depend on itself")
+            if node.node_id in node.parents:
+                raise ValueError(
+                    f"node {node.node_id} cannot depend on itself"
+                )
 
         indegree = {node_id: 0 for node_id in ids}
         children = {node_id: set() for node_id in ids}
-        for node in self.nodes.values():
+        for node in self.nodes:
             indegree[node.node_id] = len(node.parents)
             for parent in node.parents:
                 children[parent].add(node.node_id)
@@ -1830,26 +1892,38 @@ class SkillTree(FrozenModel):
         if visited != len(ids):
             raise ValueError("skill tree contains a cycle")
         return self
+
+
+class SkillTree(SkillTreeDraft):
+    checksum: Sha256
+    created_at: AwareDatetime
+    created_by: Actor
 ```
+
+领域对象使用 tuple 保存节点，注册时按 `node_id` 排序后计算 checksum。注册服务除上述结构校验外，还必须确认每个节点引用的 `EvaluationSuiteRef` 已注册且 checksum 一致。
 
 ### 7.3 晋升命令与决策
 
 ```python
-class PromotionCommand(FrozenModel):
+class PromoteAgentCommand(FrozenModel):
     instance_id: UUID
-    expected_revision: int = Field(ge=1)
+    expected_revision: PositiveInt
     target_node_id: Slug
     evaluation_report_id: UUID
-    actor: str = Field(min_length=1, max_length=128)
-    idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
+    evaluation_review_id: UUID | None = None
+    knowledge_selections: tuple[KnowledgeSelection, ...] = ()
+    actor: Actor
+    idempotency_key: IdempotencyKey | None = None
 
 
 class PromotionPolicy:
     def validate(
         self,
         instance: AgentInstance,
+        spec: AgentSpec,
         target: SkillNode,
         report: EvaluationReport,
+        review: EvaluationReview | None,
     ) -> None:
         if instance.status not in {
             InstanceStatus.CREATED,
@@ -1868,9 +1942,17 @@ class PromotionPolicy:
             raise SkillDependencyError(
                 details={"node_id": target.node_id, "missing": sorted(missing)}
             )
+        if instance.skill_tree is None:
+            raise SkillTreeNotBoundError(
+                details={"instance_id": str(instance.instance_id)}
+            )
         if (
-            report.instance_id != instance.instance_id
+            spec.instance_id != instance.instance_id
+            or spec.instance_revision != instance.revision
+            or report.instance_id != instance.instance_id
             or report.instance_revision != instance.revision
+            or report.agent_spec_checksum != spec.spec_checksum
+            or report.skill_tree != instance.skill_tree
         ):
             raise StaleEvaluationReportError(
                 details={
@@ -1878,21 +1960,25 @@ class PromotionPolicy:
                     "instance_revision": instance.revision,
                 }
             )
-        if report.suite_id != target.evaluation_suite_id:
+        if report.suite != target.evaluation_suite:
             raise EvaluationSuiteMismatchError(
                 details={
-                    "expected": target.evaluation_suite_id,
-                    "actual": report.suite_id,
+                    "expected": target.evaluation_suite.model_dump(
+                        mode="json"
+                    ),
+                    "actual": report.suite.model_dump(mode="json"),
                 }
             )
-        if report.suite_version != target.evaluation_suite_version:
-            raise EvaluationSuiteMismatchError(
-                details={
-                    "expected_version": target.evaluation_suite_version,
-                    "actual_version": report.suite_version,
-                }
-            )
-        if report.decision is not EvaluationDecision.PASS:
+        approved_review = (
+            report.decision is EvaluationDecision.REVIEW_REQUIRED
+            and review is not None
+            and review.report_id == report.report_id
+            and review.decision is ReviewDecision.APPROVED
+        )
+        if (
+            report.decision is not EvaluationDecision.PASS
+            and not approved_review
+        ):
             raise PromotionRejectedError(
                 details={
                     "report_id": str(report.report_id),
@@ -1901,7 +1987,7 @@ class PromotionPolicy:
             )
 ```
 
-应用技能节点前，`ToolPolicy` 校验新增工具，`KnowledgeBindingPolicy` 校验新增必填知识槽是否已绑定，`validate_output_schema` 校验覆盖 Schema。
+晋升服务先从来源 Prototype definition 与完整 active node 集合构建候选配置，再合并当前知识绑定和命令携带的 `knowledge_selections`。`ToolPolicy`、`KnowledgeBindingPolicy` 与输出 Schema 校验必须全部通过，才能在同一 UoW 内写入知识绑定、新实例 revision、审计和幂等结果；任一步失败都整体回滚。
 
 ### 7.4 纯函数式配置重建
 
@@ -1910,12 +1996,13 @@ def topological_order(
     tree: SkillTree,
     active_node_ids: frozenset[str],
 ) -> tuple[SkillNode, ...]:
-    unknown = set(active_node_ids) - set(tree.nodes)
+    by_id = {node.node_id: node for node in tree.nodes}
+    unknown = set(active_node_ids) - set(by_id)
     if unknown:
         raise SkillNodeNotFoundError(details={"nodes": sorted(unknown)})
 
     for node_id in active_node_ids:
-        missing = set(tree.nodes[node_id].parents) - set(active_node_ids)
+        missing = set(by_id[node_id].parents) - set(active_node_ids)
         if missing:
             raise SkillDependencyError(
                 details={"node_id": node_id, "missing": sorted(missing)}
@@ -1927,12 +2014,12 @@ def topological_order(
         ready = sorted(
             node_id
             for node_id in remaining
-            if set(tree.nodes[node_id].parents).isdisjoint(remaining)
+            if set(by_id[node_id].parents).isdisjoint(remaining)
         )
         if not ready:
             raise SkillTreeCycleError()
         for node_id in ready:
-            ordered.append(tree.nodes[node_id])
+            ordered.append(by_id[node_id])
             remaining.remove(node_id)
     return tuple(ordered)
 
@@ -2043,7 +2130,7 @@ class DegradationPolicy:
 
 任务结果写入独立 `task_outcomes` 表，不因每次观察而增加实例 revision。controller 保存结果后加载该节点窗口并运行 `should_degrade`；未触发时返回 `degraded=False` 和原 revision。触发降级时才创建新实例快照。
 
-降级目标为触发观察期的技能节点。系统移除该节点及所有依赖它的后代节点，保留无依赖关系的其他分支，然后调用 `apply_skill_nodes` 从原型重建配置。新实例状态设为 `DEGRADED`，revision 加一，并写入：
+降级目标为触发观察期的技能节点。系统移除该节点及所有依赖它的后代节点，保留无依赖关系的其他分支，然后调用 `apply_skill_nodes` 从原型重建配置。只保留仍被候选配置声明且继续满足槽约束的知识绑定；因槽位消失而移除的绑定必须写入降级结果和审计。新实例状态设为 `DEGRADED`，revision 加一，并写入：
 
 - `SKILL_DEGRADED`：触发节点、窗口、失败率、连续失败数。
 - `SKILL_DESCENDANTS_REMOVED`：因依赖失效移除的节点。
@@ -2051,20 +2138,26 @@ class DegradationPolicy:
 
 自动降级属于确定性规则，可执行；自动晋升始终禁止。
 
+M2 使用新的 forward-only migration `003_skill_governance.sql`，不修改已经发布并校验过 checksum 的 `001_initial.sql` 和 `002_persistence_contracts.sql`：
+
 ```sql
 CREATE TABLE skill_trees (
     tree_id TEXT NOT NULL,
     version TEXT NOT NULL,
+    checksum TEXT NOT NULL,
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL,
     PRIMARY KEY (tree_id, version)
 );
 
 CREATE TABLE evaluation_suites (
     suite_id TEXT NOT NULL,
     version TEXT NOT NULL,
+    checksum TEXT NOT NULL,
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL,
     PRIMARY KEY (suite_id, version)
 );
 
@@ -2072,11 +2165,25 @@ CREATE TABLE evaluation_reports (
     report_id TEXT PRIMARY KEY,
     instance_id TEXT NOT NULL,
     instance_revision INTEGER NOT NULL,
+    agent_spec_checksum TEXT NOT NULL,
+    skill_tree_id TEXT NOT NULL,
+    skill_tree_version TEXT NOT NULL,
+    skill_tree_checksum TEXT NOT NULL,
     suite_id TEXT NOT NULL,
     suite_version TEXT NOT NULL,
+    suite_checksum TEXT NOT NULL,
     decision TEXT NOT NULL,
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL
+);
+
+CREATE TABLE evaluation_reviews (
+    review_id TEXT PRIMARY KEY,
+    report_id TEXT NOT NULL UNIQUE,
+    decision TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    FOREIGN KEY (report_id) REFERENCES evaluation_reports(report_id)
 );
 
 CREATE TABLE task_outcomes (
@@ -2093,7 +2200,27 @@ CREATE TABLE task_outcomes (
 
 CREATE INDEX idx_outcomes_window
     ON task_outcomes(instance_id, skill_node_id, recorded_at DESC);
+
+CREATE TABLE prototype_skill_trees (
+    prototype_id TEXT NOT NULL,
+    prototype_version TEXT NOT NULL,
+    tree_id TEXT NOT NULL,
+    tree_version TEXT NOT NULL,
+    tree_checksum TEXT NOT NULL,
+    PRIMARY KEY (prototype_id, prototype_version)
+);
+
+CREATE TABLE instance_skill_trees (
+    instance_id TEXT NOT NULL,
+    instance_revision INTEGER NOT NULL,
+    tree_id TEXT NOT NULL,
+    tree_version TEXT NOT NULL,
+    tree_checksum TEXT NOT NULL,
+    PRIMARY KEY (instance_id, instance_revision)
+);
 ```
+
+每张治理快照表保存 canonical `payload_json`、checksum 和必要查询投影。Repository 读取时校验 payload、投影和 checksum 一致；`prototype_skill_trees` 与 `instance_skill_trees` 为 M1 主表补充技能来源，而不重写历史 migration。
 
 
 ---
@@ -2509,7 +2636,7 @@ class RunResult(FrozenModel):
 - 同一 revision 上的两个并发写入只有一个能更新 `instance_heads`。
 - API 返回 `409 REVISION_CONFLICT` 时包含 `expected_revision` 和 `current_revision`。
 - 进程内 `asyncio.Lock` 只用于降低重复工作，不作为正确性保证。
-- 评估执行可在事务外进行；保存报告时再次检查实例 revision。实例已变化则报告标记为 stale，禁止晋升。
+- 评估执行可在事务外进行；报告一经创建保持不可变，即使实例 head 随后变化也不写回 `stale` 字段。晋升时把报告的 instance revision、AgentSpec checksum 和 SkillTreeRef 与当前快照比较，动态判定并拒绝 stale 报告。
 
 ### 9.5 事件钩子
 
@@ -2578,9 +2705,48 @@ class BindKnowledgeRequest(FrozenModel):
 
 class ExportSpecRequest(FrozenModel):
     revision: PositiveInt | None = None
+
+
+class RegisterEvaluationSuiteRequest(EvaluationSuiteDraft):
+    pass
+
+
+class RegisterSkillTreeRequest(SkillTreeDraft):
+    pass
+
+
+class EvaluateInstanceRequest(FrozenModel):
+    expected_revision: PositiveInt
+    suite: EvaluationSuiteRef
+    runtime_model: str = Field(min_length=1, max_length=128)
+    case_results: Annotated[
+        tuple[SubmittedCaseResult, ...],
+        Field(min_length=1),
+    ]
+
+
+class ReviewEvaluationRequest(FrozenModel):
+    decision: ReviewDecision
+    comment: str = Field(default="", max_length=2_000)
+
+
+class PromoteAgentRequest(FrozenModel):
+    expected_revision: PositiveInt
+    target_node_id: Slug
+    evaluation_report_id: UUID
+    evaluation_review_id: UUID | None = None
+    knowledge_selections: tuple[KnowledgeSelection, ...] = ()
+
+
+class RecordTaskOutcomeRequest(FrozenModel):
+    expected_revision: PositiveInt
+    task_id: UUID
+    skill_node_id: Slug
+    passed: bool
+    evaluation_report_id: UUID
 ```
 
-所有请求模型 `extra="forbid"`。客户端提交未知字段时返回 422，避免拼写错误被静默忽略。`BindKnowledgeRequest` 还拒绝完全重复的知识引用；知识槽、版本范围和 cardinality 等业务规则仍由 application policy 校验。评估、晋升和状态迁移 DTO 属于 M2，当前 M1 不声明占位接口。
+所有请求模型 `extra="forbid"`。客户端提交未知字段时返回 422，避免拼写错误被静默忽略。`BindKnowledgeRequest` 还拒绝完全重复的知识引用；知识槽、版本范围和 cardinality 等业务规则仍由 application policy 校验。M2 DTO 是已确认的实现规格，但在相应 Controller、持久化和契约测试完成前不装配公开路由。
 
 ### 10.2 FastAPI 应用与依赖
 
@@ -2841,7 +3007,72 @@ async def register_knowledge(
 
 ### 10.4 评估、晋升与状态路由
 
-**当前 Alpha/M1 不实现。** `POST /instances/{id}/evaluations`、`POST /instances/{id}/promotions` 和状态迁移路由只能在 M2 的技能 DAG、Evaluator、状态策略与测试先落地后开放。接口层不提前声明尚无业务实现的占位端点。
+以下是 M2 最小 REST 契约；当前处于 M2.1，尚未实现或装配这些路由。每个写路由只有在对应 Controller、migration、幂等、审计和契约测试同时完成后才加入 `api_router`：
+
+| Method | Path | Request | Response |
+| --- | --- | --- | --- |
+| POST | `/evaluation-suites` | `RegisterEvaluationSuiteRequest` | `EvaluationSuite` |
+| GET | `/evaluation-suites/{id}/versions/{version}` | 无 | `EvaluationSuite` |
+| POST | `/skill-trees` | `RegisterSkillTreeRequest` | `SkillTree` |
+| GET | `/skill-trees/{id}/versions/{version}` | 无 | `SkillTree` |
+| POST | `/instances/{id}/evaluations` | `EvaluateInstanceRequest` | `EvaluationReport` |
+| POST | `/evaluation-reports/{id}/reviews` | `ReviewEvaluationRequest` | `EvaluationReview` |
+| POST | `/instances/{id}/promotions` | `PromoteAgentRequest` | `AgentInstance` |
+| POST | `/instances/{id}/task-outcomes` | `RecordTaskOutcomeRequest` | `DegradationCheckResult` |
+
+代表性路由必须只做 DTO 到 application command 的转换：
+
+```python
+@instance_router.post(
+    "/{instance_id}/evaluations",
+    response_model=EvaluationReport,
+    status_code=status.HTTP_201_CREATED,
+)
+async def evaluate_instance(
+    instance_id: UUID,
+    body: EvaluateInstanceRequest,
+    controller: ControllerDep,
+    actor: ActorDep,
+    idempotency_key: IdempotencyHeader = None,
+) -> EvaluationReport:
+    submission = EvaluationSubmission(
+        instance_id=instance_id,
+        instance_revision=body.expected_revision,
+        suite=body.suite,
+        runtime_model=body.runtime_model,
+        case_results=body.case_results,
+    )
+    return await controller.evaluate_instance(
+        EvaluateInstanceCommand(
+            submission=submission,
+            actor=actor,
+            idempotency_key=idempotency_key,
+        )
+    )
+
+
+@instance_router.post(
+    "/{instance_id}/promotions",
+    response_model=AgentInstance,
+)
+async def promote_agent(
+    instance_id: UUID,
+    body: PromoteAgentRequest,
+    controller: ControllerDep,
+    actor: ActorDep,
+    idempotency_key: IdempotencyHeader = None,
+) -> AgentInstance:
+    return await controller.promote_agent(
+        PromoteAgentCommand(
+            instance_id=instance_id,
+            **body.model_dump(),
+            actor=actor,
+            idempotency_key=idempotency_key,
+        )
+    )
+```
+
+URL 中的 `instance_id` 由 router 写入 command，body 不重复接受该字段，避免两个来源不一致。评估输入是调用方提交的 evidence；API 不能接受 `decision`、`soft_score` 或 rule result 等服务端派生字段。
 
 ### 10.5 异常模型与稳定错误码
 
@@ -2903,7 +3134,7 @@ class PromotionRejectedError(FactoryError):
 | 500 | `INTERNAL_ERROR` |
 | 503 | `REPOSITORY_UNAVAILABLE`, `SERVICE_NOT_READY` |
 
-认证、评估和工具执行错误码属于后续里程碑，必须随相应功能和契约测试一起增加，不能在 M1 映射表中预注册未实现能力。
+M2 实现时至少增加 `SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED`。这些错误随能力代码和映射集合测试一起加入，不提前伪装为已实现。认证和工具执行错误仍属于后续里程碑。
 
 ### 10.6 FastAPI 异常处理
 
@@ -3323,31 +3554,38 @@ def test_agent_definition_rejects_duplicate_tools(
 
 def test_skill_tree_rejects_cycle() -> None:
     with pytest.raises(ValidationError, match="contains a cycle"):
-        SkillTree(
+        SkillTreeDraft(
             tree_id="writer-skills",
             version="1.0.0",
-            nodes={
-                "mid-writer": SkillNode(
+            nodes=(
+                SkillNode(
                     node_id="mid-writer",
                     display_name="Mid Writer",
                     parents=frozenset({"senior-writer"}),
-                    evaluation_suite_id="mid-writer-suite",
-                    evaluation_suite_version="1.0.0",
+                    evaluation_suite=EvaluationSuiteRef(
+                        suite_id="mid-writer-suite",
+                        version="1.0.0",
+                        checksum="a" * 64,
+                    ),
                 ),
-                "senior-writer": SkillNode(
+                SkillNode(
                     node_id="senior-writer",
                     display_name="Senior Writer",
                     parents=frozenset({"mid-writer"}),
-                    evaluation_suite_id="senior-writer-suite",
-                    evaluation_suite_version="1.0.0",
+                    evaluation_suite=EvaluationSuiteRef(
+                        suite_id="senior-writer-suite",
+                        version="1.0.0",
+                        checksum="b" * 64,
+                    ),
                 ),
-            },
+            ),
         )
 
 
 def test_promotion_rejects_stale_report(
     promotion_policy: PromotionPolicy,
     instance: AgentInstance,
+    current_spec: AgentSpec,
     target_node: SkillNode,
     passing_report: EvaluationReport,
 ) -> None:
@@ -3355,7 +3593,13 @@ def test_promotion_rejects_stale_report(
         update={"instance_revision": instance.revision - 1}
     )
     with pytest.raises(StaleEvaluationReportError):
-        promotion_policy.validate(instance, target_node, stale)
+        promotion_policy.validate(
+            instance,
+            current_spec,
+            target_node,
+            stale,
+            None,
+        )
 
 
 def test_degradation_uses_consecutive_failure_threshold() -> None:
@@ -3796,15 +4040,17 @@ pytest -q tests/unit
 
 必须实现：
 
-- `SkillTree` DAG 校验和拓扑排序。
-- 确定性规则执行器。
-- `EvaluationReport` 持久化。
-- `PromotionPolicy` 与 `DegradationPolicy`。
+- `SkillTreeRef` 在 Prototype、Instance 和 AgentSpec 1.1 中的来源追溯，以及 M1 1.0 快照兼容读取。
+- `SkillTree` DAG 校验、稳定拓扑排序和不可变版本注册。
+- `EvaluationSubmission` 完整 case result 校验与确定性规则执行器；规则引擎不负责运行 Agent。
+- 不可变 `EvaluationReport`、独立 `EvaluationReview` 与 `TaskOutcome` 持久化。
+- `PromotionPolicy`、`DegradationPolicy` 及报告相对当前快照的动态 stale 判定。
 - 从原型和 active node 全量重建配置。
-- 评估、晋升、状态迁移 API。
-- 乐观并发与 stale report 测试。
+- 晋升命令携带新增知识槽选择，并与新实例 revision 原子提交。
+- 技能树、评估套件、评估、复核、晋升和观察结果 API。
+- `003_skill_governance.sql`、乐观并发、stale report、重启恢复和 M1 兼容测试。
 
-LLM evaluator 只实现 `EvaluatorPort` 适配器，不进入默认测试。
+默认 evaluator 是对提交 evidence 做纯计算的确定性实现，不调用网络或模型。LLM-as-Judge 只允许作为非阻断 `JudgeSignal` 的未来适配器，不参与 M2 的 PASS/FAIL 决策，也不进入默认测试。完整工作包和退出证据以 [M2 阶段文档](milestones/m2-skill-governance.md)及[技能治理设计说明](design/skill-governance.md)为准。
 
 ### 14.5 M3 规格
 
@@ -3829,18 +4075,20 @@ LLM evaluator 只实现 `EvaluatorPort` 适配器，不进入默认测试。
 
 执行顺序与预期状态：
 
-1. 注册并发布原型，得到 prototype checksum。
-2. 注册知识包，得到 knowledge checksum。
-3. 克隆实例，断言 `revision=1`、`status=created`。
-4. 尝试导出 Spec，断言返回 `422 MISSING_KNOWLEDGE_BINDING`。
-5. 绑定 `product-docs`，断言 `revision=2`。
-6. 导出 `AgentSpec`，断言工具、知识版本和两个 checksum 正确。
-7. 将实例迁移到 `RUNNING`，断言 `revision=3`。
-8. 重新导出 revision 3 的 Spec，Gradio 将其交给 `DemoRuntimeAdapter` 执行固定写作任务。
-9. 任务结束后迁移到 `WAITING`，断言 `revision=4`。
-10. 执行 `mid-writer-suite`，生成绑定 revision 4 的 `EvaluationReport`。
-11. 使用报告晋升，断言 `revision=5` 且 active node 包含 `mid-writer`。
-12. 查询审计接口，按时间展示 cloned、knowledge.bound、spec.exported、instance.transitioned、evaluation.completed、skill.promoted。
+1. 注册 `mid-writer-suite@1.0.0`，得到 suite checksum。
+2. 注册引用该 suite 的 `writer-skills@1.0.0`，得到 tree checksum。
+3. 注册并发布引用该 SkillTreeRef 的原型，得到 prototype checksum。
+4. 注册知识包，得到 knowledge checksum。
+5. 克隆实例，断言 `revision=1`、`status=created` 且 SkillTreeRef 与原型一致。
+6. 尝试导出 Spec，断言返回 `422 MISSING_KNOWLEDGE_BINDING`。
+7. 绑定 `product-docs`，断言 `revision=2`。
+8. 导出 `AgentSpec` 1.1，断言工具、知识版本及 prototype/knowledge/tree checksum 正确。
+9. 将实例迁移到 `RUNNING`，断言 `revision=3`。
+10. 重新导出 revision 3 的 Spec，Gradio 将其交给 `DemoRuntimeAdapter` 执行固定写作任务。
+11. 任务结束后迁移到 `WAITING`，断言 `revision=4`。
+12. 将每个 case 的实际结果作为 `EvaluationSubmission` 提交，生成绑定 revision 4、Spec checksum 和 SkillTreeRef 的 `EvaluationReport`。
+13. 使用报告显式晋升，断言 `revision=5` 且 active node 包含 `mid-writer`。
+14. 查询审计接口，按时间展示 suite/tree 注册、cloned、knowledge.bound、spec.exported、instance.transitioned、evaluation.completed、skill.promoted。
 
 演示失败时页面显示稳定错误码和 trace ID，不显示 Python traceback。
 
@@ -3893,8 +4141,9 @@ agent-factory/
 │   ├── application/
 │   ├── infrastructure/sqlite/sql/
 │   │   ├── 001_initial.sql
-│   │   ├── 002_skills.sql
-│   │   └── 003_outbox.sql
+│   │   ├── 002_persistence_contracts.sql
+│   │   ├── 003_skill_governance.sql
+│   │   └── 004_outbox.sql
 │   ├── interfaces/
 │   └── settings.py
 ├── tests/

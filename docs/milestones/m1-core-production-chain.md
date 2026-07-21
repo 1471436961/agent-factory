@@ -153,4 +153,4 @@ M1 不实现：
 - M1.5 提交：`1674578 test: complete M1 exit verification`；`2da9e86 ci: enforce M1 quality gates`。
 - M1.5 远程证据：GitHub Actions [`CI #12`](https://github.com/1471436961/agent-factory/actions/runs/29690700275) 在提交 `2da9e86` 上通过。
 - M1 退出人工结论：项目 owner 于 2026-07-21 确认 M1 目标、自动化证据、文档边界与已知风险达到阶段退出条件，正式结束并封存 M1。该结论只确认 M1 的确定性生产治理闭环，不扩大为 Agent 语义质量、生产规模、安全公网部署或 M2 能力已经完成的声明。
-- M2 状态：尚未开始实现；进入前需按协作契约先提交阶段规划并经项目 owner 确认。
+- M2 后续状态：阶段规划已于 2026-07-21 经项目 owner 确认，项目已进入 M2；后续范围和证据以 [`m2-skill-governance.md`](m2-skill-governance.md) 为准，不回写或扩大 M1 的验收结论。

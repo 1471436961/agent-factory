@@ -130,3 +130,14 @@
    - 最终修正：写路由要求 `X-Actor-ID` 作为 1-128 字符的审计标签；它不参与身份验证或授权。审计查询当前不设角色门槛，服务不得直接暴露到不可信网络。
    - 证据：`src/agent_factory/interfaces/api/dependencies.py`；`docs/architecture.md` 第 10.2、11.2 节；`docs/design/rest-api.md` 第 1、3 节。
    - 对后续路线的影响：认证必须作为独立里程碑能力设计；接入后 actor 改为可信 `Principal.subject`，审计读取增加角色授权，并补充 401/403 契约与安全测试。
+
+1. **M2 技能治理从松散状态字段修正为完整证据与来源契约**
+
+   - 日期：2026-07-21
+   - 里程碑：M2 规划与设计评审
+   - 原判断：Evaluator 只接收 AgentSpec、suite 和 cases；实例仅保存 active skill node；晋升默认新增知识已提前绑定；评估报告可以直接标记 stale 并内嵌人工复核结果。
+   - 原判断的不足：没有 case 实际输出就无法执行规则；active node 缺少技能树版本和 checksum 来源；提前绑定新增知识会产生晋升失败后遗留的中间状态；修改报告的 stale 或 review 字段会破坏历史评估事实的不可变性。
+   - 人工 review 结论：规则引擎必须评估显式提交的 case results；Prototype、Instance 和 AgentSpec 必须携带 `SkillTreeRef`；晋升命令必须允许携带新知识选择并与新 revision 原子提交；stale 应在使用报告时相对当前快照判定；人工复核应作为独立不可变记录追加。
+   - 最终修正：M2 新增 `EvaluationSubmission`、`SkillTreeRef`、独立 `EvaluationReview` 和带 `knowledge_selections` 的晋升命令；报告绑定 instance revision、AgentSpec checksum、SkillTreeRef 与 EvaluationSuiteRef，晋升策略在使用时完成全量一致性检查。M1 历史对象兼容缺失 skill tree，新对象输出 AgentSpec 1.1。
+   - 证据：`docs/milestones/m2-skill-governance.md` 第 4 节；`docs/design/skill-governance.md` 第 2-5 节；`docs/architecture.md` 第 7、9、10、14 章。
+   - 对后续路线的影响：M2.1 必须先实现上述领域契约和纯算法；M2.2 使用 forward-only `003_skill_governance.sql` 保存来源投影；M2.3-M2.6 的评估、晋升、降级和 REST 验收均以这些不可变引用与原子事务为前提。
