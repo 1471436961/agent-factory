@@ -89,7 +89,7 @@ M2 不实现：
 ### M2.3 确定性评估服务
 
 - 注册并查询技能树和评估套件。
-- 实现 JSON Schema、required terms、forbidden terms、regex、max length 和 tool-called 规则。
+- 调用 M2.1 已验证的 `DeterministicRuleEngine`，将纯 `EvaluationOutcome` 与服务端生成的报告 ID、Spec 来源和时间组合为 `EvaluationReport`。
 - 输出只由 HARD/SOFT 规则和显式人工复核决定；JudgeSignal 仅可作为非阻断性附加信息。
 - 评估报告绑定 instance revision、AgentSpec checksum、suite version 和 case-result checksum。
 - 评估期间实例发生变化时仍可保存关于旧 revision 的报告，但该报告不能晋升当前 revision。
@@ -120,9 +120,9 @@ M2 不实现：
 
 ## 6. 验收标准
 
-- [ ] 技能树非法图和有效多分支 DAG 均有确定性单元测试。
-- [ ] 相同原型与 active node 集合不受输入顺序影响，生成相同配置与 checksum。
-- [ ] 评估规则覆盖全部 M2 RuleKind，HARD/SOFT 与人工复核决策有边界测试。
+- [x] 技能树非法图和有效多分支 DAG 均有确定性单元测试。
+- [x] 相同原型与 active node 集合不受输入顺序影响，生成相同配置与 checksum。
+- [x] 评估规则覆盖全部 M2 RuleKind，HARD/SOFT 与人工复核决策有边界测试。
 - [ ] EvaluationReport 永久绑定 instance revision、AgentSpec checksum 和 suite version。
 - [ ] stale report、错误 suite、缺失父节点和未通过报告均禁止晋升。
 - [ ] 晋升新增知识、实例快照、审计和幂等响应同时成功或同时回滚。
@@ -161,9 +161,14 @@ M2 不实现：
 
 ## 9. 阶段报告
 
-当前状态：M2 规划已由项目 owner 确认，正在建立 M2.1 领域契约与纯算法；尚无 M2 业务代码或验收结果。
+当前状态：M2.1 领域契约与纯算法已完成本地实现、质量门禁和实现提交；M2.2 尚未开始。该状态不代表完整技能治理闭环或 M2 阶段已经验收。
 
 - M1 封存提交：`acf2b5d docs: close M1 milestone`。
 - M1 封存远程证据：GitHub Actions CI #14 在提交 `acf2b5d` 上通过。
 - M2 规划确认时间：2026-07-21。
-- M2 规划不等于 M2 功能已实现；所有第 6 节条目保持未勾选，直到对应证据实际产生。
+- M2.1 实现提交：`8500ac1 feat: add deterministic M2 skill domain`。
+- M2.1 代码边界：新增技能/评估模型、稳定错误码、DAG/配置重建、六类确定性规则、regex 超时保护和 M1 Spec 兼容 checksum；未新增 M2 migration、Repository、Controller 或路由。
+- M2.1 本地测试：修改前基线 `87 passed`；实现后 `114 passed`。
+- M2.1 本地质量证据：Ruff 通过、mypy strict 通过；branch coverage 为 domain 96%、application 93%、total 93%；sdist/wheel 构建成功，wheel 包含全部 M2.1 模块及两份已发布 migration。
+- M2.1 兼容证据：M1 Prototype、Instance 和 AgentSpec 固定 JSON 可读取；修改前记录的 AgentSpec 1.0 golden checksum `e979beccb60f339b3a846fd5ca8c1916a341b0a29daa1260fb0396e14a59dc0b` 保持不变。
+- 第 6 节只勾选已经由当前测试直接证明的三项；其余条目等待后续工作包产生证据。

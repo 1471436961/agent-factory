@@ -28,23 +28,19 @@ infrastructure/sqlite 实现端口；domain 不导入 application、SQLite、Fas
 
 ### 2.1 评估必须接收实际输出
 
-原 `EvaluatorPort.evaluate(spec, suite, cases)` 没有每个 case 的执行结果，无法计算规则。M2 将端口改为接收 `EvaluationSubmission`：
+原 `EvaluatorPort.evaluate(spec, suite, cases)` 没有每个 case 的执行结果，无法计算规则。M2.1 将纯计算端口改为接收 `EvaluationSubmission`，只返回派生结果；M2.3 application service 再补充报告 ID、Spec 来源和时间：
 
 ```python
-class EvaluatorPort(Protocol):
+class EvaluationEngine(Protocol):
     def evaluate(
         self,
         *,
         suite: EvaluationSuite,
         submission: EvaluationSubmission,
-        report_id: UUID,
-        spec_checksum: Sha256,
-        started_at: datetime,
-        completed_at: datetime,
-    ) -> EvaluationReport: ...
+    ) -> EvaluationOutcome: ...
 ```
 
-默认实现 `DeterministicEvaluationEngine` 是纯同步计算。未来 Runtime Adapter 负责产生 submission；未来 LLM adapter 只能增加 `JudgeSignal`，不能替代 HARD 规则或单独触发晋升。
+默认实现 `DeterministicRuleEngine` 是纯同步计算，不生成 UUID、不读取系统时间也不访问仓储。未来 Runtime Adapter 负责产生 submission；未来 LLM adapter 只能增加 `JudgeSignal`，不能替代 HARD 规则或单独触发晋升。
 
 ### 2.2 技能树引用进入来源链
 
@@ -75,12 +71,12 @@ class AgentInstance(FrozenModel):
 
 
 class AgentSpec(FrozenModel):
-    schema_version: Literal["1.0", "1.1"]
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     # M1 fields unchanged
     skill_tree: SkillTreeRef | None = None
 ```
 
-历史 M1 Spec 保持 `schema_version="1.0"` 并允许缺失 `skill_tree`；M2 新生成的 Spec 使用 `1.1`。原型 `checksum` 继续表示 definition checksum，技能树使用独立 ref checksum，避免静默改变 M1 checksum 语义。
+历史 M1 Spec 保持 `schema_version="1.0"` 并允许缺失 `skill_tree`；绑定技能树的新 Spec 使用 `1.1`。1.0 checksum 计算排除新增的空 `skill_tree` 字段，1.1 checksum 则包含完整 SkillTreeRef；该版本规则集中在 `checksum_agent_spec()`，Builder 和 Repository 损坏检测复用同一实现。原型 `checksum` 继续表示 definition checksum，技能树使用独立 ref checksum，避免静默改变 M1 checksum 语义。
 
 绑定技能树必须发生在原型注册时。已发布原型不可原地修改；需要技能树的调用方注册新原型版本。克隆时将 ref 复制到 instance，导出时再复制到 AgentSpec。
 
@@ -198,9 +194,9 @@ suite 注册时按 RuleKind 校验参数 Schema：
 | `max-length` | `max_chars` | `output_text` |
 | `tool-called` | `tool_name` | `called_tools` |
 
-未知参数、空 terms、非法 regex、非法 JSON Schema、非正整数 `max_chars` 在注册时失败，不推迟到评估执行。
+未知参数、空或重复 terms、非法 regex、非法 JSON Schema、非正整数 `max_chars` 在模型边界失败，不推迟到评估执行。terms 默认大小写不敏感，只有 `case_sensitive=true` 时执行精确大小写匹配。regex pattern 最长 512 字符，执行使用 `regex` 库的 50ms timeout；超时返回 `EVALUATION_RULE_TIMEOUT`，不生成部分 outcome。
 
-submission 必须为 suite 的每个 case 提供且只提供一条 result。`called_tools` 不允许重复。Controller 根据 canonical case result 计算 checksum；调用方不能直接提交 checksum。
+submission 必须为 suite 的每个 case 提供且只提供一条 result。`called_tools` 不允许重复。`DeterministicRuleEngine` 根据 canonical case result 计算 checksum；调用方不能直接提交 checksum。
 
 ### 3.3 报告与复核
 
@@ -225,7 +221,15 @@ class EvaluationDecision(StrEnum):
     REVIEW_REQUIRED = "review-required"
 
 
-class EvaluationReport(FrozenModel):
+class EvaluationOutcome(FrozenModel):
+    case_results: Annotated[tuple[CaseResultRef, ...], Field(min_length=1)]
+    rule_results: Annotated[tuple[RuleResult, ...], Field(min_length=1)]
+    hard_rules_passed: bool
+    soft_score: float = Field(ge=0, le=1)
+    decision: EvaluationDecision
+
+
+class EvaluationReport(EvaluationOutcome):
     report_id: UUID
     instance_id: UUID
     instance_revision: PositiveInt
@@ -233,12 +237,7 @@ class EvaluationReport(FrozenModel):
     skill_tree: SkillTreeRef
     suite: EvaluationSuiteRef
     runtime_model: str = Field(min_length=1, max_length=128)
-    case_results: tuple[CaseResultRef, ...]
-    rule_results: Annotated[tuple[RuleResult, ...], Field(min_length=1)]
     judge_signals: tuple[JudgeSignal, ...] = ()
-    hard_rules_passed: bool
-    soft_score: float = Field(ge=0, le=1)
-    decision: EvaluationDecision
     started_at: AwareDatetime
     completed_at: AwareDatetime
 
@@ -257,7 +256,7 @@ class EvaluationReview(FrozenModel):
     reviewed_at: AwareDatetime
 ```
 
-报告不保存完整 output_text；只保存 result checksum、可选 artifact URI 和不含原文的 bounded rule evidence。这样降低数据库和审计泄露风险。没有 artifact URI 时，报告可审计规则结论但不能独立重放原始输出，这是 M2 的明确边界。
+`EvaluationOutcome` 是 M2.1 纯规则引擎的返回值；`EvaluationReport` 在 M2.3 由 application service 将 outcome 与不可伪造的服务端来源字段组合。报告不保存完整 output_text；只保存 result checksum、可选 artifact URI 和最多 4096 bytes、且不含原文的 rule evidence。这样降低数据库和审计泄露风险。没有 artifact URI 时，报告可审计规则结论但不能独立重放原始输出，这是 M2 的明确边界。
 
 决策顺序固定：任一 HARD 失败为 FAIL；HARD 全过但加权 SOFT 分数低于阈值为 FAIL；要求人工复核时为 REVIEW_REQUIRED；其他情况为 PASS。JudgeSignal 不参与上述计算。
 
@@ -294,7 +293,7 @@ def apply_skill_nodes(
 - tools 为 base 与所有 granted tools 的并集，最终按名称排序。
 - knowledge slots 按名称合并；同名但定义不同立即返回 `SKILL_CONFIGURATION_CONFLICT`。
 - output schema override 最多一个 active node 可以声明；多个 override 不做猜测或 deep merge。
-- 重建后重新运行 output schema、ToolPolicy 和 KnowledgeBindingPolicy。
+- M2.1 纯函数重建后重新运行 AgentDefinition 与 output schema 结构校验；M2.4 application service 再运行需要外部目录或知识包的 ToolPolicy 和 KnowledgeBindingPolicy。
 
 降级也调用同一函数，不实现反向删除 Prompt 或工具的 patch 算法。
 
@@ -444,3 +443,16 @@ M2 最小路由：
 - REST contract tests：DTO、错误 envelope、actor/idempotency、完整治理链和未知异常脱敏。
 - exit test：关闭并重建 app 后恢复技能树、套件、报告、review、实例 revision、TaskOutcome 和审计。
 - CI：保留 domain 90%、application 85%、total 80% branch coverage 门槛，构建 wheel 并检查 `003_skill_governance.sql` 与全部 M2 模块。
+
+## 10. M2.1 实现映射
+
+| 契约 | 代码位置 | 直接证据 |
+| --- | --- | --- |
+| 版本化治理引用 | `domain/references.py` | `test_m2_compatibility.py` |
+| AgentSpec 1.0/1.1 与 checksum | `domain/models.py`、`domain/services/spec.py` | M1 golden checksum 与 1.1 来源测试 |
+| 技能树与观察模型 | `domain/skills.py` | 非法图、多分支 DAG、阈值测试 |
+| 稳定拓扑、后代和全量重建 | `domain/services/skills.py` | 顺序、依赖、冲突和重建测试 |
+| 评估契约 | `domain/evaluation.py` | 参数、唯一性、报告不变量测试 |
+| 确定性规则引擎 | `domain/services/evaluation.py` | 六类规则、决策顺序和 timeout 测试 |
+
+M2.1 只完成纯领域能力。`SkillTreeRef` 是否引用已注册对象、报告的服务端来源字段、晋升事务和 REST 暴露仍分别属于 M2.2-M2.6，不能由这些单元测试推导为已完成。

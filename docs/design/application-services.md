@@ -48,7 +48,7 @@ class FactoryController:
     ) -> None: ...
 ```
 
-构造函数只接收 M1.3 实际使用的依赖。`EvaluatorPort`、技能仓储和任务结果仓储在 M2 引入，避免 Controller 提前依赖未实现能力。
+构造函数只接收 M1.3 实际使用的依赖。M2 后续引入 `EvaluationEngine`、技能仓储和任务结果仓储，避免 Controller 提前依赖未实现能力；具体契约以 [`skill-governance.md`](skill-governance.md) 为准。
 
 ## 4. 命令边界
 

@@ -171,7 +171,7 @@ flowchart TB
 | 运行规格 | `AgentSpec` | 与 instance ID 一致 | 每个 revision 不可变 |
 | 工厂控制器 | `FactoryController` | 单应用服务 | 无业务状态 |
 
-`FactoryController` 不是 Agent，不实现 `think()` 或 `act()`，也不调用 LLM 决定是否注册、绑定、晋升或授权。LLM 只允许通过 `EvaluatorPort` 产生非阻断性辅助评分。
+`FactoryController` 不是 Agent，不实现 `think()` 或 `act()`，也不调用 LLM 决定是否注册、绑定、晋升或授权。LLM 只允许通过未来 JudgeSignal adapter 产生非阻断性辅助评分；默认 `EvaluationEngine` 完全确定且离线。
 
 ### 1.4 强制业务不变量
 
@@ -309,7 +309,7 @@ flowchart LR
 
     subgraph Runtime["外部端口"]
         ADAPTER["RuntimeAdapter"]
-        EVAL["EvaluatorPort"]
+        EVAL["EvaluationEngine"]
     end
 
     API --> CTRL
@@ -491,7 +491,7 @@ class FactoryController:
 
 ```
 
-M1 Controller 只注入当前生产闭环实际使用的端口和策略。`EvaluatorPort`、技能树仓储和任务结果仓储在 M2 引入；它们不得作为未使用参数提前进入构造函数。
+M1 Controller 只注入当前生产闭环实际使用的端口和策略。`EvaluationEngine`、技能树仓储和任务结果仓储在 M2 引入；它们不得作为未使用参数提前进入构造函数。
 
 ### 3.5 端口与工作单元
 
@@ -508,17 +508,13 @@ class RuntimeAdapter(Protocol):
     ) -> "RunResult": ...
 
 
-class EvaluatorPort(Protocol):
+class EvaluationEngine(Protocol):
     def evaluate(
         self,
         *,
         suite: "EvaluationSuite",
         submission: "EvaluationSubmission",
-        report_id: UUID,
-        spec_checksum: str,
-        started_at: datetime,
-        completed_at: datetime,
-    ) -> "EvaluationReport": ...
+    ) -> "EvaluationOutcome": ...
 
 
 class UnitOfWork(Protocol):
@@ -551,7 +547,7 @@ class UnitOfWorkFactory(Protocol):
     ) -> UnitOfWork: ...
 ```
 
-M1 的 UoW 只暴露核心生产链需要的六类仓储；M2 按已确认的[技能治理设计说明](design/skill-governance.md)增加技能树、评估套件、评估报告、复核和任务结果仓储。默认 `EvaluatorPort` 实现只对外部提交的 case result 做确定性纯计算，不执行 Agent，也不调用真实模型。每次调用 factory 创建独立连接和事务：写事务使用 `BEGIN IMMEDIATE`，只读事务使用 `BEGIN` 与 `PRAGMA query_only = ON`。Repository、审计与幂等记录共享同一连接；未显式 `commit()` 或上下文抛出异常时统一回滚。
+M1 的 UoW 只暴露核心生产链需要的六类仓储；M2 按已确认的[技能治理设计说明](design/skill-governance.md)增加技能树、评估套件、评估报告、复核和任务结果仓储。默认 `EvaluationEngine` 实现只对外部提交的 case result 做确定性纯计算并返回 `EvaluationOutcome`，不执行 Agent，也不调用真实模型；M2.3 application service 负责补充报告 ID、Spec 来源和时间。每次调用 factory 创建独立连接和事务：写事务使用 `BEGIN IMMEDIATE`，只读事务使用 `BEGIN` 与 `PRAGMA query_only = ON`。Repository、审计与幂等记录共享同一连接；未显式 `commit()` 或上下文抛出异常时统一回滚。
 
 ### 3.6 配置
 
@@ -792,7 +788,7 @@ class KnowledgeRef(FrozenModel):
 
 
 class AgentSpec(FrozenModel):
-    schema_version: Literal["1.0", "1.1"] = "1.1"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     instance_id: UUID
     revision: PositiveInt
     prototype: PrototypeRef
@@ -831,9 +827,16 @@ def sha256_model(model: BaseModel, *, exclude: set[str] | None = None) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def checksum_agent_spec(spec: AgentSpec) -> str:
+    excluded = {"spec_checksum"}
+    if spec.schema_version == "1.0":
+        excluded.add("skill_tree")
+    return sha256_model(spec, exclude=excluded)
 ```
 
-生成 `AgentSpec` 时，`spec_checksum` 的计算排除自身字段，但不排除 `generated_at`；同一 revision 的规格必须从持久化快照返回，禁止每次请求重新生成时间戳。M1 历史规格保持 `schema_version="1.0"` 并允许缺失 `skill_tree`；M2 新规格使用 `1.1`。原型 `checksum` 继续表示 definition checksum，技能树来源由独立 ref checksum 追溯。
+生成 `AgentSpec` 时，`spec_checksum` 的计算排除自身字段，但不排除 `generated_at`；同一 revision 的规格必须从持久化快照返回，禁止每次请求重新生成时间戳。M1 历史规格保持 `schema_version="1.0"` 并允许缺失 `skill_tree`；绑定技能树的新规格使用 `1.1`。为保持已发布 1.0 checksum 语义，`checksum_agent_spec()` 对 1.0 额外排除新增的空 `skill_tree`，对 1.1 则包含完整 SkillTreeRef；Builder 与 Repository 必须复用该函数。原型 `checksum` 继续表示 definition checksum，技能树来源由独立 ref checksum 追溯。
 
 ### 4.5 能力协议注册
 
@@ -1618,7 +1621,9 @@ class AgentSpecBuilder:
             )
         )
         unsigned = AgentSpec(
-            schema_version="1.1",
+            schema_version=(
+                "1.1" if instance.skill_tree is not None else "1.0"
+            ),
             instance_id=instance.instance_id,
             revision=instance.revision,
             prototype=instance.prototype,
@@ -1638,10 +1643,7 @@ class AgentSpecBuilder:
         return AgentSpec.model_validate(
             {
                 **unsigned.model_dump(mode="python"),
-                "spec_checksum": sha256_model(
-                    unsigned,
-                    exclude={"spec_checksum"},
-                ),
+                "spec_checksum": checksum_agent_spec(unsigned),
             }
         )
 ```
@@ -1762,7 +1764,18 @@ class EvaluationDecision(StrEnum):
     REVIEW_REQUIRED = "review-required"
 
 
-class EvaluationReport(FrozenModel):
+class EvaluationOutcome(FrozenModel):
+    case_results: Annotated[
+        tuple[CaseResultRef, ...],
+        Field(min_length=1),
+    ]
+    rule_results: Annotated[tuple[RuleResult, ...], Field(min_length=1)]
+    hard_rules_passed: bool
+    soft_score: float = Field(ge=0, le=1)
+    decision: EvaluationDecision
+
+
+class EvaluationReport(EvaluationOutcome):
     report_id: UUID
     instance_id: UUID
     instance_revision: PositiveInt
@@ -1770,12 +1783,7 @@ class EvaluationReport(FrozenModel):
     skill_tree: SkillTreeRef
     suite: EvaluationSuiteRef
     runtime_model: str = Field(min_length=1, max_length=128)
-    case_results: tuple[CaseResultRef, ...]
-    rule_results: Annotated[tuple[RuleResult, ...], Field(min_length=1)]
     judge_signals: tuple[JudgeSignal, ...] = ()
-    hard_rules_passed: bool
-    soft_score: float = Field(ge=0, le=1)
-    decision: EvaluationDecision
     started_at: AwareDatetime
     completed_at: AwareDatetime
 
