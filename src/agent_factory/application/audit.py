@@ -6,6 +6,7 @@ from uuid import UUID
 
 from agent_factory.application.ports import IdGenerator
 from agent_factory.domain.audit import AuditEvent
+from agent_factory.domain.common import sha256_model
 from agent_factory.domain.enums import AuditEntityType, AuditEventType
 from agent_factory.domain.evaluation import (
     EvaluationReport,
@@ -19,7 +20,11 @@ from agent_factory.domain.models import (
     DomainKnowledge,
     KnowledgeBinding,
 )
-from agent_factory.domain.skills import SkillTree
+from agent_factory.domain.skills import (
+    DegradationDecision,
+    SkillTree,
+    TaskOutcome,
+)
 
 
 class AuditEventFactory:
@@ -307,6 +312,70 @@ class AuditEventFactory:
                 "to_revision": promoted.revision,
                 "node_id": node_id,
                 "report_id": str(report_id),
+            },
+            at=at,
+        )
+
+    def task_outcome_recorded(
+        self,
+        instance: AgentInstance,
+        outcome: TaskOutcome,
+        decision: DegradationDecision,
+        *,
+        actor: str,
+        correlation_id: UUID,
+        at: datetime,
+    ) -> AuditEvent:
+        return self._event(
+            event_type=AuditEventType.TASK_OUTCOME_RECORDED,
+            entity_type=AuditEntityType.INSTANCE,
+            entity_id=str(instance.instance_id),
+            entity_revision=instance.revision,
+            actor=actor,
+            correlation_id=correlation_id,
+            payload={
+                "task_id": str(outcome.task_id),
+                "node_id": outcome.skill_node_id,
+                "passed": outcome.passed,
+                "report_id": str(outcome.evaluation_report_id),
+                "sample_count": decision.sample_count,
+                "trailing_failures": decision.trailing_failures,
+                "failure_rate": decision.failure_rate,
+                "threshold_reached": decision.should_degrade,
+            },
+            at=at,
+        )
+
+    def skill_degraded(
+        self,
+        previous: AgentInstance,
+        degraded: AgentInstance,
+        decision: DegradationDecision,
+        *,
+        node_id: str,
+        removed_nodes: frozenset[str],
+        removed_binding_slots: frozenset[str],
+        actor: str,
+        correlation_id: UUID,
+        at: datetime,
+    ) -> AuditEvent:
+        return self._event(
+            event_type=AuditEventType.SKILL_DEGRADED,
+            entity_type=AuditEntityType.INSTANCE,
+            entity_id=str(degraded.instance_id),
+            entity_revision=degraded.revision,
+            actor=actor,
+            correlation_id=correlation_id,
+            payload={
+                "from_revision": previous.revision,
+                "to_revision": degraded.revision,
+                "node_id": node_id,
+                "sample_count": decision.sample_count,
+                "trailing_failures": decision.trailing_failures,
+                "failure_rate": decision.failure_rate,
+                "removed_nodes": tuple(sorted(removed_nodes)),
+                "removed_binding_slots": tuple(sorted(removed_binding_slots)),
+                "configuration_checksum": sha256_model(degraded.configuration),
             },
             at=at,
         )

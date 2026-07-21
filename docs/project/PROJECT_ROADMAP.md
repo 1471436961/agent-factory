@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前里程碑：M2 技能治理。阶段目标、范围、工作包、验收标准与风险已于 2026-07-21 经项目 owner 确认，详见 [`docs/milestones/m2-skill-governance.md`](../milestones/m2-skill-governance.md)；M2.1-M2.3 已完成并提交，M2.4 晋升与配置重建已完成本地实现和质量门禁、尚未提交，M2.5 观察期与降级尚未开始。该进度不构成完整 M2 验收。M1 已于 2026-07-21 人工验收并封存，阶段报告见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)；M0 已于 2026-07-18 验收完成。
+当前里程碑：M2 技能治理。阶段目标、范围、工作包、验收标准与风险已于 2026-07-21 经项目 owner 确认，详见 [`docs/milestones/m2-skill-governance.md`](../milestones/m2-skill-governance.md)；M2.1-M2.4 已完成并提交，M2.5 观察期与降级已完成本地实现，M2.6 治理 REST 与闭环验收尚未开始。该进度不构成完整 M2 验收。M1 已于 2026-07-21 人工验收并封存，阶段报告见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)；M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 

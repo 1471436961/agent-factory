@@ -137,6 +137,7 @@ class TaskOutcomeRepository(Protocol):
         self,
         *,
         instance_id: UUID,
+        instance_revision: int,
         skill_node_id: str,
         limit: int,
     ) -> tuple[TaskOutcome, ...]: ...

@@ -17,6 +17,7 @@ from agent_factory.domain.models import (
     PrototypeRef,
 )
 from agent_factory.domain.services.spec import AgentSpecBuilder
+from agent_factory.domain.skills import TaskOutcome
 from agent_factory.infrastructure.sqlite import (
     MigrationChecksumError,
     MigrationExecutionError,
@@ -43,10 +44,10 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
     first = await runner.migrate()
     second = await runner.migrate()
 
-    assert first.applied_versions == (1, 2, 3, 4)
-    assert first.current_version == 4
+    assert first.applied_versions == (1, 2, 3, 4, 5)
+    assert first.current_version == 5
     assert second.applied_versions == ()
-    assert second.current_version == 4
+    assert second.current_version == 5
 
     async with aiosqlite.connect(database_path) as connection:
         cursor = await connection.execute(
@@ -58,7 +59,7 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
         )
         tables = {str(row[0]) for row in await cursor.fetchall()}
 
-    assert len(history) == 4
+    assert len(history) == 5
     assert tuple(history[0]) == (1, "initial", "2026-07-17T12:00:00Z")
     assert tuple(history[1]) == (
         2,
@@ -73,6 +74,11 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
     assert tuple(history[3]) == (
         4,
         "instance_configuration_checksum",
+        "2026-07-17T12:00:00Z",
+    )
+    assert tuple(history[4]) == (
+        5,
+        "task_outcome_integrity",
         "2026-07-17T12:00:00Z",
     )
     assert {
@@ -109,6 +115,81 @@ async def test_modified_applied_migration_is_rejected(
 
     with pytest.raises(MigrationChecksumError, match="checksum changed"):
         await runner.migrate()
+
+
+@pytest.mark.asyncio
+async def test_task_outcome_integrity_migration_rejects_replayed_reports_atomically(
+    tmp_path: Path,
+    migrations_dir: Path,
+) -> None:
+    copied_migrations = tmp_path / "migrations"
+    copied_migrations.mkdir()
+    for name in (
+        "001_initial.sql",
+        "002_persistence_contracts.sql",
+        "003_skill_governance.sql",
+        "004_instance_configuration_checksum.sql",
+    ):
+        shutil.copy2(migrations_dir / name, copied_migrations / name)
+    database_path = tmp_path / "factory.db"
+    runner = SqliteMigrationRunner(database_path, copied_migrations, FrozenClock())
+    assert (await runner.migrate()).current_version == 4
+
+    report_id = UUID("00000000-0000-0000-0000-000000000801")
+    async with aiosqlite.connect(database_path) as connection:
+        for number in (802, 803):
+            outcome = TaskOutcome(
+                task_id=UUID(f"00000000-0000-0000-0000-{number:012d}"),
+                skill_node_id="junior-engineer",
+                passed=False,
+                evaluation_report_id=report_id,
+                recorded_at=FrozenClock().now(),
+            )
+            await connection.execute(
+                """
+                INSERT INTO task_outcomes (
+                    task_id, instance_id, instance_revision, skill_node_id,
+                    passed, evaluation_report_id, payload_json,
+                    payload_checksum, recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(outcome.task_id),
+                    "00000000-0000-0000-0000-000000000804",
+                    1,
+                    outcome.skill_node_id,
+                    int(outcome.passed),
+                    str(outcome.evaluation_report_id),
+                    encode_model(outcome),
+                    sha256_model(outcome),
+                    format_datetime(outcome.recorded_at),
+                ),
+            )
+        await connection.commit()
+
+    shutil.copy2(
+        migrations_dir / "005_task_outcome_integrity.sql",
+        copied_migrations / "005_task_outcome_integrity.sql",
+    )
+    with pytest.raises(MigrationExecutionError, match="005_task_outcome_integrity"):
+        await runner.migrate()
+
+    async with aiosqlite.connect(database_path) as connection:
+        cursor = await connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        )
+        versions = tuple(int(row[0]) for row in await cursor.fetchall())
+        cursor = await connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'index' AND name = 'uq_task_outcomes_evaluation_report'
+            """
+        )
+        unique_index = await cursor.fetchone()
+
+    assert versions == (1, 2, 3, 4)
+    assert unique_index is None
 
 
 @pytest.mark.asyncio
@@ -164,7 +245,7 @@ async def test_transport_neutral_migration_rejects_unknown_legacy_records_atomic
 
 
 @pytest.mark.asyncio
-async def test_existing_m1_snapshots_upgrade_from_v2_to_v4_and_remain_readable(
+async def test_existing_m1_snapshots_upgrade_from_v2_to_v5_and_remain_readable(
     tmp_path: Path,
     migrations_dir: Path,
 ) -> None:
@@ -274,11 +355,12 @@ async def test_existing_m1_snapshots_upgrade_from_v2_to_v4_and_remain_readable(
     for name in (
         "003_skill_governance.sql",
         "004_instance_configuration_checksum.sql",
+        "005_task_outcome_integrity.sql",
     ):
         shutil.copy2(migrations_dir / name, copied_migrations / name)
     upgrade = await runner.migrate()
-    assert upgrade.applied_versions == (3, 4)
-    assert upgrade.current_version == 4
+    assert upgrade.applied_versions == (3, 4, 5)
+    assert upgrade.current_version == 5
 
     async with aiosqlite.connect(database_path) as connection:
         cursor = await connection.execute(

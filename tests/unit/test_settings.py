@@ -19,6 +19,7 @@ def test_settings_defaults_are_safe_for_local_development() -> None:
     assert (
         settings.migrations_dir / "004_instance_configuration_checksum.sql"
     ).is_file()
+    assert (settings.migrations_dir / "005_task_outcome_integrity.sql").is_file()
     assert settings.sqlite_busy_timeout_ms == 5_000
     assert settings.max_inline_knowledge_bytes == 262_144
 

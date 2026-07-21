@@ -152,3 +152,14 @@
    - 最终修正：新增 forward-only `004_instance_configuration_checksum.sql`，为历史快照回填 Prototype checksum，并用触发器约束新值；Repository 写入每个 revision 的实际 configuration checksum，读取时与 payload 重算值比较。Controller 另从 Prototype definition 和完整 active node 集合重建并核对当前配置，分别覆盖存储完整性和业务来源完整性。
    - 证据：首轮 M2.4 SQLite 集成测试在晋升 revision 2 读回时稳定触发 `projection-mismatch:configuration_checksum`；修正后连续晋升、历史升级、checksum 篡改检测和同 revision 并发单胜测试通过。
    - 对后续路线的影响：M2.5 降级快照必须写入自身 configuration checksum；发布制品与 CI 增加 `004` 资源检查；任何后续会改变 Instance configuration 的操作都不能再假设它与 Prototype definition checksum 相等。
+
+1. **观察窗口从跨 revision 聚合修正为快照级证据窗口**
+
+   - 日期：2026-07-21
+   - 里程碑：M2.5 观察期与降级
+   - 原判断：`TaskOutcomeRepository.list_for_node()` 只按 instance 和 skill node 查询最近结果；`task_outcomes` 的主键只限制 task ID，同一 EvaluationReport 可由不同 task ID 再次提交。
+   - 原判断的不足：跨 revision 聚合会把不同 Agent 配置产生的结果混入同一阈值；报告可重复消费则允许调用方通过更换 task ID 重复计入同一失败证据，自动降级不再对应独立观察样本。
+   - 人工 review 结论：观察窗口必须绑定当前 instance revision；一次 EvaluationReport 在 TaskOutcome 中只能消费一次。配置发生变化后重新积累窗口是 Alpha 阶段更保守、可解释的选择。
+   - 最终修正：`list_for_node()` 增加 `instance_revision` 条件；新增 forward-only `005_task_outcome_integrity.sql`，为 `evaluation_report_id` 建立唯一索引和 revision 级窗口索引。Controller 还校验 Report、AgentSpec、Tree、Suite、最终 review 与 `passed` 的一致性。
+   - 证据：Repository 集成测试证明错误 revision 返回空窗口且报告重放被稳定拒绝；Controller 集成测试证明阈值只使用当前 revision，并发跨阈值只产生一个降级 revision。
+   - 对后续路线的影响：M2.6 REST 必须把报告重复消费映射为 409，把证据结果矛盾映射为 422；若未来需要跨配置连续观察，应显式引入 activation/evaluation cohort ID，不能恢复无边界聚合。

@@ -12,6 +12,7 @@ from agent_factory.application.commands import (
     KnowledgeSelection,
     PromoteAgentCommand,
     PublishPrototypeCommand,
+    RecordTaskOutcomeCommand,
     RegisterEvaluationSuiteCommand,
     RegisterKnowledgeCommand,
     RegisterPrototypeCommand,
@@ -85,13 +86,18 @@ from agent_factory.domain.models import (
     PrototypeRef,
 )
 from agent_factory.domain.references import EvaluationSuiteRef, SkillTreeRef
+from agent_factory.domain.services.degradation import DegradationPolicy
 from agent_factory.domain.services.evaluation import checksum_evaluation_suite
 from agent_factory.domain.services.knowledge import KnowledgeBindingPolicy
 from agent_factory.domain.services.promotion import PromotionPolicy
 from agent_factory.domain.services.prototype import PrototypePolicy
-from agent_factory.domain.services.skills import apply_skill_nodes, checksum_skill_tree
+from agent_factory.domain.services.skills import (
+    apply_skill_nodes,
+    checksum_skill_tree,
+    descendants_of,
+)
 from agent_factory.domain.services.spec import AgentSpecBuilder
-from agent_factory.domain.skills import SkillTree
+from agent_factory.domain.skills import DegradationCheckResult, SkillTree, TaskOutcome
 
 REGISTER_PROTOTYPE = "register-prototype"
 PUBLISH_PROTOTYPE = "publish-prototype"
@@ -104,6 +110,7 @@ REGISTER_SKILL_TREE = "register-skill-tree"
 EVALUATE_INSTANCE = "evaluate-instance"
 REVIEW_EVALUATION = "review-evaluation"
 PROMOTE_AGENT = "promote-agent"
+RECORD_TASK_OUTCOME = "record-task-outcome"
 
 
 class FactoryController:
@@ -118,6 +125,7 @@ class FactoryController:
         correlation_context: CorrelationContext,
         prototype_policy: PrototypePolicy,
         promotion_policy: PromotionPolicy,
+        degradation_policy: DegradationPolicy,
         knowledge_policy: KnowledgeBindingPolicy,
         tool_policy: ToolPolicy,
         spec_builder: AgentSpecBuilder,
@@ -134,6 +142,7 @@ class FactoryController:
         self._correlation_context = correlation_context
         self._prototype_policy = prototype_policy
         self._promotion_policy = promotion_policy
+        self._degradation_policy = degradation_policy
         self._knowledge_policy = knowledge_policy
         self._tool_policy = tool_policy
         self._spec_builder = spec_builder
@@ -1045,6 +1054,195 @@ class FactoryController:
             await uow.commit()
             return promoted
 
+    async def record_task_outcome(
+        self,
+        command: RecordTaskOutcomeCommand,
+    ) -> DegradationCheckResult:
+        now = self._clock.now()
+        async with self._uow_factory() as uow:
+            replay = await self._idempotency.replay(
+                repository=uow.idempotency,
+                command=command,
+                operation=RECORD_TASK_OUTCOME,
+                response_type=DegradationCheckResult,
+                now=now,
+            )
+            if replay is not None:
+                await uow.commit()
+                return replay
+
+            current = await self._require_instance(
+                uow.instances,
+                command.instance_id,
+                None,
+            )
+            if current.revision != command.expected_revision:
+                raise RevisionConflictError(
+                    details={
+                        "instance_id": str(current.instance_id),
+                        "expected_revision": command.expected_revision,
+                        "actual_revision": current.revision,
+                    }
+                )
+            if current.skill_tree is None:
+                raise SkillTreeNotBoundError(
+                    details={"instance_id": str(current.instance_id)}
+                )
+            tree = await self._require_skill_tree_ref(
+                uow.skill_trees,
+                current.skill_tree,
+            )
+            prototype = await self._require_prototype(
+                uow.prototypes,
+                current.prototype.prototype_id,
+                current.prototype.version,
+            )
+            self._validate_prototype_source(prototype, current)
+            expected_configuration = apply_skill_nodes(
+                base=prototype.definition,
+                tree=tree,
+                active_node_ids=current.active_skill_nodes,
+            )
+            if current.configuration != expected_configuration:
+                raise RepositoryUnavailableError(
+                    details={
+                        "repository": "instances",
+                        "reason": "configuration-source-mismatch",
+                        "instance_id": str(current.instance_id),
+                        "revision": current.revision,
+                    }
+                )
+
+            report = await self._require_evaluation_report(
+                uow.evaluation_reports,
+                command.evaluation_report_id,
+            )
+            spec = await uow.specs.get(current.instance_id, current.revision)
+            if spec is None:
+                raise RepositoryUnavailableError(
+                    details={
+                        "repository": "agent-specs",
+                        "reason": "report-source-spec-missing",
+                        "instance_id": str(current.instance_id),
+                        "revision": current.revision,
+                    }
+                )
+            self._validate_spec_source(spec, current)
+            review = await uow.evaluation_reviews.get_for_report(report.report_id)
+            target = self._degradation_policy.validate_observation(
+                instance=current,
+                spec=spec,
+                tree=tree,
+                skill_node_id=command.skill_node_id,
+                report=report,
+                review=review,
+                passed=command.passed,
+            )
+            outcome = TaskOutcome(
+                task_id=command.task_id,
+                skill_node_id=target.node_id,
+                passed=command.passed,
+                evaluation_report_id=report.report_id,
+                recorded_at=now,
+            )
+            await uow.task_outcomes.append(
+                instance_id=current.instance_id,
+                instance_revision=current.revision,
+                outcome=outcome,
+            )
+            window = await uow.task_outcomes.list_for_node(
+                instance_id=current.instance_id,
+                instance_revision=current.revision,
+                skill_node_id=target.node_id,
+                limit=target.observation_policy.window_size,
+            )
+            decision = self._degradation_policy.evaluate(
+                window,
+                target.observation_policy,
+            )
+            correlation_id = self._correlation_id()
+            await uow.audit.append(
+                self._audit_factory.task_outcome_recorded(
+                    current,
+                    outcome,
+                    decision,
+                    actor=command.actor,
+                    correlation_id=correlation_id,
+                    at=now,
+                )
+            )
+
+            result = DegradationCheckResult(
+                instance_id=current.instance_id,
+                checked_revision=current.revision,
+                degraded=False,
+                resulting_revision=current.revision,
+            )
+            if decision.should_degrade:
+                removal_scope = frozenset(
+                    {target.node_id, *descendants_of(tree, target.node_id)}
+                )
+                removed_nodes = current.active_skill_nodes & removal_scope
+                active_nodes = current.active_skill_nodes - removed_nodes
+                configuration = apply_skill_nodes(
+                    base=prototype.definition,
+                    tree=tree,
+                    active_node_ids=active_nodes,
+                )
+                self._tool_policy.resolve(configuration.tools)
+                bindings, removed_binding_slots = await self._build_degraded_bindings(
+                    uow,
+                    current=current,
+                    configuration=configuration,
+                    now=now,
+                )
+                degraded = AgentInstance.model_validate(
+                    {
+                        **current.model_dump(mode="python"),
+                        "revision": current.revision + 1,
+                        "status": InstanceStatus.DEGRADED,
+                        "configuration": configuration,
+                        "knowledge_bindings": bindings,
+                        "active_skill_nodes": active_nodes,
+                        "updated_at": now,
+                    }
+                )
+                await uow.instances.save_snapshot(
+                    degraded,
+                    expected_revision=current.revision,
+                )
+                result = DegradationCheckResult(
+                    instance_id=current.instance_id,
+                    checked_revision=current.revision,
+                    degraded=True,
+                    resulting_revision=degraded.revision,
+                    removed_nodes=removed_nodes,
+                    removed_binding_slots=removed_binding_slots,
+                )
+                await uow.audit.append(
+                    self._audit_factory.skill_degraded(
+                        current,
+                        degraded,
+                        decision,
+                        node_id=target.node_id,
+                        removed_nodes=removed_nodes,
+                        removed_binding_slots=removed_binding_slots,
+                        actor=command.actor,
+                        correlation_id=correlation_id,
+                        at=now,
+                    )
+                )
+
+            await self._idempotency.store(
+                repository=uow.idempotency,
+                command=command,
+                operation=RECORD_TASK_OUTCOME,
+                response=result,
+                now=now,
+            )
+            await uow.commit()
+            return result
+
     async def export_spec(
         self,
         instance_id: UUID,
@@ -1473,6 +1671,68 @@ class FactoryController:
                 ),
             )
         )
+
+    async def _build_degraded_bindings(
+        self,
+        uow: UnitOfWork,
+        *,
+        current: AgentInstance,
+        configuration: AgentDefinition,
+        now: datetime,
+    ) -> tuple[tuple[KnowledgeBinding, ...], frozenset[str]]:
+        declared_slots = {slot.name for slot in configuration.knowledge_slots}
+        retained = tuple(
+            binding
+            for binding in current.knowledge_bindings
+            if binding.slot_name in declared_slots
+        )
+        removed_binding_slots = frozenset(
+            binding.slot_name
+            for binding in current.knowledge_bindings
+            if binding.slot_name not in declared_slots
+        )
+        selections = self._binding_selections(retained)
+        packages = await uow.knowledge.get_many(
+            tuple(
+                (selection.knowledge_id, selection.version) for selection in selections
+            )
+        )
+        validated = self._knowledge_policy.validate_and_build(
+            definition=configuration,
+            selections=selections,
+            packages=packages,
+            bound_at=now,
+            bound_by=current.created_by,
+        )
+        validated_by_ref = {
+            (
+                binding.slot_name,
+                binding.knowledge_id,
+                binding.knowledge_version,
+            ): binding
+            for binding in validated
+        }
+        for binding in retained:
+            expected = validated_by_ref[
+                (
+                    binding.slot_name,
+                    binding.knowledge_id,
+                    binding.knowledge_version,
+                )
+            ]
+            if binding.knowledge_checksum != expected.knowledge_checksum:
+                raise KnowledgeChecksumMismatchError(
+                    details={
+                        "slot_name": binding.slot_name,
+                        "knowledge_id": binding.knowledge_id,
+                        "version": binding.knowledge_version,
+                    }
+                )
+            if binding.injection_mode is not expected.injection_mode:
+                raise KnowledgeInjectionModeMismatchError(
+                    details={"slot_name": binding.slot_name}
+                )
+        return retained, removed_binding_slots
 
     def _correlation_id(self) -> UUID:
         value = self._correlation_context.get()

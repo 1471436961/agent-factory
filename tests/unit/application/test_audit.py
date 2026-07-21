@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from agent_factory.application.audit import AuditEventFactory
-from agent_factory.domain.common import checksum_knowledge_content
+from agent_factory.domain.common import checksum_knowledge_content, sha256_model
 from agent_factory.domain.enums import (
     AuditEventType,
     EvaluationDecision,
@@ -29,7 +29,12 @@ from agent_factory.domain.models import (
     PrototypeRef,
 )
 from agent_factory.domain.references import EvaluationSuiteRef, SkillTreeRef
-from agent_factory.domain.skills import SkillNode, SkillTree
+from agent_factory.domain.skills import (
+    DegradationDecision,
+    SkillNode,
+    SkillTree,
+    TaskOutcome,
+)
 
 EVENT_ID = UUID("00000000-0000-0000-0000-000000000201")
 CORRELATION_ID = UUID("00000000-0000-0000-0000-000000000301")
@@ -231,3 +236,92 @@ def test_promotion_audit_contains_only_lineage_fields(fixed_now: datetime) -> No
         "report_id": str(report_id),
     }
     assert "sensitive promotion prompt" not in str(event.model_dump(mode="json"))
+
+
+def test_observation_and_degradation_audits_are_bounded(
+    fixed_now: datetime,
+) -> None:
+    instance = AgentInstance(
+        instance_id=UUID("00000000-0000-0000-0000-000000000001"),
+        prototype=PrototypeRef(
+            prototype_id="engineer-agent",
+            version="1.0.0",
+            checksum="a" * 64,
+        ),
+        revision=4,
+        status=InstanceStatus.CREATED,
+        configuration=AgentDefinition(
+            agent_type="engineer-agent",
+            role="Software Engineer",
+            system_prompt="sensitive degraded prompt",
+        ),
+        active_skill_nodes=frozenset({"junior-engineer", "mid-engineer"}),
+        skill_tree=SkillTreeRef(
+            tree_id="engineer-skills",
+            version="1.0.0",
+            checksum="b" * 64,
+        ),
+        created_at=fixed_now,
+        updated_at=fixed_now,
+        created_by="owner",
+    )
+    degraded = instance.model_copy(
+        update={
+            "revision": 5,
+            "status": InstanceStatus.DEGRADED,
+            "active_skill_nodes": frozenset(),
+        }
+    )
+    outcome = TaskOutcome(
+        task_id=UUID("00000000-0000-0000-0000-000000000501"),
+        skill_node_id="junior-engineer",
+        passed=False,
+        evaluation_report_id=UUID("00000000-0000-0000-0000-000000000502"),
+        recorded_at=fixed_now,
+    )
+    decision = DegradationDecision(
+        sample_count=3,
+        trailing_failures=2,
+        failure_rate=2 / 3,
+        should_degrade=True,
+    )
+    factory = AuditEventFactory(FixedIdGenerator())
+
+    observed = factory.task_outcome_recorded(
+        instance,
+        outcome,
+        decision,
+        actor="owner",
+        correlation_id=CORRELATION_ID,
+        at=fixed_now,
+    )
+    degradation = factory.skill_degraded(
+        instance,
+        degraded,
+        decision,
+        node_id="junior-engineer",
+        removed_nodes=frozenset({"junior-engineer", "mid-engineer"}),
+        removed_binding_slots=frozenset({"engineering-guide"}),
+        actor="owner",
+        correlation_id=CORRELATION_ID,
+        at=fixed_now,
+    )
+
+    assert observed.event_type is AuditEventType.TASK_OUTCOME_RECORDED
+    assert observed.payload["threshold_reached"] is True
+    assert degradation.event_type is AuditEventType.SKILL_DEGRADED
+    assert degradation.payload == {
+        "from_revision": 4,
+        "to_revision": 5,
+        "node_id": "junior-engineer",
+        "sample_count": 3,
+        "trailing_failures": 2,
+        "failure_rate": 2 / 3,
+        "removed_nodes": ("junior-engineer", "mid-engineer"),
+        "removed_binding_slots": ("engineering-guide",),
+        "configuration_checksum": sha256_model(degraded.configuration),
+    }
+    serialized = str(
+        [observed.model_dump(mode="json"), degradation.model_dump(mode="json")]
+    )
+    assert "sensitive degraded prompt" not in serialized

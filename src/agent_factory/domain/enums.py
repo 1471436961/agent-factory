@@ -86,5 +86,6 @@ class AuditEventType(StrEnum):
     EVALUATION_COMPLETED = "evaluation.completed"
     EVALUATION_REVIEWED = "evaluation.reviewed"
     SKILL_PROMOTED = "skill.promoted"
+    TASK_OUTCOME_RECORDED = "task-outcome.recorded"
     SKILL_DEGRADED = "skill.degraded"
     TOOL_CALLED = "tool.called"

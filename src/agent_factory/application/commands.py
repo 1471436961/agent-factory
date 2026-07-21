@@ -140,3 +140,14 @@ class PromoteAgentCommand(FrozenModel):
                 "knowledge_selections contains duplicate knowledge references"
             )
         return value
+
+
+class RecordTaskOutcomeCommand(FrozenModel):
+    instance_id: UUID
+    expected_revision: PositiveInt
+    task_id: UUID
+    skill_node_id: Slug
+    passed: bool
+    evaluation_report_id: UUID
+    actor: Actor
+    idempotency_key: OptionalIdempotencyKey = None

@@ -199,7 +199,7 @@ flowchart TB
 | 能否绑定知识 | `KnowledgeBindingPolicy.validate_and_build` | 按语义相似度自动绑定 |
 | 能否授权工具 | `ToolPolicy.resolve` | 运行时动态请求未知工具 |
 | 能否晋升 | `PromotionPolicy.decide` | 仅凭 LLM-as-Judge 分数 |
-| 是否降级 | `DegradationPolicy.should_degrade` | 模型自行声明能力下降 |
+| 是否降级 | `DegradationPolicy.evaluate` | 模型自行声明能力下降 |
 | 状态能否迁移 | `LifecyclePolicy.transition` | 直接修改 status 字段 |
 
 ### 2.2 约束等级
@@ -2101,9 +2101,13 @@ class TaskOutcome(FrozenModel):
 
 class RecordTaskOutcomeCommand(FrozenModel):
     instance_id: UUID
-    expected_revision: int = Field(ge=1)
-    outcome: TaskOutcome
-    actor: str = Field(min_length=1, max_length=128)
+    expected_revision: PositiveInt
+    task_id: UUID
+    skill_node_id: Slug
+    passed: bool
+    evaluation_report_id: UUID
+    actor: Actor
+    idempotency_key: IdempotencyKey | None = None
 
 
 class DegradationCheckResult(FrozenModel):
@@ -2112,6 +2116,14 @@ class DegradationCheckResult(FrozenModel):
     degraded: bool
     resulting_revision: int = Field(ge=1)
     removed_nodes: frozenset[Slug] = frozenset()
+    removed_binding_slots: frozenset[Slug] = frozenset()
+
+
+class DegradationDecision(FrozenModel):
+    sample_count: int = Field(ge=0, le=100)
+    trailing_failures: int = Field(ge=0, le=100)
+    failure_rate: float = Field(ge=0, le=1)
+    should_degrade: bool
 
 
 class TaskOutcomeRepository(Protocol):
@@ -2125,39 +2137,50 @@ class TaskOutcomeRepository(Protocol):
     async def list_for_node(
         self,
         instance_id: UUID,
+        instance_revision: int,
         skill_node_id: str,
         limit: int,
     ) -> tuple[TaskOutcome, ...]: ...
 
 
 class DegradationPolicy:
-    def should_degrade(
-        self,
+    @staticmethod
+    def evaluate(
         outcomes: tuple[TaskOutcome, ...],
         policy: ObservationPolicy,
-    ) -> bool:
+    ) -> DegradationDecision:
         window = outcomes[-policy.window_size :]
-        if len(window) < policy.minimum_samples:
-            return False
         trailing_failures = 0
         for item in reversed(window):
             if item.passed:
                 break
             trailing_failures += 1
-        failure_rate = sum(not item.passed for item in window) / len(window)
-        return (
-            trailing_failures >= policy.consecutive_failures
-            or failure_rate >= policy.failure_rate_threshold
+        sample_count = len(window)
+        failure_rate = (
+            sum(not item.passed for item in window) / sample_count
+            if sample_count
+            else 0.0
+        )
+        return DegradationDecision(
+            sample_count=sample_count,
+            trailing_failures=trailing_failures,
+            failure_rate=failure_rate,
+            should_degrade=(
+                sample_count >= policy.minimum_samples
+                and (
+                    trailing_failures >= policy.consecutive_failures
+                    or failure_rate >= policy.failure_rate_threshold
+                )
+            ),
         )
 ```
 
-任务结果写入独立 `task_outcomes` 表，不因每次观察而增加实例 revision。controller 保存结果后加载该节点窗口并运行 `should_degrade`；未触发时返回 `degraded=False` 和原 revision。触发降级时才创建新实例快照。
+任务结果写入独立 `task_outcomes` 表，不因每次观察而增加实例 revision。Controller 先校验节点已激活，Report 与当前 revision、AgentSpec、Tree、Suite 和最终 review 一致，且命令中的 `passed` 不得覆盖报告结论。保存结果后只加载当前 revision 的节点窗口并运行 `evaluate`；未触发时返回 `degraded=False` 和原 revision，触发降级时才创建新实例快照。同一 EvaluationReport 只能消费一次，避免更换 task ID 重复计入失败证据。
 
-降级目标为触发观察期的技能节点。系统移除该节点及所有依赖它的后代节点，保留无依赖关系的其他分支，然后调用 `apply_skill_nodes` 从原型重建配置。只保留仍被候选配置声明且继续满足槽约束的知识绑定；因槽位消失而移除的绑定必须写入降级结果和审计。新实例状态设为 `DEGRADED`，revision 加一，并写入：
+降级目标为触发观察期的技能节点。系统移除该节点及当前已激活且依赖它的后代节点，保留无依赖关系的其他分支，然后调用 `apply_skill_nodes` 从原型重建配置。只保留仍被候选配置声明且继续满足槽约束的知识绑定；因槽位消失而移除的绑定必须写入降级结果和审计。新实例状态设为 `DEGRADED`，revision 加一，并写入：
 
-- `SKILL_DEGRADED`：触发节点、窗口、失败率、连续失败数。
-- `SKILL_DESCENDANTS_REMOVED`：因依赖失效移除的节点。
-- `INSTANCE_SNAPSHOT_CREATED`：新 revision 与配置校验和。
+- `task-outcome.recorded`：任务、报告、当前 revision 和阈值统计；每个成功观察都记录。
+- `skill.degraded`：from/to revision、触发节点、窗口统计、移除节点、移除槽位和配置 checksum；仅真正降级时记录。
 
 自动降级属于确定性规则，可执行；自动晋升始终禁止。
 
@@ -2246,6 +2269,8 @@ CREATE TABLE instance_skill_trees (
 每张治理快照表保存 canonical `payload_json`、checksum 和必要查询投影。Repository 读取时校验 payload、投影和 checksum 一致；`prototype_skill_trees` 与 `instance_skill_trees` 为 M1 主表补充技能来源，而不重写历史 migration。
 
 M2.4 新增 forward-only `004_instance_configuration_checksum.sql`。Prototype checksum 只标识来源 definition；技能晋升或降级后的 configuration 已发生确定性特化，必须按 Instance revision 保存独立 checksum。迁移为历史快照回填 Prototype checksum，新写入保存实际 configuration checksum；Repository 对 payload 重算，Controller 则从 Prototype 与完整 active node 集合重建并核对业务来源。
+
+M2.5 新增 forward-only `005_task_outcome_integrity.sql`。`evaluation_report_id` 唯一索引防止报告重放，revision 级观察索引支持 `(instance_id, instance_revision, skill_node_id)` 固定窗口；配置发生变化后重新积累观察样本，不混合不同快照的结果。
 
 
 ---
@@ -3032,7 +3057,7 @@ async def register_knowledge(
 
 ### 10.4 评估、晋升与状态路由
 
-以下是 M2 最小 REST 契约。M2.3 已实现 Suite/Tree 注册查询、评估和复核，M2.4 已实现显式晋升 application service，但本节路由仍统一留在 M2.6 实现和装配。每个写路由只有在对应 Controller、migration、幂等、审计和契约测试同时完成后才加入 `api_router`：
+以下是 M2 最小 REST 契约。M2.3 已实现 Suite/Tree 注册查询、评估和复核，M2.4 已实现显式晋升 application service，M2.5 已实现观察与确定性降级 application service，但本节路由仍统一留在 M2.6 实现和装配。每个写路由只有在对应 Controller、migration、幂等、审计和契约测试同时完成后才加入 `api_router`：
 
 | Method | Path | Request | Response |
 | --- | --- | --- | --- |
@@ -3159,7 +3184,7 @@ class PromotionRejectedError(FactoryError):
 | 500 | `INTERNAL_ERROR` |
 | 503 | `REPOSITORY_UNAVAILABLE`, `SERVICE_NOT_READY` |
 
-M2 实现时至少增加 `SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED`。这些错误随能力代码和映射集合测试一起加入，不提前伪装为已实现。认证和工具执行错误仍属于后续里程碑。
+M2 application service 已增加 `SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_NOT_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`TASK_OUTCOME_MISMATCH`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED` 等稳定错误，并由映射集合测试防止漏配。M2.6 只负责把现有命令暴露为路由，不重新定义业务错误。认证和工具执行错误仍属于后续里程碑。
 
 ### 10.6 FastAPI 异常处理
 
@@ -3334,6 +3359,7 @@ class AuditEventType(StrEnum):
     INSTANCE_TRANSITIONED = "instance.transitioned"
     EVALUATION_COMPLETED = "evaluation.completed"
     SKILL_PROMOTED = "skill.promoted"
+    TASK_OUTCOME_RECORDED = "task-outcome.recorded"
     SKILL_DEGRADED = "skill.degraded"
     TOOL_CALLED = "tool.called"
 
@@ -3429,7 +3455,8 @@ M1 尚未实现认证，因此审计查询当前也未做权限隔离，这是�
 | `spec.exported` | `instance_id`, `revision`, `spec_checksum`, `runtime_target` |
 | `evaluation.completed` | `report_id`, `suite_id`, `decision`, `hard_rules_passed`, `soft_score` |
 | `skill.promoted` | `from_revision`, `to_revision`, `node_id`, `report_id` |
-| `skill.degraded` | `from_revision`, `to_revision`, `node_id`, `failure_rate`, `removed_descendants` |
+| `task-outcome.recorded` | `task_id`, `node_id`, `passed`, `report_id`, `sample_count`, `trailing_failures`, `failure_rate`, `threshold_reached` |
+| `skill.degraded` | `from_revision`, `to_revision`, `node_id`, `sample_count`, `trailing_failures`, `failure_rate`, `removed_nodes`, `removed_binding_slots`, `configuration_checksum` |
 | `tool.called` | `call_id`, `tool_name`, `status`, `duration_ms`, `arguments_hash`, `result_hash` |
 
 禁止记录 Prompt 全文、知识正文、工具原始参数、模型原始响应、Authorization header 和 API key。
@@ -3638,7 +3665,9 @@ def test_degradation_uses_consecutive_failure_threshold() -> None:
         make_outcome(passed=value)
         for value in [True, False, False, False]
     )
-    assert DegradationPolicy().should_degrade(outcomes, policy) is True
+    decision = DegradationPolicy.evaluate(outcomes, policy)
+    assert decision.should_degrade is True
+    assert decision.trailing_failures == 3
 ```
 
 ### 12.4 SQLite 集成 fixture
@@ -4073,7 +4102,7 @@ pytest -q tests/unit
 - 从原型和 active node 全量重建配置。
 - 晋升命令携带新增知识槽选择，并与新实例 revision 原子提交。
 - 技能树、评估套件、评估、复核、晋升和观察结果 API。
-- `003_skill_governance.sql`、`004_instance_configuration_checksum.sql`、乐观并发、stale report、重启恢复和 M1 兼容测试。
+- `003_skill_governance.sql`、`004_instance_configuration_checksum.sql`、`005_task_outcome_integrity.sql`、乐观并发、stale report、重启恢复和 M1 兼容测试。
 
 默认 evaluator 是对提交 evidence 做纯计算的确定性实现，不调用网络或模型。LLM-as-Judge 只允许作为非阻断 `JudgeSignal` 的未来适配器，不参与 M2 的 PASS/FAIL 决策，也不进入默认测试。完整工作包和退出证据以 [M2 阶段文档](milestones/m2-skill-governance.md)及[技能治理设计说明](design/skill-governance.md)为准。
 

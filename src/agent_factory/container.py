@@ -14,6 +14,7 @@ from agent_factory.application.ports import (
 from agent_factory.application.tooling import ToolPolicy
 from agent_factory.application.unit_of_work import UnitOfWorkFactory
 from agent_factory.domain.enums import ToolPermission
+from agent_factory.domain.services.degradation import DegradationPolicy
 from agent_factory.domain.services.evaluation import DeterministicRuleEngine
 from agent_factory.domain.services.knowledge import KnowledgeBindingPolicy
 from agent_factory.domain.services.promotion import PromotionPolicy
@@ -81,6 +82,7 @@ def build_container(settings: Settings) -> Container:
         correlation_context=correlation_context,
         prototype_policy=PrototypePolicy(),
         promotion_policy=PromotionPolicy(),
+        degradation_policy=DegradationPolicy(),
         knowledge_policy=KnowledgeBindingPolicy(),
         tool_policy=ToolPolicy(
             tool_catalog,

@@ -122,6 +122,13 @@ class TaskOutcome(FrozenModel):
     recorded_at: AwareDatetime
 
 
+class DegradationDecision(FrozenModel):
+    sample_count: int = Field(ge=0, le=100)
+    trailing_failures: int = Field(ge=0, le=100)
+    failure_rate: float = Field(ge=0, le=1)
+    should_degrade: bool
+
+
 class DegradationCheckResult(FrozenModel):
     instance_id: UUID
     checked_revision: PositiveInt

@@ -417,6 +417,7 @@ class SqliteTaskOutcomeRepository(SqliteRepository):
         self,
         *,
         instance_id: UUID,
+        instance_revision: int,
         skill_node_id: str,
         limit: int,
     ) -> tuple[TaskOutcome, ...]:
@@ -429,13 +430,15 @@ class SqliteTaskOutcomeRepository(SqliteRepository):
                        passed, evaluation_report_id, payload_json,
                        payload_checksum, recorded_at
                 FROM task_outcomes
-                WHERE instance_id = ? AND skill_node_id = ?
+                WHERE instance_id = ?
+                  AND instance_revision = ?
+                  AND skill_node_id = ?
                 ORDER BY recorded_at DESC, task_id DESC
                 LIMIT ?
             ) AS latest
             ORDER BY recorded_at, task_id
             """,
-            (str(instance_id), skill_node_id, limit),
+            (str(instance_id), instance_revision, skill_node_id, limit),
         )
         return tuple(self._decode(row) for row in rows)
 

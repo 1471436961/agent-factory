@@ -73,6 +73,7 @@ jobs:
             'agent_factory/domain/references.py',
             'agent_factory/domain/skills.py',
             'agent_factory/domain/services/evaluation.py',
+            'agent_factory/domain/services/degradation.py',
             'agent_factory/domain/services/skills.py',
             'agent_factory/interfaces/api/contracts.py',
             'agent_factory/interfaces/api/errors.py',
@@ -87,6 +88,7 @@ jobs:
             'agent_factory/infrastructure/sqlite/sql/001_initial.sql',
             'agent_factory/infrastructure/sqlite/sql/002_persistence_contracts.sql',
             'agent_factory/infrastructure/sqlite/sql/003_skill_governance.sql',
-            'agent_factory/infrastructure/sqlite/sql/004_instance_configuration_checksum.sql'
+            'agent_factory/infrastructure/sqlite/sql/004_instance_configuration_checksum.sql',
+            'agent_factory/infrastructure/sqlite/sql/005_task_outcome_integrity.sql'
           };
           assert expected <= set(names)"

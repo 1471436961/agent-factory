@@ -11,6 +11,7 @@ from agent_factory.application.commands import (
     EvaluateInstanceCommand,
     KnowledgeSelection,
     PromoteAgentCommand,
+    RecordTaskOutcomeCommand,
     RegisterEvaluationSuiteCommand,
     RegisterKnowledgeCommand,
     RegisterPrototypeCommand,
@@ -228,5 +229,31 @@ def test_promote_command_accepts_empty_or_unique_knowledge_selections() -> None:
             target_node_id="security-engineer",
             evaluation_report_id=report_id,
             knowledge_selections=(selection, selection),
+            actor="owner",
+        )
+
+
+def test_record_task_outcome_command_validates_revision_and_actor() -> None:
+    command = RecordTaskOutcomeCommand(
+        instance_id=UUID("00000000-0000-0000-0000-000000000001"),
+        expected_revision=2,
+        task_id=UUID("00000000-0000-0000-0000-000000000002"),
+        skill_node_id="junior-engineer",
+        passed=False,
+        evaluation_report_id=UUID("00000000-0000-0000-0000-000000000003"),
+        actor="owner",
+        idempotency_key="observe-task-1",
+    )
+
+    assert command.expected_revision == 2
+    assert command.passed is False
+    with pytest.raises(ValidationError):
+        RecordTaskOutcomeCommand(
+            instance_id=command.instance_id,
+            expected_revision=0,
+            task_id=command.task_id,
+            skill_node_id=command.skill_node_id,
+            passed=False,
+            evaluation_report_id=command.evaluation_report_id,
             actor="owner",
         )

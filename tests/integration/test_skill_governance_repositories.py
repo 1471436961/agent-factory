@@ -287,6 +287,7 @@ async def test_governance_snapshots_round_trip_after_restart(
         assert await uow.evaluation_reviews.get_for_report(report.report_id) == review
         assert await uow.task_outcomes.list_for_node(
             instance_id=instance.instance_id,
+            instance_revision=instance.revision,
             skill_node_id=outcome.skill_node_id,
             limit=10,
         ) == (outcome,)
@@ -337,6 +338,14 @@ async def test_governance_unique_constraints_have_stable_errors(
                 instance_id=instance.instance_id,
                 instance_revision=instance.revision,
                 outcome=outcome,
+            )
+        with pytest.raises(TaskOutcomeAlreadyExistsError):
+            await uow.task_outcomes.append(
+                instance_id=instance.instance_id,
+                instance_revision=instance.revision,
+                outcome=outcome.model_copy(
+                    update={"task_id": UUID("00000000-0000-0000-0000-000000000607")}
+                ),
             )
 
 
@@ -420,12 +429,16 @@ async def test_task_outcome_window_returns_latest_items_in_chronological_order(
             task_id=UUID(f"00000000-0000-0000-0000-{index:012d}"),
             skill_node_id="mid-engineer",
             passed=index % 2 == 0,
-            evaluation_report_id=report.report_id,
+            evaluation_report_id=UUID(f"00000000-0000-0000-0000-{610 + index:012d}"),
             recorded_at=NOW + timedelta(minutes=index),
         )
         for index in range(1, 4)
     )
     async with factory() as uow:
+        for outcome in outcomes:
+            await uow.evaluation_reports.add(
+                report.model_copy(update={"report_id": outcome.evaluation_report_id})
+            )
         for outcome in outcomes:
             await uow.task_outcomes.append(
                 instance_id=instance.instance_id,
@@ -437,15 +450,28 @@ async def test_task_outcome_window_returns_latest_items_in_chronological_order(
     async with factory(read_only=True) as uow:
         window = await uow.task_outcomes.list_for_node(
             instance_id=instance.instance_id,
+            instance_revision=instance.revision,
             skill_node_id="mid-engineer",
             limit=2,
         )
     assert window == outcomes[1:]
 
     async with factory(read_only=True) as uow:
+        assert (
+            await uow.task_outcomes.list_for_node(
+                instance_id=instance.instance_id,
+                instance_revision=instance.revision + 1,
+                skill_node_id="mid-engineer",
+                limit=2,
+            )
+            == ()
+        )
+
+    async with factory(read_only=True) as uow:
         with pytest.raises(ValueError, match="between 1 and 100"):
             await uow.task_outcomes.list_for_node(
                 instance_id=instance.instance_id,
+                instance_revision=instance.revision,
                 skill_node_id="mid-engineer",
                 limit=0,
             )

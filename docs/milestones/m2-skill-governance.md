@@ -108,13 +108,14 @@ M2 不实现：
 - 现有 binding 保留原始绑定人和时间；晋升命令只追加新知识，不静默替换已有知识。
 - 新增 `004_instance_configuration_checksum.sql`，使每个 Instance revision 独立保存 configuration checksum；Controller 同时从 Prototype 与完整 active node 集合重建并核对配置来源。
 
-### M2.5 观察期与降级
+### M2.5 观察期与降级（已完成）
 
 - `TaskOutcome` 追加到独立表；未触发降级时不增加实例 revision。
 - 按固定窗口计算连续失败数和失败率，达到任一阈值后触发确定性降级。
 - 移除目标节点及依赖它的所有后代，保留无依赖关系的其他分支。
 - 从原型重新构建配置，仅保留候选配置仍声明且继续匹配的知识绑定。
 - 生成 `DEGRADED` 的新快照，并记录触发窗口、移除节点、移除绑定和 resulting revision。
+- 窗口限定在当前 instance revision；同一 EvaluationReport 只能计入一次，防止跨配置污染和证据重放。
 
 ### M2.6 REST 与闭环验收
 
@@ -133,9 +134,9 @@ M2 不实现：
 - [x] stale report、错误 suite、缺失父节点和未通过报告均禁止晋升。
 - [x] 晋升新增知识、实例快照、审计和幂等响应同时成功或同时回滚。
 - [x] 同一 expected revision 的并发晋升只有一个成功。
-- [ ] 未达到观察阈值时 revision 不变；达到阈值后移除目标及后代并产生新 revision。
-- [ ] 降级后的配置从原型重建，不残留已移除节点独有工具、Prompt 或知识绑定。
-- [ ] 所有治理写操作均有审计、幂等和失败原子性证据。
+- [x] 未达到观察阈值时 revision 不变；达到阈值后移除目标及后代并产生新 revision。
+- [x] 降级后的配置从原型重建，不残留已移除节点独有工具、Prompt 或知识绑定。
+- [x] 所有当前已实现的治理写操作均有审计、幂等和失败原子性证据。
 - [ ] M1 历史快照可读取，M2 数据在应用重启后可完整恢复。
 - [x] domain、application 和全项目 branch coverage 分别不低于 90%、85% 和 80%。
 - [ ] Ruff、mypy strict、pytest、sdist/wheel 与 M2 退出候选 GitHub Actions 全部通过。
@@ -167,7 +168,7 @@ M2 不实现：
 
 ## 9. 阶段报告
 
-当前状态：M2.1-M2.3 已完成并提交；M2.4 已完成本地实现和质量门禁，尚未形成实现提交；M2.5 尚未开始。该状态不代表完整技能治理闭环或 M2 阶段已经验收。
+当前状态：M2.1-M2.4 已完成并提交；M2.5 已完成本地实现，M2.6 尚未开始。该状态不代表完整技能治理 REST 闭环或 M2 阶段已经验收。
 
 - M1 封存提交：`acf2b5d docs: close M1 milestone`。
 - M1 封存远程证据：GitHub Actions CI #14 在提交 `acf2b5d` 上通过。
@@ -192,4 +193,10 @@ M2 不实现：
 - M2.4 持久化纠偏：首轮集成测试证明旧的 configuration/Prototype checksum 等值假设不适用于技能特化；经 owner 确认新增 `004_instance_configuration_checksum.sql`，分别由持久化 checksum 和 Controller 来源重建覆盖存储完整性与业务来源完整性。
 - M2.4 本地测试：开始前基线 `133 passed`；实现后 `147 passed`，覆盖纯策略、连续全量重建、必填知识与未知工具、幂等、stale/suite/依赖/FAIL/review、同 revision 并发单胜、事务回滚、v2→v4 升级和 checksum 篡改检测。
 - M2.4 本地质量证据：Ruff 通过、mypy strict 对 82 个源码/测试文件通过；branch coverage 为 domain 96%、application 93%、total 93%；sdist/wheel 构建成功，且两种制品均包含 `PromotionPolicy`、晋升应用服务、`003` 与 `004` migration。
-- 第 6 节只勾选已经由当前测试直接证明的八项；其余条目等待后续工作包产生证据。
+- M2.4 实现提交：`4c59acd feat: implement deterministic M2 promotions`。
+- M2.5 代码边界：新增 `RecordTaskOutcomeCommand`、纯 `DegradationPolicy`、revision 级观察窗口、显式证据一致性校验、Prototype 基线降级重建、知识 binding 收缩、双审计和幂等事务；未新增治理 REST 路由或运行时执行器。
+- M2.5 持久化约束：新增 forward-only `005_task_outcome_integrity.sql`；一份 EvaluationReport 最多计入一个 TaskOutcome，窗口查询必须指定当前 instance revision。
+- M2.5 行为证据：未达阈值时 revision 不变；达到阈值时目标及激活后代被移除，独立分支保留，节点独有 Prompt、工具、Schema 和知识 binding 不残留；审计故障整体回滚，同 revision 并发跨阈值只有一个请求产生降级快照。
+- M2.5 本地测试：开始前基线 `147 passed`；实现后 `160 passed`，覆盖纯阈值、证据一致性、schema v5、脏数据迁移原子失败、revision 窗口、报告重放、配置/知识回退、幂等、审计回滚和并发单胜。
+- M2.5 本地质量证据：Ruff 通过、mypy strict 对 85 个源码/测试文件通过；branch coverage 为 domain 96%、application 92%、total 93%；sdist/wheel 构建成功且均包含 `DegradationPolicy` 与 `005_task_outcome_integrity.sql`。
+- 第 6 节只勾选已经由当前测试直接证明的条目；重启恢复主链、治理 REST 和远程退出候选 CI 等待 M2.6。

@@ -184,6 +184,11 @@ class SkillAlreadyActiveError(FactoryError):
     default_message = "Skill node is already active"
 
 
+class SkillNotActiveError(FactoryError):
+    code = "SKILL_NOT_ACTIVE"
+    default_message = "Skill node is not active"
+
+
 class SkillConfigurationConflictError(FactoryError):
     code = "SKILL_CONFIGURATION_CONFLICT"
     default_message = "Active skill nodes produce conflicting configuration"
@@ -242,6 +247,11 @@ class EvaluationReviewNotRequiredError(FactoryError):
 class TaskOutcomeAlreadyExistsError(FactoryError):
     code = "TASK_OUTCOME_ALREADY_EXISTS"
     default_message = "Task outcome already exists"
+
+
+class TaskOutcomeMismatchError(FactoryError):
+    code = "TASK_OUTCOME_MISMATCH"
+    default_message = "Task outcome does not match its evaluation evidence"
 
 
 class StaleEvaluationReportError(FactoryError):

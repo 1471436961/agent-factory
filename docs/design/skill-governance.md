@@ -374,7 +374,7 @@ class DegradationCheckResult(FrozenModel):
     removed_binding_slots: frozenset[Slug] = frozenset()
 ```
 
-outcome 必须引用同一实例和技能节点的有效报告。Controller 写入 outcome 后读取固定窗口。样本不足时不降级；连续失败达到阈值或窗口失败率达到阈值时，移除该节点和全部后代。
+outcome 必须引用同一实例、当前 revision 和激活技能节点的有效报告。Report 的 AgentSpec checksum、Tree、Suite 和最终 review 必须与当前快照一致，命令中的 `passed` 只能确认报告最终结论，不能覆盖结论。Controller 写入 outcome 后读取当前 revision 的固定窗口；同一报告只允许消费一次。样本不足时不降级；连续失败达到阈值或窗口失败率达到阈值时，移除该节点和全部已激活后代。
 
 未降级时只提交 outcome/audit/idempotency，实例 revision 不变。降级时从原型重建配置，保留仍被候选配置声明且继续满足槽约束的 bindings，写入 DEGRADED revision + 1。两条路径都在一个 UoW 中完成。
 
@@ -412,6 +412,8 @@ class TaskOutcomeRepository(Protocol): ...
 
 M2.4 另新增 forward-only `004_instance_configuration_checksum.sql`。旧 Repository 把 `sha256(instance.configuration)` 与 Prototype definition checksum 直接比较，只适用于未特化配置。`004` 为历史快照回填来源 Prototype checksum，并要求新快照持久化各自的 configuration checksum；Repository 读取时对 payload 重算。Controller 还会从 Prototype definition 与完整 active node 集合重建当前配置并比较，两层校验分别回答“数据是否损坏”和“配置是否来自声明来源”。
 
+M2.5 新增 forward-only `005_task_outcome_integrity.sql`。一份 EvaluationReport 最多进入一个 TaskOutcome；观察查询必须携带 instance revision，并使用 revision 级窗口索引。该约束避免调用方更换 task ID 重复计数同一证据，也避免配置变化后继续混用旧快照结果。
+
 ## 7. REST 契约
 
 M2 最小路由：
@@ -429,7 +431,7 @@ M2 最小路由：
 
 所有写路由要求 `X-Actor-ID` 并支持 `Idempotency-Key`。该 actor 仍是不可信标签。Router 只转换 DTO；规则和事务留在 Controller。
 
-新增错误码至少包括：`SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_REPORT_ALREADY_EXISTS`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED`。每个错误必须进入 REST 显式映射集合测试。
+新增错误码至少包括：`SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_NOT_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_REPORT_ALREADY_EXISTS`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`TASK_OUTCOME_MISMATCH`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED`。每个错误必须进入 REST 显式映射集合测试。
 
 ## 8. 并发、审计与安全边界
 
@@ -444,11 +446,11 @@ M2 最小路由：
 
 - domain unit tests：模型边界、DAG、稳定顺序、RuleKind 参数、规则执行、配置冲突、后代移除和降级阈值。
 - compatibility tests：读取 M1 固定 JSON fixture，断言新增可选字段不破坏 Prototype、Instance 和 Spec。
-- SQLite integration tests：003 migration、五类治理仓储、来源投影、损坏检测、事务回滚和并发 CAS。
+- SQLite integration tests：003-005 migration、五类治理仓储、来源投影、报告单次消费、revision 窗口、损坏检测、事务回滚和并发 CAS。
 - Controller integration tests：评估、review、晋升知识原子性、stale report、并发晋升、无降级与触发降级。
 - REST contract tests：DTO、错误 envelope、actor/idempotency、完整治理链和未知异常脱敏。
 - exit test：关闭并重建 app 后恢复技能树、套件、报告、review、实例 revision、TaskOutcome 和审计。
-- CI：保留 domain 90%、application 85%、total 80% branch coverage 门槛，构建 wheel 并检查 `003_skill_governance.sql`、`004_instance_configuration_checksum.sql` 与全部 M2 模块。
+- CI：保留 domain 90%、application 85%、total 80% branch coverage 门槛，构建 wheel 并检查 `003_skill_governance.sql`、`004_instance_configuration_checksum.sql`、`005_task_outcome_integrity.sql` 与全部 M2 模块。
 
 ## 10. M2.1 实现映射
 
@@ -535,3 +537,16 @@ M2.3 允许显式评估历史 revision：报告记录的是该 revision 已发�
 ```
 
 `skill.promoted` 审计只保存 from/to revision、node ID 和 report ID，不保存 Prompt、知识内容、rule evidence 或 review comment。评估 evidence 和 reviewer 仍是不可信输入；M2.4 只证明给定证据下的晋升决策与配置变换可重复。
+
+## 14. M2.5 实现映射
+
+| 契约 | 代码位置 | 直接证据 |
+| --- | --- | --- |
+| 观察命令与结果 | `application/commands.py`、`domain/skills.py` | revision、actor、节点与结果模型测试 |
+| 纯阈值和证据策略 | `domain/services/degradation.py` | 最小样本、窗口、连续失败、失败率、stale/suite/review 测试 |
+| revision 级窗口与报告单次消费 | `005_task_outcome_integrity.sql`、`governance_repositories.py` | 错误 revision 空窗口与报告重放测试 |
+| Prototype 基线降级重建 | `application/controller.py`、`domain/services/skills.py` | 目标及后代移除、独立分支保留、Prompt/工具/Schema 回退测试 |
+| 知识绑定收缩与来源保留 | `application/controller.py` | 移除失效槽、保留 base binding 原始来源测试 |
+| 原子观察和降级 | `application/controller.py`、`application/audit.py` | 审计故障回滚、幂等重放、同 revision 并发单胜测试 |
+
+M2.5 不运行 Agent，也不生成观察 evidence。外部提交的 EvaluationReport 仍不具备可信执行来源；本工作包只保证同一份 evidence 不会重复计数、不同配置快照不会混合统计，以及给定窗口下的降级变换可重复。未触发阈值时只写 TaskOutcome、`task-outcome.recorded` 审计和幂等结果；触发时在同一 UoW 内再写 `DEGRADED` snapshot 与 `skill.degraded` 审计。M2 没有自动晋升。
