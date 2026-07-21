@@ -35,6 +35,7 @@ from agent_factory.domain.models import (
     DomainKnowledgeDraft,
     PrototypeRef,
 )
+from agent_factory.domain.services.spec import checksum_agent_spec
 from agent_factory.infrastructure.sqlite import (
     SqliteMigrationRunner,
     SqliteUnitOfWorkFactory,
@@ -127,14 +128,7 @@ def _spec(instance: AgentInstance) -> AgentSpec:
         spec_checksum="0" * 64,
         metadata=instance.configuration.metadata,
     )
-    return unsigned.model_copy(
-        update={
-            "spec_checksum": sha256_model(
-                unsigned,
-                exclude={"spec_checksum"},
-            )
-        }
-    )
+    return unsigned.model_copy(update={"spec_checksum": checksum_agent_spec(unsigned)})
 
 
 def _audit_event(prototype: AgentPrototype) -> AuditEvent:

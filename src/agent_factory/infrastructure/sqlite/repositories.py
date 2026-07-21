@@ -31,6 +31,7 @@ from agent_factory.domain.models import (
     AgentSpec,
     DomainKnowledge,
 )
+from agent_factory.domain.services.spec import checksum_agent_spec
 from agent_factory.infrastructure.sqlite.codec import (
     decode_json_object,
     decode_model,
@@ -548,9 +549,7 @@ class SqliteAgentSpecRepository(_SqliteRepository):
             "instance_id": str(spec.instance_id) == row["instance_id"],
             "revision": spec.revision == row["revision"],
             "checksum": spec.spec_checksum == row["checksum"],
-            "spec_checksum": (
-                sha256_model(spec, exclude={"spec_checksum"}) == spec.spec_checksum
-            ),
+            "spec_checksum": checksum_agent_spec(spec) == spec.spec_checksum,
             "created_at": _format_datetime(spec.generated_at) == row["created_at"],
         }
         for field, valid in projections.items():

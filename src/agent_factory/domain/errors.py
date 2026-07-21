@@ -154,6 +154,91 @@ class ToolPermissionDeniedError(FactoryError):
     default_message = "Tool requests a permission that is not allowed"
 
 
+class SkillTreeNotFoundError(FactoryError):
+    code = "SKILL_TREE_NOT_FOUND"
+    default_message = "Skill tree was not found"
+
+
+class SkillTreeAlreadyExistsError(FactoryError):
+    code = "SKILL_TREE_ALREADY_EXISTS"
+    default_message = "Skill tree version already exists"
+
+
+class SkillTreeNotBoundError(FactoryError):
+    code = "SKILL_TREE_NOT_BOUND"
+    default_message = "Agent instance has no skill tree"
+
+
+class SkillNodeNotFoundError(FactoryError):
+    code = "SKILL_NODE_NOT_FOUND"
+    default_message = "Skill node was not found"
+
+
+class SkillDependencyError(FactoryError):
+    code = "SKILL_DEPENDENCY_MISSING"
+    default_message = "Skill node dependencies are not active"
+
+
+class SkillAlreadyActiveError(FactoryError):
+    code = "SKILL_ALREADY_ACTIVE"
+    default_message = "Skill node is already active"
+
+
+class SkillConfigurationConflictError(FactoryError):
+    code = "SKILL_CONFIGURATION_CONFLICT"
+    default_message = "Active skill nodes produce conflicting configuration"
+
+
+class SkillTreeCycleError(FactoryError):
+    code = "SKILL_TREE_CYCLE"
+    default_message = "Skill tree contains a cycle"
+
+
+class EvaluationSuiteNotFoundError(FactoryError):
+    code = "EVALUATION_SUITE_NOT_FOUND"
+    default_message = "Evaluation suite was not found"
+
+
+class EvaluationSuiteAlreadyExistsError(FactoryError):
+    code = "EVALUATION_SUITE_ALREADY_EXISTS"
+    default_message = "Evaluation suite version already exists"
+
+
+class EvaluationReportNotFoundError(FactoryError):
+    code = "EVALUATION_REPORT_NOT_FOUND"
+    default_message = "Evaluation report was not found"
+
+
+class EvaluationSuiteMismatchError(FactoryError):
+    code = "EVALUATION_SUITE_MISMATCH"
+    default_message = "Evaluation suite does not match the required suite"
+
+
+class EvaluationSubmissionError(FactoryError):
+    code = "EVALUATION_SUBMISSION_INVALID"
+    default_message = "Evaluation submission does not match the suite"
+
+
+class EvaluationRuleTimeoutError(FactoryError):
+    code = "EVALUATION_RULE_TIMEOUT"
+    default_message = "Evaluation rule exceeded its execution time limit"
+
+
+class EvaluationReviewConflictError(FactoryError):
+    code = "EVALUATION_REVIEW_CONFLICT"
+    default_message = "Evaluation report already has a final review"
+
+
+class StaleEvaluationReportError(FactoryError):
+    code = "STALE_EVALUATION_REPORT"
+    default_message = "Evaluation report does not describe the current snapshot"
+
+
+class PromotionRejectedError(FactoryError):
+    code = "PROMOTION_REJECTED"
+    default_message = "Promotion requirements were not satisfied"
+
+
 class RepositoryUnavailableError(FactoryError):
     code = "REPOSITORY_UNAVAILABLE"
     default_message = "Repository is temporarily unavailable"

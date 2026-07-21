@@ -17,6 +17,15 @@ from agent_factory.domain.models import (
 )
 
 
+def checksum_agent_spec(spec: AgentSpec) -> str:
+    """Hash a spec while preserving the published AgentSpec 1.0 contract."""
+
+    excluded = {"spec_checksum"}
+    if spec.schema_version == "1.0":
+        excluded.add("skill_tree")
+    return sha256_model(spec, exclude=excluded)
+
+
 class AgentSpecBuilder:
     """Revalidate export invariants and build a checksummed runtime contract."""
 
@@ -68,6 +77,7 @@ class AgentSpecBuilder:
             )
         )
         unsigned = AgentSpec(
+            schema_version="1.1" if instance.skill_tree is not None else "1.0",
             instance_id=instance.instance_id,
             revision=instance.revision,
             prototype=instance.prototype,
@@ -78,6 +88,7 @@ class AgentSpecBuilder:
             knowledge=knowledge,
             output_schema=instance.configuration.output_schema,
             active_skill_nodes=instance.active_skill_nodes,
+            skill_tree=instance.skill_tree,
             runtime_target=instance.runtime_target,
             generated_at=generated_at,
             spec_checksum="0" * 64,
@@ -86,9 +97,6 @@ class AgentSpecBuilder:
         return AgentSpec.model_validate(
             {
                 **unsigned.model_dump(mode="python"),
-                "spec_checksum": sha256_model(
-                    unsigned,
-                    exclude={"spec_checksum"},
-                ),
+                "spec_checksum": checksum_agent_spec(unsigned),
             }
         )

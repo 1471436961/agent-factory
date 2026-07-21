@@ -1,4 +1,4 @@
-"""Pydantic models for M1 Agent Factory production snapshots."""
+"""Core Pydantic models for Agent Factory production snapshots."""
 
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ from agent_factory.domain.enums import (
     PrototypeStatus,
     ToolPermission,
 )
+from agent_factory.domain.references import SkillTreeRef
 
 
 class KnowledgeSlot(FrozenModel):
@@ -102,6 +103,7 @@ class AgentPrototype(FrozenModel):
     version: SemVer
     status: PrototypeStatus = PrototypeStatus.DRAFT
     definition: AgentDefinition
+    skill_tree: SkillTreeRef | None = None
     checksum: Sha256
     created_at: AwareDatetime
     created_by: Actor
@@ -190,6 +192,7 @@ class AgentInstance(FrozenModel):
     configuration: AgentDefinition
     knowledge_bindings: tuple[KnowledgeBinding, ...] = ()
     active_skill_nodes: frozenset[Slug] = frozenset()
+    skill_tree: SkillTreeRef | None = None
     runtime_target: Slug | None = None
     created_at: AwareDatetime
     updated_at: AwareDatetime
@@ -199,11 +202,13 @@ class AgentInstance(FrozenModel):
     def updated_at_must_not_precede_creation(self) -> Self:
         if self.updated_at < self.created_at:
             raise ValueError("updated_at must not precede created_at")
+        if self.active_skill_nodes and self.skill_tree is None:
+            raise ValueError("active skill nodes require a skill tree")
         return self
 
 
 class AgentSpec(FrozenModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     instance_id: UUID
     revision: PositiveInt
     prototype: PrototypeRef
@@ -214,6 +219,7 @@ class AgentSpec(FrozenModel):
     knowledge: tuple[KnowledgeRef, ...]
     output_schema: JsonObject
     active_skill_nodes: frozenset[Slug] = frozenset()
+    skill_tree: SkillTreeRef | None = None
     runtime_target: Slug | None = None
     generated_at: AwareDatetime
     spec_checksum: Sha256
@@ -228,3 +234,13 @@ class AgentSpec(FrozenModel):
         if any(not isinstance(item, str) for item in value.values()):
             raise ValueError("metadata values must be strings")
         return value
+
+    @model_validator(mode="after")
+    def schema_version_must_match_skill_tree(self) -> Self:
+        if self.schema_version == "1.0" and self.skill_tree is not None:
+            raise ValueError("AgentSpec 1.0 cannot contain a skill tree")
+        if self.schema_version == "1.1" and self.skill_tree is None:
+            raise ValueError("AgentSpec 1.1 requires a skill tree")
+        if self.active_skill_nodes and self.skill_tree is None:
+            raise ValueError("active skill nodes require a skill tree")
+        return self

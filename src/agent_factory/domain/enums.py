@@ -43,6 +43,26 @@ class ToolPermission(StrEnum):
     WRITE_EXTERNAL = "write-external"
 
 
+class RuleKind(StrEnum):
+    JSON_SCHEMA = "json-schema"
+    REQUIRED_TERMS = "required-terms"
+    FORBIDDEN_TERMS = "forbidden-terms"
+    REGEX = "regex"
+    MAX_LENGTH = "max-length"
+    TOOL_CALLED = "tool-called"
+
+
+class EvaluationDecision(StrEnum):
+    PASS = "pass"
+    FAIL = "fail"
+    REVIEW_REQUIRED = "review-required"
+
+
+class ReviewDecision(StrEnum):
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class AuditEntityType(StrEnum):
     PROTOTYPE = "prototype"
     INSTANCE = "instance"

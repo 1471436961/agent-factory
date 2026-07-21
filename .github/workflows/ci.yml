@@ -69,6 +69,11 @@ jobs:
           wheel = glob.glob('dist/*.whl')[0];
           names = zipfile.ZipFile(wheel).namelist();
           expected = {
+            'agent_factory/domain/evaluation.py',
+            'agent_factory/domain/references.py',
+            'agent_factory/domain/skills.py',
+            'agent_factory/domain/services/evaluation.py',
+            'agent_factory/domain/services/skills.py',
             'agent_factory/interfaces/api/contracts.py',
             'agent_factory/interfaces/api/errors.py',
             'agent_factory/interfaces/api/main.py',

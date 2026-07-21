@@ -32,7 +32,7 @@ from agent_factory.domain.models import (
 )
 from agent_factory.domain.services.knowledge import KnowledgeBindingPolicy
 from agent_factory.domain.services.prototype import PrototypePolicy
-from agent_factory.domain.services.spec import AgentSpecBuilder
+from agent_factory.domain.services.spec import AgentSpecBuilder, checksum_agent_spec
 
 CHECKSUM = "a" * 64
 INSTANCE_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -293,7 +293,4 @@ def test_spec_builder_revalidates_required_slots_and_is_deterministic(
     second = builder.build(instance=bound, tools=(), generated_at=fixed_now)
 
     assert first == second
-    assert first.spec_checksum == sha256_model(
-        first,
-        exclude={"spec_checksum"},
-    )
+    assert first.spec_checksum == checksum_agent_spec(first)
