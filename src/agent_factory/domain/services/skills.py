@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import heapq
 
 from pydantic import ValidationError
 
-from agent_factory.domain.common import Slug
+from agent_factory.domain.common import Slug, canonical_json_bytes
 from agent_factory.domain.errors import (
     SkillConfigurationConflictError,
     SkillDependencyError,
@@ -14,8 +15,25 @@ from agent_factory.domain.errors import (
     SkillTreeCycleError,
 )
 from agent_factory.domain.models import AgentDefinition
-from agent_factory.domain.skills import SkillNode, SkillTree
+from agent_factory.domain.skills import SkillNode, SkillTree, SkillTreeDraft
 from agent_factory.domain.validation import validate_output_schema
+
+
+def checksum_skill_tree(tree: SkillTree | SkillTreeDraft) -> str:
+    """Hash a tree definition after normalizing every unordered collection."""
+
+    excluded = (
+        {"checksum", "created_at", "created_by"}
+        if isinstance(tree, SkillTree)
+        else set()
+    )
+    payload = tree.model_dump(mode="json", exclude=excluded, exclude_none=False)
+    for node in payload["nodes"]:
+        node["parents"] = sorted(node["parents"])
+        node["granted_tools"] = sorted(node["granted_tools"])
+        for slot in node["added_knowledge_slots"]:
+            slot["accepted_kinds"] = sorted(slot["accepted_kinds"])
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
 
 
 def _nodes_by_id(tree: SkillTree) -> dict[str, SkillNode]:

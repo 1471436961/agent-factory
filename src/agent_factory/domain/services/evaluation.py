@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 
 import regex
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
-from agent_factory.domain.common import FrozenJsonObject, sha256_model
+from agent_factory.domain.common import (
+    FrozenJsonObject,
+    canonical_json_bytes,
+    sha256_model,
+)
 from agent_factory.domain.enums import EvaluationDecision, RuleKind
 from agent_factory.domain.errors import (
     EvaluationRuleTimeoutError,
@@ -20,12 +25,27 @@ from agent_factory.domain.evaluation import (
     EvaluationRule,
     EvaluationSubmission,
     EvaluationSuite,
+    EvaluationSuiteDraft,
     RuleResult,
     SubmittedCaseResult,
 )
 from agent_factory.domain.references import EvaluationSuiteRef
 
 REGEX_TIMEOUT_SECONDS = 0.05
+
+
+def checksum_evaluation_suite(
+    suite: EvaluationSuite | EvaluationSuiteDraft,
+) -> str:
+    """Hash only the immutable suite definition, excluding registry metadata."""
+
+    excluded = (
+        {"checksum", "created_at", "created_by"}
+        if isinstance(suite, EvaluationSuite)
+        else set()
+    )
+    payload = suite.model_dump(mode="json", exclude=excluded, exclude_none=False)
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
 
 
 class DeterministicRuleEngine:

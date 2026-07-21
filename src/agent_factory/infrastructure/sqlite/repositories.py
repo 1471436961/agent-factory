@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
-from datetime import UTC, datetime
-from typing import Any
+from datetime import datetime
 from uuid import UUID
 
 import aiosqlite
@@ -31,6 +29,7 @@ from agent_factory.domain.models import (
     AgentSpec,
     DomainKnowledge,
 )
+from agent_factory.domain.references import SkillTreeRef
 from agent_factory.domain.services.spec import checksum_agent_spec
 from agent_factory.infrastructure.sqlite.codec import (
     decode_json_object,
@@ -40,64 +39,13 @@ from agent_factory.infrastructure.sqlite.codec import (
     raise_database_error,
     require_projection,
 )
-
-SqlParameters = Sequence[Any]
-
-
-def _format_datetime(value: datetime) -> str:
-    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+from agent_factory.infrastructure.sqlite.repository_base import (
+    SqliteRepository,
+    format_datetime,
+)
 
 
-class _SqliteRepository:
-    repository_name = "sqlite"
-
-    def __init__(self, connection: aiosqlite.Connection) -> None:
-        self._connection = connection
-
-    async def _fetchone(
-        self,
-        sql: str,
-        parameters: SqlParameters = (),
-    ) -> aiosqlite.Row | None:
-        try:
-            cursor = await self._connection.execute(sql, parameters)
-            try:
-                return await cursor.fetchone()
-            finally:
-                await cursor.close()
-        except sqlite3.Error as exc:
-            raise_database_error(self.repository_name, exc)
-
-    async def _fetchall(
-        self,
-        sql: str,
-        parameters: SqlParameters = (),
-    ) -> list[aiosqlite.Row]:
-        try:
-            cursor = await self._connection.execute(sql, parameters)
-            try:
-                return list(await cursor.fetchall())
-            finally:
-                await cursor.close()
-        except sqlite3.Error as exc:
-            raise_database_error(self.repository_name, exc)
-
-    async def _execute(
-        self,
-        sql: str,
-        parameters: SqlParameters = (),
-    ) -> int:
-        try:
-            cursor = await self._connection.execute(sql, parameters)
-            try:
-                return cursor.rowcount
-            finally:
-                await cursor.close()
-        except sqlite3.Error as exc:
-            raise_database_error(self.repository_name, exc)
-
-
-class SqlitePrototypeRepository(_SqliteRepository):
+class SqlitePrototypeRepository(SqliteRepository):
     repository_name = "prototypes"
 
     async def add(self, prototype: AgentPrototype) -> None:
@@ -115,16 +63,22 @@ class SqlitePrototypeRepository(_SqliteRepository):
                     prototype.status.value,
                     encode_model(prototype),
                     prototype.checksum,
-                    _format_datetime(prototype.created_at),
+                    format_datetime(prototype.created_at),
                 ),
             )
+            await self._replace_skill_tree_projection(prototype)
         except sqlite3.IntegrityError as exc:
-            raise PrototypeAlreadyExistsError(
-                details={
-                    "prototype_id": prototype.prototype_id,
-                    "version": prototype.version,
-                }
-            ) from exc
+            if exc.sqlite_errorname in {
+                "SQLITE_CONSTRAINT_PRIMARYKEY",
+                "SQLITE_CONSTRAINT_UNIQUE",
+            }:
+                raise PrototypeAlreadyExistsError(
+                    details={
+                        "prototype_id": prototype.prototype_id,
+                        "version": prototype.version,
+                    }
+                ) from exc
+            raise_database_error(self.repository_name, exc)
         except sqlite3.Error as exc:
             raise_database_error(self.repository_name, exc)
 
@@ -135,10 +89,15 @@ class SqlitePrototypeRepository(_SqliteRepository):
     ) -> AgentPrototype | None:
         row = await self._fetchone(
             """
-            SELECT prototype_id, version, status, payload_json,
-                   checksum, created_at
+            SELECT prototypes.prototype_id, prototypes.version, prototypes.status,
+                   prototypes.payload_json, prototypes.checksum,
+                   prototypes.created_at, skill_trees.tree_id,
+                   skill_trees.tree_version, skill_trees.tree_checksum
             FROM prototypes
-            WHERE prototype_id = ? AND version = ?
+            LEFT JOIN prototype_skill_trees AS skill_trees
+              ON skill_trees.prototype_id = prototypes.prototype_id
+             AND skill_trees.prototype_version = prototypes.version
+            WHERE prototypes.prototype_id = ? AND prototypes.version = ?
             """,
             (prototype_id, version),
         )
@@ -151,18 +110,30 @@ class SqlitePrototypeRepository(_SqliteRepository):
         if query.status is None:
             rows = await self._fetchall(
                 """
-                SELECT prototype_id, version, status, payload_json,
-                       checksum, created_at
+                SELECT prototypes.prototype_id, prototypes.version,
+                       prototypes.status, prototypes.payload_json,
+                       prototypes.checksum, prototypes.created_at,
+                       skill_trees.tree_id, skill_trees.tree_version,
+                       skill_trees.tree_checksum
                 FROM prototypes
+                LEFT JOIN prototype_skill_trees AS skill_trees
+                  ON skill_trees.prototype_id = prototypes.prototype_id
+                 AND skill_trees.prototype_version = prototypes.version
                 """
             )
         else:
             rows = await self._fetchall(
                 """
-                SELECT prototype_id, version, status, payload_json,
-                       checksum, created_at
+                SELECT prototypes.prototype_id, prototypes.version,
+                       prototypes.status, prototypes.payload_json,
+                       prototypes.checksum, prototypes.created_at,
+                       skill_trees.tree_id, skill_trees.tree_version,
+                       skill_trees.tree_checksum
                 FROM prototypes
-                WHERE status = ?
+                LEFT JOIN prototype_skill_trees AS skill_trees
+                  ON skill_trees.prototype_id = prototypes.prototype_id
+                 AND skill_trees.prototype_version = prototypes.version
+                WHERE prototypes.status = ?
                 """,
                 (query.status.value,),
             )
@@ -203,13 +174,46 @@ class SqlitePrototypeRepository(_SqliteRepository):
                 prototype.status.value,
                 encode_model(prototype),
                 prototype.checksum,
-                _format_datetime(prototype.created_at),
+                format_datetime(prototype.created_at),
                 prototype.prototype_id,
                 prototype.version,
                 expected_status.value,
             ),
         )
+        if changed == 1:
+            try:
+                await self._replace_skill_tree_projection(prototype)
+            except sqlite3.Error as exc:
+                raise_database_error(self.repository_name, exc)
         return changed == 1
+
+    async def _replace_skill_tree_projection(
+        self,
+        prototype: AgentPrototype,
+    ) -> None:
+        await self._connection.execute(
+            """
+            DELETE FROM prototype_skill_trees
+            WHERE prototype_id = ? AND prototype_version = ?
+            """,
+            (prototype.prototype_id, prototype.version),
+        )
+        if prototype.skill_tree is not None:
+            await self._connection.execute(
+                """
+                INSERT INTO prototype_skill_trees (
+                    prototype_id, prototype_version,
+                    tree_id, tree_version, tree_checksum
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    prototype.prototype_id,
+                    prototype.version,
+                    prototype.skill_tree.tree_id,
+                    prototype.skill_tree.version,
+                    prototype.skill_tree.checksum,
+                ),
+            )
 
     def _decode(self, row: aiosqlite.Row) -> AgentPrototype:
         prototype = decode_model(
@@ -243,14 +247,19 @@ class SqlitePrototypeRepository(_SqliteRepository):
             field="definition_checksum",
         )
         require_projection(
-            _format_datetime(prototype.created_at) == row["created_at"],
+            format_datetime(prototype.created_at) == row["created_at"],
             repository=self.repository_name,
             field="created_at",
+        )
+        _require_skill_tree_projection(
+            prototype.skill_tree,
+            row,
+            repository=self.repository_name,
         )
         return prototype
 
 
-class SqliteKnowledgeRepository(_SqliteRepository):
+class SqliteKnowledgeRepository(SqliteRepository):
     repository_name = "knowledge"
 
     async def add(self, knowledge: DomainKnowledge) -> None:
@@ -268,7 +277,7 @@ class SqliteKnowledgeRepository(_SqliteRepository):
                     knowledge.kind.value,
                     encode_model(knowledge),
                     knowledge.checksum,
-                    _format_datetime(knowledge.created_at),
+                    format_datetime(knowledge.created_at),
                 ),
             )
         except sqlite3.IntegrityError as exc:
@@ -331,7 +340,7 @@ class SqliteKnowledgeRepository(_SqliteRepository):
             "version": knowledge.version == row["version"],
             "kind": knowledge.kind.value == row["kind"],
             "checksum": knowledge.checksum == row["checksum"],
-            "created_at": (_format_datetime(knowledge.created_at) == row["created_at"]),
+            "created_at": (format_datetime(knowledge.created_at) == row["created_at"]),
         }
         for field, valid in projections.items():
             require_projection(
@@ -348,7 +357,7 @@ class SqliteKnowledgeRepository(_SqliteRepository):
         return knowledge
 
 
-class SqliteInstanceRepository(_SqliteRepository):
+class SqliteInstanceRepository(SqliteRepository):
     repository_name = "instances"
 
     async def add(self, instance: AgentInstance) -> None:
@@ -358,6 +367,7 @@ class SqliteInstanceRepository(_SqliteRepository):
             )
         try:
             await self._insert_snapshot(instance)
+            await self._insert_skill_tree_projection(instance)
             await self._connection.execute(
                 """
                 INSERT INTO instance_heads (
@@ -367,7 +377,7 @@ class SqliteInstanceRepository(_SqliteRepository):
                 (
                     str(instance.instance_id),
                     instance.revision,
-                    _format_datetime(instance.updated_at),
+                    format_datetime(instance.updated_at),
                 ),
             )
         except sqlite3.Error as exc:
@@ -381,11 +391,15 @@ class SqliteInstanceRepository(_SqliteRepository):
         if revision is None:
             row = await self._fetchone(
                 """
-                SELECT snapshots.*
+                SELECT snapshots.*, skill_trees.tree_id,
+                       skill_trees.tree_version, skill_trees.tree_checksum
                 FROM instance_snapshots AS snapshots
                 JOIN instance_heads AS heads
                   ON heads.instance_id = snapshots.instance_id
                  AND heads.current_revision = snapshots.revision
+                LEFT JOIN instance_skill_trees AS skill_trees
+                  ON skill_trees.instance_id = snapshots.instance_id
+                 AND skill_trees.revision = snapshots.revision
                 WHERE snapshots.instance_id = ?
                 """,
                 (str(instance_id),),
@@ -393,10 +407,16 @@ class SqliteInstanceRepository(_SqliteRepository):
         else:
             row = await self._fetchone(
                 """
-                SELECT instance_id, revision, status, prototype_id,
-                       prototype_version, payload_json, created_at
-                FROM instance_snapshots
-                WHERE instance_id = ? AND revision = ?
+                SELECT snapshots.instance_id, snapshots.revision,
+                       snapshots.status, snapshots.prototype_id,
+                       snapshots.prototype_version, snapshots.payload_json,
+                       snapshots.created_at, skill_trees.tree_id,
+                       skill_trees.tree_version, skill_trees.tree_checksum
+                FROM instance_snapshots AS snapshots
+                LEFT JOIN instance_skill_trees AS skill_trees
+                  ON skill_trees.instance_id = snapshots.instance_id
+                 AND skill_trees.revision = snapshots.revision
+                WHERE snapshots.instance_id = ? AND snapshots.revision = ?
                 """,
                 (str(instance_id), revision),
             )
@@ -416,6 +436,7 @@ class SqliteInstanceRepository(_SqliteRepository):
             )
         try:
             await self._insert_snapshot(instance)
+            await self._insert_skill_tree_projection(instance)
             cursor = await self._connection.execute(
                 """
                 UPDATE instance_heads
@@ -424,7 +445,7 @@ class SqliteInstanceRepository(_SqliteRepository):
                 """,
                 (
                     instance.revision,
-                    _format_datetime(instance.updated_at),
+                    format_datetime(instance.updated_at),
                     str(instance.instance_id),
                     expected_revision,
                 ),
@@ -465,7 +486,25 @@ class SqliteInstanceRepository(_SqliteRepository):
                 instance.prototype.prototype_id,
                 instance.prototype.version,
                 encode_model(instance),
-                _format_datetime(instance.updated_at),
+                format_datetime(instance.updated_at),
+            ),
+        )
+
+    async def _insert_skill_tree_projection(self, instance: AgentInstance) -> None:
+        if instance.skill_tree is None:
+            return
+        await self._connection.execute(
+            """
+            INSERT INTO instance_skill_trees (
+                instance_id, revision, tree_id, tree_version, tree_checksum
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                str(instance.instance_id),
+                instance.revision,
+                instance.skill_tree.tree_id,
+                instance.skill_tree.version,
+                instance.skill_tree.checksum,
             ),
         )
 
@@ -483,7 +522,7 @@ class SqliteInstanceRepository(_SqliteRepository):
             "prototype_version": (
                 instance.prototype.version == row["prototype_version"]
             ),
-            "created_at": (_format_datetime(instance.updated_at) == row["created_at"]),
+            "created_at": (format_datetime(instance.updated_at) == row["created_at"]),
             "configuration_checksum": (
                 sha256_model(instance.configuration) == instance.prototype.checksum
             ),
@@ -494,10 +533,15 @@ class SqliteInstanceRepository(_SqliteRepository):
                 repository=self.repository_name,
                 field=field,
             )
+        _require_skill_tree_projection(
+            instance.skill_tree,
+            row,
+            repository=self.repository_name,
+        )
         return instance
 
 
-class SqliteAgentSpecRepository(_SqliteRepository):
+class SqliteAgentSpecRepository(SqliteRepository):
     repository_name = "agent-specs"
 
     async def get(
@@ -529,7 +573,7 @@ class SqliteAgentSpecRepository(_SqliteRepository):
                     spec.revision,
                     encode_model(spec),
                     spec.spec_checksum,
-                    _format_datetime(spec.generated_at),
+                    format_datetime(spec.generated_at),
                 ),
             )
             try:
@@ -550,7 +594,7 @@ class SqliteAgentSpecRepository(_SqliteRepository):
             "revision": spec.revision == row["revision"],
             "checksum": spec.spec_checksum == row["checksum"],
             "spec_checksum": checksum_agent_spec(spec) == spec.spec_checksum,
-            "created_at": _format_datetime(spec.generated_at) == row["created_at"],
+            "created_at": format_datetime(spec.generated_at) == row["created_at"],
         }
         for field, valid in projections.items():
             require_projection(
@@ -561,7 +605,7 @@ class SqliteAgentSpecRepository(_SqliteRepository):
         return spec
 
 
-class SqliteAuditRepository(_SqliteRepository):
+class SqliteAuditRepository(SqliteRepository):
     repository_name = "audit"
 
     async def append(self, event: AuditEvent) -> None:
@@ -584,7 +628,7 @@ class SqliteAuditRepository(_SqliteRepository):
                     str(event.correlation_id),
                     None if event.causation_id is None else str(event.causation_id),
                     encode_json_object(event.payload),
-                    _format_datetime(event.created_at),
+                    format_datetime(event.created_at),
                 ),
             )
         except sqlite3.Error as exc:
@@ -609,10 +653,10 @@ class SqliteAuditRepository(_SqliteRepository):
             parameters.append(query.actor)
         if query.created_from is not None:
             clauses.append("created_at >= ?")
-            parameters.append(_format_datetime(query.created_from))
+            parameters.append(format_datetime(query.created_from))
         if query.created_to is not None:
             clauses.append("created_at <= ?")
-            parameters.append(_format_datetime(query.created_to))
+            parameters.append(format_datetime(query.created_to))
 
         where = "" if not clauses else " WHERE " + " AND ".join(clauses)
         count_row = await self._fetchone(
@@ -669,7 +713,7 @@ class SqliteAuditRepository(_SqliteRepository):
             raise error from exc
 
 
-class SqliteIdempotencyRepository(_SqliteRepository):
+class SqliteIdempotencyRepository(SqliteRepository):
     repository_name = "idempotency"
 
     async def get(self, idempotency_key: str) -> IdempotencyRecord | None:
@@ -719,8 +763,8 @@ class SqliteIdempotencyRepository(_SqliteRepository):
                     record.operation,
                     record.request_hash,
                     encode_json_object(record.response),
-                    _format_datetime(record.created_at),
-                    _format_datetime(record.expires_at),
+                    format_datetime(record.created_at),
+                    format_datetime(record.expires_at),
                 ),
             )
         except sqlite3.Error as exc:
@@ -729,5 +773,24 @@ class SqliteIdempotencyRepository(_SqliteRepository):
     async def delete_expired(self, expired_at: datetime) -> int:
         return await self._execute(
             "DELETE FROM idempotency_records WHERE expires_at <= ?",
-            (_format_datetime(expired_at),),
+            (format_datetime(expired_at),),
         )
+
+
+def _require_skill_tree_projection(
+    reference: SkillTreeRef | None,
+    row: aiosqlite.Row,
+    *,
+    repository: str,
+) -> None:
+    projected = (row["tree_id"], row["tree_version"], row["tree_checksum"])
+    expected = (
+        (None, None, None)
+        if reference is None
+        else (reference.tree_id, reference.version, reference.checksum)
+    )
+    require_projection(
+        projected == expected,
+        repository=repository,
+        field="skill_tree",
+    )

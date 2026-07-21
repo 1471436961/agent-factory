@@ -6,10 +6,15 @@ from typing import Protocol, Self
 from agent_factory.application.repositories import (
     AgentSpecRepository,
     AuditRepository,
+    EvaluationReportRepository,
+    EvaluationReviewRepository,
+    EvaluationSuiteRepository,
     IdempotencyRepository,
     InstanceRepository,
     KnowledgeRepository,
     PrototypeRepository,
+    SkillTreeRepository,
+    TaskOutcomeRepository,
 )
 
 
@@ -20,6 +25,11 @@ class UnitOfWork(Protocol):
     specs: AgentSpecRepository
     audit: AuditRepository
     idempotency: IdempotencyRepository
+    skill_trees: SkillTreeRepository
+    evaluation_suites: EvaluationSuiteRepository
+    evaluation_reports: EvaluationReportRepository
+    evaluation_reviews: EvaluationReviewRepository
+    task_outcomes: TaskOutcomeRepository
 
     async def __aenter__(self) -> Self: ...
 

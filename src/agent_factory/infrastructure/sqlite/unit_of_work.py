@@ -12,12 +12,24 @@ import aiosqlite
 from agent_factory.application.repositories import (
     AgentSpecRepository,
     AuditRepository,
+    EvaluationReportRepository,
+    EvaluationReviewRepository,
+    EvaluationSuiteRepository,
     IdempotencyRepository,
     InstanceRepository,
     KnowledgeRepository,
     PrototypeRepository,
+    SkillTreeRepository,
+    TaskOutcomeRepository,
 )
 from agent_factory.infrastructure.sqlite.codec import raise_database_error
+from agent_factory.infrastructure.sqlite.governance_repositories import (
+    SqliteEvaluationReportRepository,
+    SqliteEvaluationReviewRepository,
+    SqliteEvaluationSuiteRepository,
+    SqliteSkillTreeRepository,
+    SqliteTaskOutcomeRepository,
+)
 from agent_factory.infrastructure.sqlite.repositories import (
     SqliteAgentSpecRepository,
     SqliteAuditRepository,
@@ -35,6 +47,11 @@ class SqliteUnitOfWork:
     specs: AgentSpecRepository
     audit: AuditRepository
     idempotency: IdempotencyRepository
+    skill_trees: SkillTreeRepository
+    evaluation_suites: EvaluationSuiteRepository
+    evaluation_reports: EvaluationReportRepository
+    evaluation_reviews: EvaluationReviewRepository
+    task_outcomes: TaskOutcomeRepository
 
     def __init__(
         self,
@@ -77,6 +94,11 @@ class SqliteUnitOfWork:
         self.specs = SqliteAgentSpecRepository(connection)
         self.audit = SqliteAuditRepository(connection)
         self.idempotency = SqliteIdempotencyRepository(connection)
+        self.skill_trees = SqliteSkillTreeRepository(connection)
+        self.evaluation_suites = SqliteEvaluationSuiteRepository(connection)
+        self.evaluation_reports = SqliteEvaluationReportRepository(connection)
+        self.evaluation_reviews = SqliteEvaluationReviewRepository(connection)
+        self.task_outcomes = SqliteTaskOutcomeRepository(connection)
         return self
 
     async def __aexit__(

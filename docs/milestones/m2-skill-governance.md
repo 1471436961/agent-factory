@@ -70,7 +70,7 @@ M2 不实现：
 
 ## 5. 实施工作包
 
-### M2.1 领域契约与纯算法
+### M2.1 领域契约与纯算法（已完成）
 
 - 完成技能、评估、复核、观察模型与稳定错误码。
 - DAG 拒绝环、缺失父节点、自依赖、重复节点和未知 active node。
@@ -78,7 +78,7 @@ M2 不实现：
 - 固定 Prompt appendix、工具、知识槽和 output schema 的组合与冲突规则。
 - 增加向后兼容测试：M1 Prototype、Instance 和 AgentSpec JSON 仍可读取。
 
-### M2.2 SQLite 持久化
+### M2.2 SQLite 持久化（已完成）
 
 - 新增 forward-only `003_skill_governance.sql`，不修改 `001_initial.sql` 或 `002_persistence_contracts.sql`。
 - 增加 SkillTree、EvaluationSuite、EvaluationReport、EvaluationReview、TaskOutcome 仓储。
@@ -86,7 +86,7 @@ M2 不实现：
 - 保存 canonical payload 与关系型投影；读取时校验 ID、版本、checksum、来源引用和外键。
 - 覆盖 migration 重入、损坏检测、round trip、唯一键与回滚测试。
 
-### M2.3 确定性评估服务
+### M2.3 确定性评估服务（未开始）
 
 - 注册并查询技能树和评估套件。
 - 调用 M2.1 已验证的 `DeterministicRuleEngine`，将纯 `EvaluationOutcome` 与服务端生成的报告 ID、Spec 来源和时间组合为 `EvaluationReport`。
@@ -123,7 +123,7 @@ M2 不实现：
 - [x] 技能树非法图和有效多分支 DAG 均有确定性单元测试。
 - [x] 相同原型与 active node 集合不受输入顺序影响，生成相同配置与 checksum。
 - [x] 评估规则覆盖全部 M2 RuleKind，HARD/SOFT 与人工复核决策有边界测试。
-- [ ] EvaluationReport 永久绑定 instance revision、AgentSpec checksum 和 suite version。
+- [x] EvaluationReport 永久绑定 instance revision、AgentSpec checksum 和 suite version。
 - [ ] stale report、错误 suite、缺失父节点和未通过报告均禁止晋升。
 - [ ] 晋升新增知识、实例快照、审计和幂等响应同时成功或同时回滚。
 - [ ] 同一 expected revision 的并发晋升只有一个成功。
@@ -131,7 +131,7 @@ M2 不实现：
 - [ ] 降级后的配置从原型重建，不残留已移除节点独有工具、Prompt 或知识绑定。
 - [ ] 所有治理写操作均有审计、幂等和失败原子性证据。
 - [ ] M1 历史快照可读取，M2 数据在应用重启后可完整恢复。
-- [ ] domain、application 和全项目 branch coverage 分别不低于 90%、85% 和 80%。
+- [x] domain、application 和全项目 branch coverage 分别不低于 90%、85% 和 80%。
 - [ ] Ruff、mypy strict、pytest、sdist/wheel 与 M2 退出候选 GitHub Actions 全部通过。
 
 ## 7. 验收证据矩阵
@@ -161,7 +161,7 @@ M2 不实现：
 
 ## 9. 阶段报告
 
-当前状态：M2.1 领域契约与纯算法已完成本地实现、质量门禁和实现提交；M2.2 尚未开始。该状态不代表完整技能治理闭环或 M2 阶段已经验收。
+当前状态：M2.1 已完成并提交；M2.2 已完成本地实现和第一轮质量门禁，尚未形成实现提交；M2.3 尚未开始。该状态不代表完整技能治理闭环或 M2 阶段已经验收。
 
 - M1 封存提交：`acf2b5d docs: close M1 milestone`。
 - M1 封存远程证据：GitHub Actions CI #14 在提交 `acf2b5d` 上通过。
@@ -171,4 +171,9 @@ M2 不实现：
 - M2.1 本地测试：修改前基线 `87 passed`；实现后 `114 passed`。
 - M2.1 本地质量证据：Ruff 通过、mypy strict 通过；branch coverage 为 domain 96%、application 93%、total 93%；sdist/wheel 构建成功，wheel 包含全部 M2.1 模块及两份已发布 migration。
 - M2.1 兼容证据：M1 Prototype、Instance 和 AgentSpec 固定 JSON 可读取；修改前记录的 AgentSpec 1.0 golden checksum `e979beccb60f339b3a846fd5ca8c1916a341b0a29daa1260fb0396e14a59dc0b` 保持不变。
-- 第 6 节只勾选已经由当前测试直接证明的三项；其余条目等待后续工作包产生证据。
+- M2.2 代码边界：新增 `003_skill_governance.sql`、五类治理 Repository、UoW 端口、Prototype/Instance 技能树来源投影，以及 SkillTree、EvaluationSuite、AgentSpec 1.1 的确定性 checksum；未新增 Controller、REST、晋升或降级流程。
+- M2.2 持久化约束：报告通过复合外键绑定现有 AgentSpec revision/checksum、SkillTree 和 EvaluationSuite；TaskOutcome 通过复合外键绑定同一 instance revision 的报告；review 对 report 保持唯一。
+- M2.2 兼容证据：包含 Prototype、Instance 和 AgentSpec 的真实 v2 数据库可迁移到 v3 并继续读取；AgentSpec 1.0 golden checksum 保持不变。
+- M2.2 本地测试：开始前基线 `114 passed`；第一轮完整门禁 `124 passed`，Ruff 与 mypy strict 通过。
+- M2.2 本地质量证据：branch coverage 为 domain 96%、application 94%、total 93%；sdist/wheel 构建成功，且两种产物均包含 `003_skill_governance.sql`、治理仓储和共享 SQLite 基类。
+- 第 6 节只勾选已经由当前测试直接证明的五项；其余条目等待后续工作包产生证据。

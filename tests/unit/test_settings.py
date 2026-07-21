@@ -15,6 +15,7 @@ def test_settings_defaults_are_safe_for_local_development() -> None:
     assert settings.default_page_size <= settings.max_page_size
     assert (settings.migrations_dir / "001_initial.sql").is_file()
     assert (settings.migrations_dir / "002_persistence_contracts.sql").is_file()
+    assert (settings.migrations_dir / "003_skill_governance.sql").is_file()
     assert settings.sqlite_busy_timeout_ms == 5_000
     assert settings.max_inline_knowledge_bytes == 262_144
 

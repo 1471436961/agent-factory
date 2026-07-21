@@ -1,9 +1,10 @@
 """Pure AgentSpec construction from a validated instance snapshot."""
 
+import hashlib
 from collections import Counter
 from datetime import datetime
 
-from agent_factory.domain.common import semver_tuple, sha256_model
+from agent_factory.domain.common import canonical_json_bytes, semver_tuple, sha256_model
 from agent_factory.domain.errors import (
     KnowledgeCardinalityError,
     MissingKnowledgeBindingError,
@@ -23,7 +24,13 @@ def checksum_agent_spec(spec: AgentSpec) -> str:
     excluded = {"spec_checksum"}
     if spec.schema_version == "1.0":
         excluded.add("skill_tree")
-    return sha256_model(spec, exclude=excluded)
+        return sha256_model(spec, exclude=excluded)
+
+    payload = spec.model_dump(mode="json", exclude=excluded, exclude_none=False)
+    payload["active_skill_nodes"] = sorted(payload["active_skill_nodes"])
+    for tool in payload["tools"]:
+        tool["permission_tags"] = sorted(tool["permission_tags"])
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
 
 
 class AgentSpecBuilder:

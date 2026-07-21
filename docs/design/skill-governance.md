@@ -423,7 +423,7 @@ M2 最小路由：
 
 所有写路由要求 `X-Actor-ID` 并支持 `Idempotency-Key`。该 actor 仍是不可信标签。Router 只转换 DTO；规则和事务留在 Controller。
 
-新增错误码至少包括：`SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED`。每个错误必须进入 REST 显式映射集合测试。
+新增错误码至少包括：`SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_REPORT_ALREADY_EXISTS`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED`。每个错误必须进入 REST 显式映射集合测试。
 
 ## 8. 并发、审计与安全边界
 
@@ -455,4 +455,17 @@ M2 最小路由：
 | 评估契约 | `domain/evaluation.py` | 参数、唯一性、报告不变量测试 |
 | 确定性规则引擎 | `domain/services/evaluation.py` | 六类规则、决策顺序和 timeout 测试 |
 
-M2.1 只完成纯领域能力。`SkillTreeRef` 是否引用已注册对象、报告的服务端来源字段、晋升事务和 REST 暴露仍分别属于 M2.2-M2.6，不能由这些单元测试推导为已完成。
+M2.1 只完成纯领域能力。M2.2 已通过数据库外键保证持久化的 `SkillTreeRef` 指向已注册对象，但报告的服务端来源构造、晋升事务和 REST 暴露仍分别属于 M2.3-M2.6，不能由持久层测试推导为已完成。
+
+## 11. M2.2 实现映射
+
+| 契约 | 代码位置 | 直接证据 |
+| --- | --- | --- |
+| forward-only v3 schema | `infrastructure/sqlite/sql/003_skill_governance.sql` | migration 重入、checksum 与 v2 升级测试 |
+| 五类治理 Repository | `application/repositories.py`、`infrastructure/sqlite/governance_repositories.py` | round trip、唯一键、只读与回滚测试 |
+| Tree/Suite/Spec 确定性 checksum | `domain/services/skills.py`、`domain/services/evaluation.py`、`domain/services/spec.py` | `test_m2_checksums.py` 与 M1 golden checksum |
+| Prototype/Instance 技能树来源投影 | `infrastructure/sqlite/repositories.py` | 来源往返与投影损坏测试 |
+| 报告与观察来源外键 | `003_skill_governance.sql` | 错误 Spec checksum 与跨实例 outcome 拒绝测试 |
+| UoW 治理端口 | `application/unit_of_work.py`、`infrastructure/sqlite/unit_of_work.py` | commit、rollback、read-only 与重启恢复测试 |
+
+M2.2 只建立治理数据的可靠存储边界。Repository 不创建服务端报告来源、不决定晋升、不写治理审计或幂等记录；这些跨仓储业务事务从 M2.3 开始由 Controller 组织。

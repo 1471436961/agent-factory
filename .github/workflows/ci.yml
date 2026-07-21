@@ -63,7 +63,7 @@ jobs:
       - name: Build distributions
         run: uv build
 
-      - name: Verify packaged migration resources
+      - name: Verify packaged application resources
         run: >-
           uv run python -c "import glob, zipfile;
           wheel = glob.glob('dist/*.whl')[0];
@@ -82,7 +82,10 @@ jobs:
             'agent_factory/interfaces/api/routers/instances.py',
             'agent_factory/interfaces/api/routers/knowledge.py',
             'agent_factory/interfaces/api/routers/prototypes.py',
+            'agent_factory/infrastructure/sqlite/governance_repositories.py',
+            'agent_factory/infrastructure/sqlite/repository_base.py',
             'agent_factory/infrastructure/sqlite/sql/001_initial.sql',
-            'agent_factory/infrastructure/sqlite/sql/002_persistence_contracts.sql'
+            'agent_factory/infrastructure/sqlite/sql/002_persistence_contracts.sql',
+            'agent_factory/infrastructure/sqlite/sql/003_skill_governance.sql'
           };
           assert expected <= set(names)"

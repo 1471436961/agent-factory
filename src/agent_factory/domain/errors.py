@@ -209,6 +209,11 @@ class EvaluationReportNotFoundError(FactoryError):
     default_message = "Evaluation report was not found"
 
 
+class EvaluationReportAlreadyExistsError(FactoryError):
+    code = "EVALUATION_REPORT_ALREADY_EXISTS"
+    default_message = "Evaluation report already exists"
+
+
 class EvaluationSuiteMismatchError(FactoryError):
     code = "EVALUATION_SUITE_MISMATCH"
     default_message = "Evaluation suite does not match the required suite"
@@ -227,6 +232,11 @@ class EvaluationRuleTimeoutError(FactoryError):
 class EvaluationReviewConflictError(FactoryError):
     code = "EVALUATION_REVIEW_CONFLICT"
     default_message = "Evaluation report already has a final review"
+
+
+class TaskOutcomeAlreadyExistsError(FactoryError):
+    code = "TASK_OUTCOME_ALREADY_EXISTS"
+    default_message = "Task outcome already exists"
 
 
 class StaleEvaluationReportError(FactoryError):
