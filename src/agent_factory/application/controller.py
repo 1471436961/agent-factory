@@ -10,6 +10,7 @@ from agent_factory.application.commands import (
     DeprecatePrototypeCommand,
     EvaluateInstanceCommand,
     KnowledgeSelection,
+    PromoteAgentCommand,
     PublishPrototypeCommand,
     RegisterEvaluationSuiteCommand,
     RegisterKnowledgeCommand,
@@ -60,12 +61,14 @@ from agent_factory.domain.errors import (
     KnowledgeChecksumMismatchError,
     KnowledgeInjectionModeMismatchError,
     KnowledgePayloadTooLargeError,
+    PromotionRejectedError,
     PrototypeNotFoundError,
     PrototypeNotPublishedError,
     RepositoryUnavailableError,
     RevisionConflictError,
     SkillTreeNotBoundError,
     SkillTreeNotFoundError,
+    StaleEvaluationReportError,
 )
 from agent_factory.domain.evaluation import (
     EvaluationReport,
@@ -73,6 +76,7 @@ from agent_factory.domain.evaluation import (
     EvaluationSuite,
 )
 from agent_factory.domain.models import (
+    AgentDefinition,
     AgentInstance,
     AgentPrototype,
     AgentSpec,
@@ -83,8 +87,9 @@ from agent_factory.domain.models import (
 from agent_factory.domain.references import EvaluationSuiteRef, SkillTreeRef
 from agent_factory.domain.services.evaluation import checksum_evaluation_suite
 from agent_factory.domain.services.knowledge import KnowledgeBindingPolicy
+from agent_factory.domain.services.promotion import PromotionPolicy
 from agent_factory.domain.services.prototype import PrototypePolicy
-from agent_factory.domain.services.skills import checksum_skill_tree
+from agent_factory.domain.services.skills import apply_skill_nodes, checksum_skill_tree
 from agent_factory.domain.services.spec import AgentSpecBuilder
 from agent_factory.domain.skills import SkillTree
 
@@ -98,6 +103,7 @@ REGISTER_EVALUATION_SUITE = "register-evaluation-suite"
 REGISTER_SKILL_TREE = "register-skill-tree"
 EVALUATE_INSTANCE = "evaluate-instance"
 REVIEW_EVALUATION = "review-evaluation"
+PROMOTE_AGENT = "promote-agent"
 
 
 class FactoryController:
@@ -111,6 +117,7 @@ class FactoryController:
         id_generator: IdGenerator,
         correlation_context: CorrelationContext,
         prototype_policy: PrototypePolicy,
+        promotion_policy: PromotionPolicy,
         knowledge_policy: KnowledgeBindingPolicy,
         tool_policy: ToolPolicy,
         spec_builder: AgentSpecBuilder,
@@ -126,6 +133,7 @@ class FactoryController:
         self._id_generator = id_generator
         self._correlation_context = correlation_context
         self._prototype_policy = prototype_policy
+        self._promotion_policy = promotion_policy
         self._knowledge_policy = knowledge_policy
         self._tool_policy = tool_policy
         self._spec_builder = spec_builder
@@ -880,6 +888,163 @@ class FactoryController:
             await uow.commit()
             return review
 
+    async def promote_agent(
+        self,
+        command: PromoteAgentCommand,
+    ) -> AgentInstance:
+        now = self._clock.now()
+        async with self._uow_factory() as uow:
+            replay = await self._idempotency.replay(
+                repository=uow.idempotency,
+                command=command,
+                operation=PROMOTE_AGENT,
+                response_type=AgentInstance,
+                now=now,
+            )
+            if replay is not None:
+                await uow.commit()
+                return replay
+
+            current = await self._require_instance(
+                uow.instances,
+                command.instance_id,
+                None,
+            )
+            if current.revision != command.expected_revision:
+                raise RevisionConflictError(
+                    details={
+                        "instance_id": str(current.instance_id),
+                        "expected_revision": command.expected_revision,
+                        "actual_revision": current.revision,
+                    }
+                )
+            if current.skill_tree is None:
+                raise SkillTreeNotBoundError(
+                    details={"instance_id": str(current.instance_id)}
+                )
+            tree = await self._require_skill_tree_ref(
+                uow.skill_trees,
+                current.skill_tree,
+            )
+            prototype = await self._require_prototype(
+                uow.prototypes,
+                current.prototype.prototype_id,
+                current.prototype.version,
+            )
+            self._validate_prototype_source(prototype, current)
+            expected_current_configuration = apply_skill_nodes(
+                base=prototype.definition,
+                tree=tree,
+                active_node_ids=current.active_skill_nodes,
+            )
+            if current.configuration != expected_current_configuration:
+                raise RepositoryUnavailableError(
+                    details={
+                        "repository": "instances",
+                        "reason": "configuration-source-mismatch",
+                        "instance_id": str(current.instance_id),
+                        "revision": current.revision,
+                    }
+                )
+
+            report = await self._require_evaluation_report(
+                uow.evaluation_reports,
+                command.evaluation_report_id,
+            )
+            if (
+                report.instance_id != current.instance_id
+                or report.instance_revision != current.revision
+                or report.skill_tree != current.skill_tree
+            ):
+                raise StaleEvaluationReportError(
+                    details={
+                        "report_id": str(report.report_id),
+                        "report_revision": report.instance_revision,
+                        "instance_revision": current.revision,
+                    }
+                )
+            spec = await uow.specs.get(current.instance_id, current.revision)
+            if spec is None:
+                raise RepositoryUnavailableError(
+                    details={
+                        "repository": "agent-specs",
+                        "reason": "report-source-spec-missing",
+                        "instance_id": str(current.instance_id),
+                        "revision": current.revision,
+                    }
+                )
+            self._validate_spec_source(spec, current)
+            review = None
+            if command.evaluation_review_id is not None:
+                review = await uow.evaluation_reviews.get(command.evaluation_review_id)
+                if review is None:
+                    raise PromotionRejectedError(
+                        details={
+                            "report_id": str(report.report_id),
+                            "review_id": str(command.evaluation_review_id),
+                            "reason": "review-not-found",
+                        }
+                    )
+
+            target = self._promotion_policy.validate(
+                instance=current,
+                spec=spec,
+                tree=tree,
+                target_node_id=command.target_node_id,
+                report=report,
+                review=review,
+            )
+            active_nodes = frozenset((*current.active_skill_nodes, target.node_id))
+            configuration = apply_skill_nodes(
+                base=prototype.definition,
+                tree=tree,
+                active_node_ids=active_nodes,
+            )
+            self._tool_policy.resolve(configuration.tools)
+            bindings = await self._build_promotion_bindings(
+                uow,
+                current=current,
+                configuration=configuration,
+                selections=command.knowledge_selections,
+                actor=command.actor,
+                now=now,
+            )
+            promoted = AgentInstance.model_validate(
+                {
+                    **current.model_dump(mode="python"),
+                    "revision": current.revision + 1,
+                    "configuration": configuration,
+                    "knowledge_bindings": bindings,
+                    "active_skill_nodes": active_nodes,
+                    "updated_at": now,
+                }
+            )
+            await uow.instances.save_snapshot(
+                promoted,
+                expected_revision=current.revision,
+            )
+            correlation_id = self._correlation_id()
+            await uow.audit.append(
+                self._audit_factory.skill_promoted(
+                    current,
+                    promoted,
+                    node_id=target.node_id,
+                    report_id=report.report_id,
+                    actor=command.actor,
+                    correlation_id=correlation_id,
+                    at=now,
+                )
+            )
+            await self._idempotency.store(
+                repository=uow.idempotency,
+                command=command,
+                operation=PROMOTE_AGENT,
+                response=promoted,
+                now=now,
+            )
+            await uow.commit()
+            return promoted
+
     async def export_spec(
         self,
         instance_id: UUID,
@@ -1083,6 +1248,26 @@ class FactoryController:
             )
 
     @staticmethod
+    def _validate_prototype_source(
+        prototype: AgentPrototype,
+        instance: AgentInstance,
+    ) -> None:
+        if (
+            prototype.prototype_id != instance.prototype.prototype_id
+            or prototype.version != instance.prototype.version
+            or prototype.checksum != instance.prototype.checksum
+            or prototype.skill_tree != instance.skill_tree
+        ):
+            raise RepositoryUnavailableError(
+                details={
+                    "repository": "prototypes",
+                    "reason": "prototype-source-mismatch",
+                    "instance_id": str(instance.instance_id),
+                    "revision": instance.revision,
+                }
+            )
+
+    @staticmethod
     def _definition_checksum(command: RegisterPrototypeCommand) -> str:
         return sha256_model(command.definition)
 
@@ -1195,6 +1380,99 @@ class FactoryController:
                 raise KnowledgeInjectionModeMismatchError(
                     details={"slot_name": binding.slot_name}
                 )
+
+    async def _build_promotion_bindings(
+        self,
+        uow: UnitOfWork,
+        *,
+        current: AgentInstance,
+        configuration: AgentDefinition,
+        selections: tuple[KnowledgeSelection, ...],
+        actor: str,
+        now: datetime,
+    ) -> tuple[KnowledgeBinding, ...]:
+        existing_keys = {
+            (
+                binding.slot_name,
+                binding.knowledge_id,
+                binding.knowledge_version,
+            )
+            for binding in current.knowledge_bindings
+        }
+        selection_keys = {
+            (selection.slot_name, selection.knowledge_id, selection.version)
+            for selection in selections
+        }
+        duplicate_keys = existing_keys & selection_keys
+        if duplicate_keys:
+            raise KnowledgeAlreadyBoundError(
+                details={
+                    "slot_names": sorted(key[0] for key in duplicate_keys),
+                }
+            )
+
+        complete_selections = (
+            *self._binding_selections(current.knowledge_bindings),
+            *selections,
+        )
+        packages = await uow.knowledge.get_many(
+            tuple(
+                (selection.knowledge_id, selection.version)
+                for selection in complete_selections
+            )
+        )
+        validated = self._knowledge_policy.validate_and_build(
+            definition=configuration,
+            selections=complete_selections,
+            packages=packages,
+            bound_at=now,
+            bound_by=actor,
+        )
+        validated_by_ref = {
+            (
+                binding.slot_name,
+                binding.knowledge_id,
+                binding.knowledge_version,
+            ): binding
+            for binding in validated
+        }
+        for binding in current.knowledge_bindings:
+            expected = validated_by_ref[
+                (
+                    binding.slot_name,
+                    binding.knowledge_id,
+                    binding.knowledge_version,
+                )
+            ]
+            if binding.knowledge_checksum != expected.knowledge_checksum:
+                raise KnowledgeChecksumMismatchError(
+                    details={
+                        "slot_name": binding.slot_name,
+                        "knowledge_id": binding.knowledge_id,
+                        "version": binding.knowledge_version,
+                    }
+                )
+            if binding.injection_mode is not expected.injection_mode:
+                raise KnowledgeInjectionModeMismatchError(
+                    details={"slot_name": binding.slot_name}
+                )
+
+        new_bindings = tuple(
+            validated_by_ref[
+                (selection.slot_name, selection.knowledge_id, selection.version)
+            ]
+            for selection in selections
+        )
+        return tuple(
+            sorted(
+                (*current.knowledge_bindings, *new_bindings),
+                key=lambda binding: (
+                    binding.slot_name,
+                    binding.knowledge_id,
+                    semver_tuple(binding.knowledge_version),
+                ),
+            )
+        )
 
     def _correlation_id(self) -> UUID:
         value = self._correlation_context.get()

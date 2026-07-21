@@ -141,3 +141,14 @@
    - 最终修正：M2 新增 `EvaluationSubmission`、`SkillTreeRef`、独立 `EvaluationReview` 和带 `knowledge_selections` 的晋升命令；报告绑定 instance revision、AgentSpec checksum、SkillTreeRef 与 EvaluationSuiteRef，晋升策略在使用时完成全量一致性检查。M1 历史对象兼容缺失 skill tree，新对象输出 AgentSpec 1.1。
    - 证据：`docs/milestones/m2-skill-governance.md` 第 4 节；`docs/design/skill-governance.md` 第 2-5 节；`docs/architecture.md` 第 7、9、10、14 章。
    - 对后续路线的影响：M2.1 必须先实现上述领域契约和纯算法；M2.2 使用 forward-only `003_skill_governance.sql` 保存来源投影；M2.3-M2.6 的评估、晋升、降级和 REST 验收均以这些不可变引用与原子事务为前提。
+
+1. **Instance 配置完整性从 Prototype 等值修正为 revision 独立 checksum**
+
+   - 日期：2026-07-21
+   - 里程碑：M2.4 晋升与配置重建
+   - 原判断：M2.4 可以复用现有 Instance snapshot 持久化契约，不需要新增 migration；Repository 可继续用 `sha256(instance.configuration) == instance.prototype.checksum` 检查配置来源。
+   - 原判断的不足：该等式只在配置尚未特化时成立。合法晋升会从 Prototype 基线叠加 active skill nodes，产生新的 configuration；Repository 因而把成功写入的晋升快照误判为 `projection-mismatch:configuration_checksum`，并使并发请求无法到达 revision CAS。
+   - 人工 review 结论：不能通过跳过 active snapshot 的校验来规避问题；每个 Instance revision 必须保存并校验自己的 configuration checksum，继续保留持久化损坏检测。
+   - 最终修正：新增 forward-only `004_instance_configuration_checksum.sql`，为历史快照回填 Prototype checksum，并用触发器约束新值；Repository 写入每个 revision 的实际 configuration checksum，读取时与 payload 重算值比较。Controller 另从 Prototype definition 和完整 active node 集合重建并核对当前配置，分别覆盖存储完整性和业务来源完整性。
+   - 证据：首轮 M2.4 SQLite 集成测试在晋升 revision 2 读回时稳定触发 `projection-mismatch:configuration_checksum`；修正后连续晋升、历史升级、checksum 篡改检测和同 revision 并发单胜测试通过。
+   - 对后续路线的影响：M2.5 降级快照必须写入自身 configuration checksum；发布制品与 CI 增加 `004` 资源检查；任何后续会改变 Instance configuration 的操作都不能再假设它与 Prototype definition checksum 相等。

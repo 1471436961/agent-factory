@@ -2,7 +2,7 @@
 
 ## 1. 解决的问题与边界
 
-本文起源于 M1.2，并在 M2.2 扩展。它把不可变领域快照连接到文件型 SQLite，并建立应用服务可以依赖的 Repository 与 Unit of Work 契约。它负责持久化、事务、乐观并发、canonical JSON、关系投影和安全错误转换；不实现原型状态策略、知识槽匹配、评估决策、晋升/降级、Controller 或 REST 路由。
+本文起源于 M1.2，并在 M2.2、M2.4 扩展。它把不可变领域快照连接到文件型 SQLite，并建立应用服务可以依赖的 Repository 与 Unit of Work 契约。它负责持久化、事务、乐观并发、canonical JSON、关系投影和安全错误转换；不实现原型状态策略、知识槽匹配、评估决策、晋升/降级、Controller 或 REST 路由。
 
 ## 2. 依赖方向
 
@@ -85,7 +85,7 @@ Pydantic snapshot
 
 M2.2 对包含无序集合的 checksum 做显式规范化：SkillTree 的 parents、granted tools 和 knowledge kinds，AgentSpec 1.1 的 active nodes 与 permission tags 均先排序再哈希。AgentSpec 1.0 继续走原有算法，已发布的 golden checksum 不变。
 
-## 6. Migrations 002 与 003
+## 6. Migrations 002、003 与 004
 
 `001_initial.sql` 已受 migration checksum 保护，不允许原地修改。`002_persistence_contracts.sql`：
 
@@ -106,6 +106,14 @@ M2.2 对包含无序集合的 checksum 做显式规范化：SkillTree 的 parent
 - review 对 report 使用唯一约束，TaskOutcome 使用 `(task_id, instance_id, skill_node_id)` 唯一标识。
 - Report、Review 和 TaskOutcome 额外保存完整 canonical payload 的 SHA-256，读取时重算，以覆盖未拆为投影列的证据、评论等字段。
 
+`004_instance_configuration_checksum.sql` 修正技能特化后的配置投影：
+
+- 为 `instance_snapshots` 增加 revision 级 `configuration_checksum`；
+- M2.4 之前的受支持写路径不会改变 configuration，因此历史行可由来源 Prototype checksum 回填；
+- insert/update trigger 拒绝缺失或长度非法的 checksum；
+- Repository 对每个新 revision 写入实际 configuration checksum，并在读取时从 payload 重算比较；
+- Prototype checksum 继续只表示来源 definition，不再被误用为所有后续配置的 checksum。
+
 ## 7. 并发与错误边界
 
 实例并发写入可能在两个位置冲突：相同 `N+1` 快照的主键，或 head compare-and-swap 的 `rowcount != 1`。两者统一表现为 `RevisionConflictError`，并依赖 UoW 回滚整个事务。服务端不自动合并两个并发配置变更。
@@ -121,9 +129,9 @@ SQLite 驱动错误统一转换为 `RepositoryUnavailableError`；响应不得�
 
 ## 9. 验证方法
 
-- migration 集成测试证明 001/002/003 顺序执行、重复运行幂等，以及 002 guard 失败时新增列、历史版本和旧记录全部回滚。
-- v2 升级测试先写入 M1 Prototype、Instance 和 AgentSpec，再只应用 003，证明旧快照迁移后仍可读取。
+- migration 集成测试证明 001/002/003/004 顺序执行、重复运行幂等，以及 002 guard 失败时新增列、历史版本和旧记录全部回滚。
+- v2 升级测试先写入 M1 Prototype、Instance 和 AgentSpec，再应用 003/004，证明旧快照完成 checksum 回填后仍可读取。
 - 真实 SQLite 测试覆盖 M1 六类仓储和 M2 五类仓储往返、canonical 快照、来源外键、稳定唯一键错误、状态 CAS、审计查询和观察窗口。
 - 两个并发写 UoW 同时保存 revision 2，断言一个提交、一个 `REVISION_CONFLICT`，head 和历史快照保持一致。
 - 故障注入在业务写和审计写之后抛出异常，断言两者都不存在。
-- 只读 UoW 写入、损坏 JSON 和投影篡改均返回安全的 `REPOSITORY_UNAVAILABLE`。
+- 只读 UoW 写入、损坏 JSON、关系投影和 configuration checksum 篡改均返回安全的 `REPOSITORY_UNAVAILABLE`。

@@ -1934,10 +1934,19 @@ class PromotionPolicy:
         self,
         instance: AgentInstance,
         spec: AgentSpec,
-        target: SkillNode,
+        tree: SkillTree,
+        target_node_id: Slug,
         report: EvaluationReport,
         review: EvaluationReview | None,
-    ) -> None:
+    ) -> SkillNode:
+        target = next(
+            (node for node in tree.nodes if node.node_id == target_node_id),
+            None,
+        )
+        if target is None:
+            raise SkillNodeNotFoundError(
+                details={"node_id": target_node_id}
+            )
         if instance.status not in {
             InstanceStatus.CREATED,
             InstanceStatus.WAITING,
@@ -1998,6 +2007,7 @@ class PromotionPolicy:
                     "decision": report.decision,
                 }
             )
+        return target
 ```
 
 晋升服务先从来源 Prototype definition 与完整 active node 集合构建候选配置，再合并当前知识绑定和命令携带的 `knowledge_selections`。`ToolPolicy`、`KnowledgeBindingPolicy` 与输出 Schema 校验必须全部通过，才能在同一 UoW 内写入知识绑定、新实例 revision、审计和幂等结果；任一步失败都整体回滚。
@@ -2234,6 +2244,8 @@ CREATE TABLE instance_skill_trees (
 ```
 
 每张治理快照表保存 canonical `payload_json`、checksum 和必要查询投影。Repository 读取时校验 payload、投影和 checksum 一致；`prototype_skill_trees` 与 `instance_skill_trees` 为 M1 主表补充技能来源，而不重写历史 migration。
+
+M2.4 新增 forward-only `004_instance_configuration_checksum.sql`。Prototype checksum 只标识来源 definition；技能晋升或降级后的 configuration 已发生确定性特化，必须按 Instance revision 保存独立 checksum。迁移为历史快照回填 Prototype checksum，新写入保存实际 configuration checksum；Repository 对 payload 重算，Controller 则从 Prototype 与完整 active node 集合重建并核对业务来源。
 
 
 ---
@@ -3020,7 +3032,7 @@ async def register_knowledge(
 
 ### 10.4 评估、晋升与状态路由
 
-以下是 M2 最小 REST 契约。M2.3 已实现 Suite/Tree 注册查询、评估和复核的 application service，但本节路由仍统一留在 M2.6 实现和装配。每个写路由只有在对应 Controller、migration、幂等、审计和契约测试同时完成后才加入 `api_router`：
+以下是 M2 最小 REST 契约。M2.3 已实现 Suite/Tree 注册查询、评估和复核，M2.4 已实现显式晋升 application service，但本节路由仍统一留在 M2.6 实现和装配。每个写路由只有在对应 Controller、migration、幂等、审计和契约测试同时完成后才加入 `api_router`：
 
 | Method | Path | Request | Response |
 | --- | --- | --- | --- |
@@ -4061,7 +4073,7 @@ pytest -q tests/unit
 - 从原型和 active node 全量重建配置。
 - 晋升命令携带新增知识槽选择，并与新实例 revision 原子提交。
 - 技能树、评估套件、评估、复核、晋升和观察结果 API。
-- `003_skill_governance.sql`、乐观并发、stale report、重启恢复和 M1 兼容测试。
+- `003_skill_governance.sql`、`004_instance_configuration_checksum.sql`、乐观并发、stale report、重启恢复和 M1 兼容测试。
 
 默认 evaluator 是对提交 evidence 做纯计算的确定性实现，不调用网络或模型。LLM-as-Judge 只允许作为非阻断 `JudgeSignal` 的未来适配器，不参与 M2 的 PASS/FAIL 决策，也不进入默认测试。完整工作包和退出证据以 [M2 阶段文档](milestones/m2-skill-governance.md)及[技能治理设计说明](design/skill-governance.md)为准。
 
@@ -4156,7 +4168,8 @@ agent-factory/
 │   │   ├── 001_initial.sql
 │   │   ├── 002_persistence_contracts.sql
 │   │   ├── 003_skill_governance.sql
-│   │   └── 004_outbox.sql
+│   │   ├── 004_instance_configuration_checksum.sql
+│   │   └── 005_outbox.sql
 │   ├── interfaces/
 │   └── settings.py
 ├── tests/

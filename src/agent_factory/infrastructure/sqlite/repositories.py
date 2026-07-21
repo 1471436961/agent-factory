@@ -410,7 +410,9 @@ class SqliteInstanceRepository(SqliteRepository):
                 SELECT snapshots.instance_id, snapshots.revision,
                        snapshots.status, snapshots.prototype_id,
                        snapshots.prototype_version, snapshots.payload_json,
-                       snapshots.created_at, skill_trees.tree_id,
+                       snapshots.created_at,
+                       snapshots.configuration_checksum,
+                       skill_trees.tree_id,
                        skill_trees.tree_version, skill_trees.tree_checksum
                 FROM instance_snapshots AS snapshots
                 LEFT JOIN instance_skill_trees AS skill_trees
@@ -476,8 +478,9 @@ class SqliteInstanceRepository(SqliteRepository):
             """
             INSERT INTO instance_snapshots (
                 instance_id, revision, status, prototype_id,
-                prototype_version, payload_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                prototype_version, payload_json, created_at,
+                configuration_checksum
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(instance.instance_id),
@@ -487,6 +490,7 @@ class SqliteInstanceRepository(SqliteRepository):
                 instance.prototype.version,
                 encode_model(instance),
                 format_datetime(instance.updated_at),
+                sha256_model(instance.configuration),
             ),
         )
 
@@ -524,7 +528,7 @@ class SqliteInstanceRepository(SqliteRepository):
             ),
             "created_at": (format_datetime(instance.updated_at) == row["created_at"]),
             "configuration_checksum": (
-                sha256_model(instance.configuration) == instance.prototype.checksum
+                sha256_model(instance.configuration) == row["configuration_checksum"]
             ),
         }
         for field, valid in projections.items():

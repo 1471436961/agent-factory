@@ -97,13 +97,16 @@ M2 不实现：
 - 规则引擎在写事务外运行；最终写 UoW 原子保存首次生成的 AgentSpec、报告、allowlist 审计和幂等响应。
 - 只有 `REVIEW_REQUIRED` 报告可以接受一次最终复核；PASS/FAIL 报告返回稳定拒绝错误。
 
-### M2.4 晋升与配置重建
+### M2.4 晋升与配置重建（已完成）
 
 - 只有显式 `PromoteAgentCommand` 可以触发晋升。
 - 校验实例状态、expected revision、技能树来源、父节点、suite、报告、复核和知识要求。
 - 从来源原型 definition 与完整 active node 集合重新构建配置，不在当前配置上做反向 patch。
 - 原子保存 `revision + 1`、新增知识绑定、active node、审计事件和幂等结果。
 - 并发晋升依赖现有 snapshot/head CAS，只允许一个事务成功。
+- 使用纯 `PromotionPolicy` 校验状态、节点依赖、Report/Spec/Tree/Suite 来源和最终人工复核，不在策略中访问仓储或系统时间。
+- 现有 binding 保留原始绑定人和时间；晋升命令只追加新知识，不静默替换已有知识。
+- 新增 `004_instance_configuration_checksum.sql`，使每个 Instance revision 独立保存 configuration checksum；Controller 同时从 Prototype 与完整 active node 集合重建并核对配置来源。
 
 ### M2.5 观察期与降级
 
@@ -127,9 +130,9 @@ M2 不实现：
 - [x] 相同原型与 active node 集合不受输入顺序影响，生成相同配置与 checksum。
 - [x] 评估规则覆盖全部 M2 RuleKind，HARD/SOFT 与人工复核决策有边界测试。
 - [x] EvaluationReport 永久绑定 instance revision、AgentSpec checksum 和 suite version。
-- [ ] stale report、错误 suite、缺失父节点和未通过报告均禁止晋升。
-- [ ] 晋升新增知识、实例快照、审计和幂等响应同时成功或同时回滚。
-- [ ] 同一 expected revision 的并发晋升只有一个成功。
+- [x] stale report、错误 suite、缺失父节点和未通过报告均禁止晋升。
+- [x] 晋升新增知识、实例快照、审计和幂等响应同时成功或同时回滚。
+- [x] 同一 expected revision 的并发晋升只有一个成功。
 - [ ] 未达到观察阈值时 revision 不变；达到阈值后移除目标及后代并产生新 revision。
 - [ ] 降级后的配置从原型重建，不残留已移除节点独有工具、Prompt 或知识绑定。
 - [ ] 所有治理写操作均有审计、幂等和失败原子性证据。
@@ -164,7 +167,7 @@ M2 不实现：
 
 ## 9. 阶段报告
 
-当前状态：M2.1 与 M2.2 已完成并提交；M2.3 已完成本地实现和质量门禁，尚未形成实现提交；M2.4 尚未开始。该状态不代表完整技能治理闭环或 M2 阶段已经验收。
+当前状态：M2.1-M2.3 已完成并提交；M2.4 已完成本地实现和质量门禁，尚未形成实现提交；M2.5 尚未开始。该状态不代表完整技能治理闭环或 M2 阶段已经验收。
 
 - M1 封存提交：`acf2b5d docs: close M1 milestone`。
 - M1 封存远程证据：GitHub Actions CI #14 在提交 `acf2b5d` 上通过。
@@ -184,4 +187,9 @@ M2 不实现：
 - M2.3 事务边界：只读 UoW 准备不可变输入，`DeterministicRuleEngine` 在事务外纯计算，最终写 UoW 原子保存缺失的 AgentSpec、报告、审计与幂等结果；幂等请求在计算前和最终写入前各复查一次。
 - M2.3 本地测试：开始前基线 `124 passed`；实现后 `133 passed`，覆盖注册引用、PASS/FAIL/REVIEW_REQUIRED、最终复核、历史 revision、最终写事务回滚、审计脱敏和错误路径。
 - M2.3 本地质量证据：Ruff 通过、mypy strict 对 79 个源码/测试文件通过；branch coverage 为 domain 96%、application 93%、total 93%；sdist/wheel 构建成功且均包含 M2.3 runtime 文件与 `003_skill_governance.sql`。
-- 第 6 节只勾选已经由当前测试直接证明的五项；其余条目等待后续工作包产生证据。
+- M2.3 实现提交：`596311a feat: add deterministic M2 evaluation service`。
+- M2.4 代码边界：新增 `PromoteAgentCommand`、纯 `PromotionPolicy`、显式 `promote_agent()` 事务和 `skill.promoted` 审计；实现 Prototype 基线全量重建、工具复验、增量知识绑定及原有 binding 来源保留；未新增 REST、TaskOutcome 或降级流程。
+- M2.4 持久化纠偏：首轮集成测试证明旧的 configuration/Prototype checksum 等值假设不适用于技能特化；经 owner 确认新增 `004_instance_configuration_checksum.sql`，分别由持久化 checksum 和 Controller 来源重建覆盖存储完整性与业务来源完整性。
+- M2.4 本地测试：开始前基线 `133 passed`；实现后 `147 passed`，覆盖纯策略、连续全量重建、必填知识与未知工具、幂等、stale/suite/依赖/FAIL/review、同 revision 并发单胜、事务回滚、v2→v4 升级和 checksum 篡改检测。
+- M2.4 本地质量证据：Ruff 通过、mypy strict 对 82 个源码/测试文件通过；branch coverage 为 domain 96%、application 93%、total 93%；sdist/wheel 构建成功，且两种制品均包含 `PromotionPolicy`、晋升应用服务、`003` 与 `004` migration。
+- 第 6 节只勾选已经由当前测试直接证明的八项；其余条目等待后续工作包产生证据。

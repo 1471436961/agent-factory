@@ -369,6 +369,40 @@ async def test_read_only_uow_and_corrupt_projection_fail_safely(
 
 
 @pytest.mark.asyncio
+async def test_corrupt_instance_configuration_checksum_is_detected(
+    tmp_path: Path,
+    migrations_dir: Path,
+    writer_definition: AgentDefinition,
+) -> None:
+    database_path, factory = await _factory(tmp_path, migrations_dir)
+    prototype = _prototype(writer_definition, status=PrototypeStatus.PUBLISHED)
+    instance = _instance(prototype)
+    async with factory() as uow:
+        await uow.prototypes.add(prototype)
+        await uow.instances.add(instance)
+        await uow.commit()
+
+    async with aiosqlite.connect(database_path) as connection:
+        await connection.execute(
+            """
+            UPDATE instance_snapshots
+            SET configuration_checksum = ?
+            WHERE instance_id = ? AND revision = ?
+            """,
+            ("f" * 64, str(instance.instance_id), instance.revision),
+        )
+        await connection.commit()
+
+    async with factory(read_only=True) as uow:
+        with pytest.raises(RepositoryUnavailableError) as corrupt_error:
+            await uow.instances.get(instance.instance_id)
+
+    assert corrupt_error.value.details["reason"] == (
+        "projection-mismatch:configuration_checksum"
+    )
+
+
+@pytest.mark.asyncio
 async def test_idempotency_expiry_cleanup_is_transactional(
     tmp_path: Path,
     migrations_dir: Path,

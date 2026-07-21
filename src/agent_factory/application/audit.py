@@ -284,6 +284,33 @@ class AuditEventFactory:
             at=at,
         )
 
+    def skill_promoted(
+        self,
+        previous: AgentInstance,
+        promoted: AgentInstance,
+        *,
+        node_id: str,
+        report_id: UUID,
+        actor: str,
+        correlation_id: UUID,
+        at: datetime,
+    ) -> AuditEvent:
+        return self._event(
+            event_type=AuditEventType.SKILL_PROMOTED,
+            entity_type=AuditEntityType.INSTANCE,
+            entity_id=str(promoted.instance_id),
+            entity_revision=promoted.revision,
+            actor=actor,
+            correlation_id=correlation_id,
+            payload={
+                "from_revision": previous.revision,
+                "to_revision": promoted.revision,
+                "node_id": node_id,
+                "report_id": str(report_id),
+            },
+            at=at,
+        )
+
     def _prototype_status_event(
         self,
         event_type: AuditEventType,

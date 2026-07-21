@@ -86,6 +86,7 @@ jobs:
             'agent_factory/infrastructure/sqlite/repository_base.py',
             'agent_factory/infrastructure/sqlite/sql/001_initial.sql',
             'agent_factory/infrastructure/sqlite/sql/002_persistence_contracts.sql',
-            'agent_factory/infrastructure/sqlite/sql/003_skill_governance.sql'
+            'agent_factory/infrastructure/sqlite/sql/003_skill_governance.sql',
+            'agent_factory/infrastructure/sqlite/sql/004_instance_configuration_checksum.sql'
           };
           assert expected <= set(names)"

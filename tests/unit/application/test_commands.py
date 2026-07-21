@@ -10,6 +10,7 @@ from agent_factory.application.commands import (
     CloneAgentCommand,
     EvaluateInstanceCommand,
     KnowledgeSelection,
+    PromoteAgentCommand,
     RegisterEvaluationSuiteCommand,
     RegisterKnowledgeCommand,
     RegisterPrototypeCommand,
@@ -197,4 +198,35 @@ def test_review_command_bounds_comment_length() -> None:
             decision=ReviewDecision.REJECTED,
             comment="x" * 2_001,
             actor="reviewer",
+        )
+
+
+def test_promote_command_accepts_empty_or_unique_knowledge_selections() -> None:
+    instance_id = UUID("00000000-0000-0000-0000-000000000001")
+    report_id = UUID("00000000-0000-0000-0000-000000000002")
+    selection = KnowledgeSelection(
+        slot_name="security-policy",
+        knowledge_id="secure-coding-guide",
+        version="1.0.0",
+    )
+
+    command = PromoteAgentCommand(
+        instance_id=instance_id,
+        expected_revision=1,
+        target_node_id="security-engineer",
+        evaluation_report_id=report_id,
+        knowledge_selections=(selection,),
+        actor="owner",
+    )
+
+    assert command.knowledge_selections == (selection,)
+    assert command.evaluation_review_id is None
+    with pytest.raises(ValidationError, match="duplicate knowledge references"):
+        PromoteAgentCommand(
+            instance_id=instance_id,
+            expected_revision=1,
+            target_node_id="security-engineer",
+            evaluation_report_id=report_id,
+            knowledge_selections=(selection, selection),
+            actor="owner",
         )

@@ -113,3 +113,30 @@ class ReviewEvaluationCommand(FrozenModel):
     comment: str = Field(default="", max_length=2_000)
     actor: Actor
     idempotency_key: OptionalIdempotencyKey = None
+
+
+class PromoteAgentCommand(FrozenModel):
+    instance_id: UUID
+    expected_revision: PositiveInt
+    target_node_id: Slug
+    evaluation_report_id: UUID
+    evaluation_review_id: UUID | None = None
+    knowledge_selections: tuple[KnowledgeSelection, ...] = ()
+    actor: Actor
+    idempotency_key: OptionalIdempotencyKey = None
+
+    @field_validator("knowledge_selections")
+    @classmethod
+    def knowledge_selections_must_be_unique(
+        cls,
+        value: tuple[KnowledgeSelection, ...],
+    ) -> tuple[KnowledgeSelection, ...]:
+        keys = {
+            (selection.slot_name, selection.knowledge_id, selection.version)
+            for selection in value
+        }
+        if len(keys) != len(value):
+            raise ValueError(
+                "knowledge_selections contains duplicate knowledge references"
+            )
+        return value

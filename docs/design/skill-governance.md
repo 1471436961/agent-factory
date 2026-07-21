@@ -347,6 +347,10 @@ Controller 必须验证：实例可修改且 revision 匹配；skill tree ref �
 
 随后从来源 Prototype definition 和 `active_nodes | {target}` 构建候选配置，解析工具，合并当前绑定与 command selections，并对候选配置执行完整知识策略。成功时创建 revision + 1；失败时不得留下新绑定、审计或幂等记录。自动晋升禁止。
 
+M2.4 实现将判定拆为纯 `PromotionPolicy` 与 Controller 编排。Policy 不读取仓储，只接收已加载的 Instance、AgentSpec、SkillTree、EvaluationReport 和可选 EvaluationReview；Controller 负责 expected revision、精确来源引用、Prototype 基线重建、工具目录和知识包校验。晋升不会改变生命周期 status，也不会提前生成新 revision 的 AgentSpec；后者仍由 `export_spec()` 首次导出。
+
+知识合并使用追加语义：当前 binding 必须继续满足候选配置，且保留原始 `bound_at` 和 `bound_by`；命令只为新引用生成 binding。重复引用返回 `KNOWLEDGE_ALREADY_BOUND`，同槽位超出基数或缺失新增必填槽由完整 `KnowledgeBindingPolicy` 拒绝。
+
 ### 5.4 观察与降级
 
 ```python
@@ -406,6 +410,8 @@ class TaskOutcomeRepository(Protocol): ...
 
 现有 UoW 增加相应属性。所有驱动异常继续转换为安全的 `RepositoryUnavailableError`；已知唯一键、revision 和状态冲突转换为稳定业务错误。
 
+M2.4 另新增 forward-only `004_instance_configuration_checksum.sql`。旧 Repository 把 `sha256(instance.configuration)` 与 Prototype definition checksum 直接比较，只适用于未特化配置。`004` 为历史快照回填来源 Prototype checksum，并要求新快照持久化各自的 configuration checksum；Repository 读取时对 payload 重算。Controller 还会从 Prototype definition 与完整 active node 集合重建当前配置并比较，两层校验分别回答“数据是否损坏”和“配置是否来自声明来源”。
+
 ## 7. REST 契约
 
 M2 最小路由：
@@ -442,7 +448,7 @@ M2 最小路由：
 - Controller integration tests：评估、review、晋升知识原子性、stale report、并发晋升、无降级与触发降级。
 - REST contract tests：DTO、错误 envelope、actor/idempotency、完整治理链和未知异常脱敏。
 - exit test：关闭并重建 app 后恢复技能树、套件、报告、review、实例 revision、TaskOutcome 和审计。
-- CI：保留 domain 90%、application 85%、total 80% branch coverage 门槛，构建 wheel 并检查 `003_skill_governance.sql` 与全部 M2 模块。
+- CI：保留 domain 90%、application 85%、total 80% branch coverage 门槛，构建 wheel 并检查 `003_skill_governance.sql`、`004_instance_configuration_checksum.sql` 与全部 M2 模块。
 
 ## 10. M2.1 实现映射
 
@@ -501,3 +507,31 @@ M2.2 只建立治理数据的可靠存储边界。Repository 不创建服务端�
 这一区分避免规则计算占用 SQLite 的 `BEGIN IMMEDIATE` 写锁。带幂等键的请求在计算前执行快速重放，并在最终写 UoW 中再次重放；前者减少重复计算，后者负责并发正确性。报告 ID 只在最终写 UoW 内生成，失败事务不会留下一个被误认为已持久化的报告标识。
 
 M2.3 允许显式评估历史 revision：报告记录的是该 revision 已发生的评估事实，即使实例 head 已前移也可以保存。是否允许该报告晋升当前 head 属于 M2.4 的 stale 检查，不能由 M2.3 的“报告已保存”推导为“报告仍可晋升”。提交的 case evidence 和 actor/reviewer 标签仍不可信；本工作包只证明规则处理、来源绑定和审计过程可重复。
+
+## 13. M2.4 实现映射
+
+| 契约 | 代码位置 | 直接证据 |
+| --- | --- | --- |
+| 显式晋升命令 | `application/commands.py` | revision、节点、报告、复核与知识选择校验测试 |
+| 纯晋升判定 | `domain/services/promotion.py` | 状态、节点、依赖、stale、suite、PASS/FAIL/review 单元测试 |
+| Prototype 基线全量重建 | `application/controller.py`、`domain/services/skills.py` | 连续两次晋升的 Prompt、工具、active nodes 与 binding 断言 |
+| 知识追加与来源保留 | `application/controller.py` | 新增必填知识成功、旧 binding 时间和 actor 不变测试 |
+| 原子晋升事务 | `application/controller.py` | 审计故障注入后 snapshot、audit、idempotency 整体回滚测试 |
+| 并发 revision CAS | `infrastructure/sqlite/repositories.py` | 同一 expected revision 两个并发请求一成功一冲突 |
+| revision 配置完整性 | `004_instance_configuration_checksum.sql`、`infrastructure/sqlite/repositories.py` | v2→v4 回填、晋升快照读回和 checksum 篡改检测 |
+
+晋升事务的固定顺序为：
+
+```text
+幂等重放
+  -> 读取最新 Instance 并比较 expected revision
+  -> 精确加载 Tree、Prototype、Report、Spec 与可选 Review
+  -> PromotionPolicy 验证证据
+  -> 从 Prototype + 完整 active nodes 重建候选配置
+  -> 复验工具与完整知识 binding 集合
+  -> 保存 revision + 1 snapshot
+  -> 追加 skill.promoted 审计与幂等结果
+  -> 单次 commit
+```
+
+`skill.promoted` 审计只保存 from/to revision、node ID 和 report ID，不保存 Prompt、知识内容、rule evidence 或 review comment。评估 evidence 和 reviewer 仍是不可信输入；M2.4 只证明给定证据下的晋升决策与配置变换可重复。

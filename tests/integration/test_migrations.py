@@ -43,10 +43,10 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
     first = await runner.migrate()
     second = await runner.migrate()
 
-    assert first.applied_versions == (1, 2, 3)
-    assert first.current_version == 3
+    assert first.applied_versions == (1, 2, 3, 4)
+    assert first.current_version == 4
     assert second.applied_versions == ()
-    assert second.current_version == 3
+    assert second.current_version == 4
 
     async with aiosqlite.connect(database_path) as connection:
         cursor = await connection.execute(
@@ -58,7 +58,7 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
         )
         tables = {str(row[0]) for row in await cursor.fetchall()}
 
-    assert len(history) == 3
+    assert len(history) == 4
     assert tuple(history[0]) == (1, "initial", "2026-07-17T12:00:00Z")
     assert tuple(history[1]) == (
         2,
@@ -68,6 +68,11 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
     assert tuple(history[2]) == (
         3,
         "skill_governance",
+        "2026-07-17T12:00:00Z",
+    )
+    assert tuple(history[3]) == (
+        4,
+        "instance_configuration_checksum",
         "2026-07-17T12:00:00Z",
     )
     assert {
@@ -159,7 +164,7 @@ async def test_transport_neutral_migration_rejects_unknown_legacy_records_atomic
 
 
 @pytest.mark.asyncio
-async def test_existing_m1_snapshots_upgrade_from_v2_to_v3_and_remain_readable(
+async def test_existing_m1_snapshots_upgrade_from_v2_to_v4_and_remain_readable(
     tmp_path: Path,
     migrations_dir: Path,
 ) -> None:
@@ -266,13 +271,27 @@ async def test_existing_m1_snapshots_upgrade_from_v2_to_v3_and_remain_readable(
         )
         await connection.commit()
 
-    shutil.copy2(
-        migrations_dir / "003_skill_governance.sql",
-        copied_migrations / "003_skill_governance.sql",
-    )
+    for name in (
+        "003_skill_governance.sql",
+        "004_instance_configuration_checksum.sql",
+    ):
+        shutil.copy2(migrations_dir / name, copied_migrations / name)
     upgrade = await runner.migrate()
-    assert upgrade.applied_versions == (3,)
-    assert upgrade.current_version == 3
+    assert upgrade.applied_versions == (3, 4)
+    assert upgrade.current_version == 4
+
+    async with aiosqlite.connect(database_path) as connection:
+        cursor = await connection.execute(
+            """
+            SELECT configuration_checksum
+            FROM instance_snapshots
+            WHERE instance_id = ? AND revision = ?
+            """,
+            (str(instance.instance_id), instance.revision),
+        )
+        configuration_checksum_row = await cursor.fetchone()
+    assert configuration_checksum_row is not None
+    assert str(configuration_checksum_row[0]) == prototype.checksum
 
     factory = SqliteUnitOfWorkFactory(database_path)
     async with factory(read_only=True) as uow:

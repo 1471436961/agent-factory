@@ -8,6 +8,7 @@ from agent_factory.domain.common import checksum_knowledge_content
 from agent_factory.domain.enums import (
     AuditEventType,
     EvaluationDecision,
+    InstanceStatus,
     KnowledgeKind,
     ReviewDecision,
     RuleKind,
@@ -21,7 +22,12 @@ from agent_factory.domain.evaluation import (
     EvaluationSuite,
     RuleResult,
 )
-from agent_factory.domain.models import DomainKnowledge
+from agent_factory.domain.models import (
+    AgentDefinition,
+    AgentInstance,
+    DomainKnowledge,
+    PrototypeRef,
+)
 from agent_factory.domain.references import EvaluationSuiteRef, SkillTreeRef
 from agent_factory.domain.skills import SkillNode, SkillTree
 
@@ -181,3 +187,47 @@ def test_governance_audit_payloads_exclude_raw_evidence_and_review_text(
     assert "sensitive skill instructions" not in serialized
     assert "sensitive rule evidence" not in serialized
     assert "sensitive review comment" not in serialized
+
+
+def test_promotion_audit_contains_only_lineage_fields(fixed_now: datetime) -> None:
+    instance_id = UUID("00000000-0000-0000-0000-000000000001")
+    report_id = UUID("00000000-0000-0000-0000-000000000401")
+    previous = AgentInstance(
+        instance_id=instance_id,
+        prototype=PrototypeRef(
+            prototype_id="engineer-agent",
+            version="1.0.0",
+            checksum="a" * 64,
+        ),
+        revision=1,
+        status=InstanceStatus.CREATED,
+        configuration=AgentDefinition(
+            agent_type="engineer-agent",
+            role="Software Engineer",
+            system_prompt="sensitive promotion prompt",
+        ),
+        created_at=fixed_now,
+        updated_at=fixed_now,
+        created_by="owner",
+    )
+    promoted = previous.model_copy(update={"revision": 2})
+
+    event = AuditEventFactory(FixedIdGenerator()).skill_promoted(
+        previous,
+        promoted,
+        node_id="junior-engineer",
+        report_id=report_id,
+        actor="owner",
+        correlation_id=CORRELATION_ID,
+        at=fixed_now,
+    )
+
+    assert event.event_type is AuditEventType.SKILL_PROMOTED
+    assert event.entity_revision == 2
+    assert event.payload == {
+        "from_revision": 1,
+        "to_revision": 2,
+        "node_id": "junior-engineer",
+        "report_id": str(report_id),
+    }
+    assert "sensitive promotion prompt" not in str(event.model_dump(mode="json"))
