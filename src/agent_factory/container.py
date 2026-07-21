@@ -14,6 +14,7 @@ from agent_factory.application.ports import (
 from agent_factory.application.tooling import ToolPolicy
 from agent_factory.application.unit_of_work import UnitOfWorkFactory
 from agent_factory.domain.enums import ToolPermission
+from agent_factory.domain.services.evaluation import DeterministicRuleEngine
 from agent_factory.domain.services.knowledge import KnowledgeBindingPolicy
 from agent_factory.domain.services.prototype import PrototypePolicy
 from agent_factory.domain.services.spec import AgentSpecBuilder
@@ -84,6 +85,7 @@ def build_container(settings: Settings) -> Container:
             allowed_permissions=frozenset({ToolPermission.READ_ONLY}),
         ),
         spec_builder=AgentSpecBuilder(),
+        evaluation_engine=DeterministicRuleEngine(),
         idempotency=IdempotencyService(ttl_seconds=settings.idempotency_ttl_seconds),
         audit_factory=AuditEventFactory(id_generator),
         max_inline_knowledge_bytes=settings.max_inline_knowledge_bytes,

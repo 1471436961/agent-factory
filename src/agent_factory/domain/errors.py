@@ -234,6 +234,11 @@ class EvaluationReviewConflictError(FactoryError):
     default_message = "Evaluation report already has a final review"
 
 
+class EvaluationReviewNotRequiredError(FactoryError):
+    code = "EVALUATION_REVIEW_NOT_REQUIRED"
+    default_message = "Evaluation report does not require manual review"
+
+
 class TaskOutcomeAlreadyExistsError(FactoryError):
     code = "TASK_OUTCOME_ALREADY_EXISTS"
     default_message = "Task outcome already exists"

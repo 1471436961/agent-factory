@@ -431,7 +431,7 @@ M2 最小路由：
 - 晋升与降级继续使用 instance snapshot/head CAS，不增加进程内锁作为正确性条件。
 - 同一 report 的 review 使用唯一约束；并发提交只有一个成功。
 - 审计事件固定为 allowlist：`skill-tree.registered`、`evaluation-suite.registered`、`evaluation.completed`、`evaluation.reviewed`、`skill.promoted`、`task-outcome.recorded`、`skill.degraded`。
-- 审计不保存 case input、output_text、完整 structured output 或 review 以外的自由文本。
+- 审计不保存 case input、output_text、完整 structured output、rule evidence 或 review comment 等自由文本。
 - evaluation evidence 来自调用方；M2 只能证明规则对该 evidence 的处理可重复，不能证明 evidence 由可信运行时产生。
 
 ## 9. 验证方法
@@ -455,7 +455,7 @@ M2 最小路由：
 | 评估契约 | `domain/evaluation.py` | 参数、唯一性、报告不变量测试 |
 | 确定性规则引擎 | `domain/services/evaluation.py` | 六类规则、决策顺序和 timeout 测试 |
 
-M2.1 只完成纯领域能力。M2.2 已通过数据库外键保证持久化的 `SkillTreeRef` 指向已注册对象，但报告的服务端来源构造、晋升事务和 REST 暴露仍分别属于 M2.3-M2.6，不能由持久层测试推导为已完成。
+M2.1 只完成纯领域能力。M2.2 通过数据库外键保证持久化的 `SkillTreeRef` 指向已注册对象；报告的服务端来源构造现已由 M2.3 完成，晋升事务和 REST 暴露仍分别属于 M2.4 与 M2.6，不能由领域层或持久层测试推导为已完成。
 
 ## 11. M2.2 实现映射
 
@@ -469,3 +469,35 @@ M2.1 只完成纯领域能力。M2.2 已通过数据库外键保证持久化的 
 | UoW 治理端口 | `application/unit_of_work.py`、`infrastructure/sqlite/unit_of_work.py` | commit、rollback、read-only 与重启恢复测试 |
 
 M2.2 只建立治理数据的可靠存储边界。Repository 不创建服务端报告来源、不决定晋升、不写治理审计或幂等记录；这些跨仓储业务事务从 M2.3 开始由 Controller 组织。
+
+## 12. M2.3 实现映射
+
+| 契约 | 代码位置 | 直接证据 |
+| --- | --- | --- |
+| Suite/Tree 注册、查询与精确引用校验 | `application/controller.py` | 缺失 Suite、错误 tree checksum、注册幂等测试 |
+| 技能树来源传播 | `application/commands.py`、`application/controller.py` | Prototype → Instance → AgentSpec 集成断言 |
+| 纯评估端口与默认装配 | `application/ports.py`、`container.py` | 真实 Container 调用 `DeterministicRuleEngine` 的 PASS/FAIL 测试 |
+| 服务端报告来源构造 | `application/controller.py` | report 与 instance revision、Spec checksum、Tree/Suite ref 的持久化断言 |
+| 最终人工复核 | `application/controller.py` | REVIEW_REQUIRED、重复复核冲突、PASS/FAIL 拒绝测试 |
+| allowlist 审计 | `application/audit.py` | case output、suite input、skill prompt、rule evidence、review comment 脱敏测试 |
+
+评估采用“准备、纯计算、提交”三段式：
+
+```text
+只读 UoW
+  加载指定 Instance revision、Tree、Suite 与已有 AgentSpec
+  缺少 Spec 时只在内存中构造候选快照
+        |
+        v
+事务外 DeterministicRuleEngine.evaluate()
+        |
+        v
+最终写 UoW
+  再次检查幂等记录与历史 revision
+  保存缺失 AgentSpec + EvaluationReport + AuditEvent + IdempotencyRecord
+  单次 commit
+```
+
+这一区分避免规则计算占用 SQLite 的 `BEGIN IMMEDIATE` 写锁。带幂等键的请求在计算前执行快速重放，并在最终写 UoW 中再次重放；前者减少重复计算，后者负责并发正确性。报告 ID 只在最终写 UoW 内生成，失败事务不会留下一个被误认为已持久化的报告标识。
+
+M2.3 允许显式评估历史 revision：报告记录的是该 revision 已发生的评估事实，即使实例 head 已前移也可以保存。是否允许该报告晋升当前 head 属于 M2.4 的 stale 检查，不能由 M2.3 的“报告已保存”推导为“报告仍可晋升”。提交的 case evidence 和 actor/reviewer 标签仍不可信；本工作包只证明规则处理、来源绑定和审计过程可重复。

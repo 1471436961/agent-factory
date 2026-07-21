@@ -524,6 +524,11 @@ class UnitOfWork(Protocol):
     knowledge: "KnowledgeRepository"
     audit: "AuditRepository"
     idempotency: "IdempotencyRepository"
+    skill_trees: "SkillTreeRepository"
+    evaluation_suites: "EvaluationSuiteRepository"
+    evaluation_reports: "EvaluationReportRepository"
+    evaluation_reviews: "EvaluationReviewRepository"
+    task_outcomes: "TaskOutcomeRepository"
 
     async def __aenter__(self) -> Self: ...
 
@@ -547,7 +552,7 @@ class UnitOfWorkFactory(Protocol):
     ) -> UnitOfWork: ...
 ```
 
-M1 的 UoW 只暴露核心生产链需要的六类仓储；M2 按已确认的[技能治理设计说明](design/skill-governance.md)增加技能树、评估套件、评估报告、复核和任务结果仓储。默认 `EvaluationEngine` 实现只对外部提交的 case result 做确定性纯计算并返回 `EvaluationOutcome`，不执行 Agent，也不调用真实模型；M2.3 application service 负责补充报告 ID、Spec 来源和时间。每次调用 factory 创建独立连接和事务：写事务使用 `BEGIN IMMEDIATE`，只读事务使用 `BEGIN` 与 `PRAGMA query_only = ON`。Repository、审计与幂等记录共享同一连接；未显式 `commit()` 或上下文抛出异常时统一回滚。
+M1 的 UoW 只暴露核心生产链需要的六类仓储；M2 按已确认的[技能治理设计说明](design/skill-governance.md)增加技能树、评估套件、评估报告、复核和任务结果仓储。默认 `EvaluationEngine` 实现只对外部提交的 case result 做确定性纯计算并返回 `EvaluationOutcome`，不执行 Agent，也不调用真实模型；M2.3 application service 已负责补充报告 ID、Spec 来源和时间。评估采用只读准备、事务外纯计算、最终写事务提交三段式，避免规则计算占用 SQLite 写锁。每次调用 factory 创建独立连接和事务：写事务使用 `BEGIN IMMEDIATE`，只读事务使用 `BEGIN` 与 `PRAGMA query_only = ON`。Repository、审计与幂等记录共享同一连接；未显式 `commit()` 或上下文抛出异常时统一回滚。
 
 ### 3.6 配置
 
@@ -1956,7 +1961,7 @@ class PromotionPolicy:
             )
         if (
             spec.instance_id != instance.instance_id
-            or spec.instance_revision != instance.revision
+            or spec.revision != instance.revision
             or report.instance_id != instance.instance_id
             or report.instance_revision != instance.revision
             or report.agent_spec_checksum != spec.spec_checksum
@@ -3015,7 +3020,7 @@ async def register_knowledge(
 
 ### 10.4 评估、晋升与状态路由
 
-以下是 M2 最小 REST 契约；当前处于 M2.1，尚未实现或装配这些路由。每个写路由只有在对应 Controller、migration、幂等、审计和契约测试同时完成后才加入 `api_router`：
+以下是 M2 最小 REST 契约。M2.3 已实现 Suite/Tree 注册查询、评估和复核的 application service，但本节路由仍统一留在 M2.6 实现和装配。每个写路由只有在对应 Controller、migration、幂等、审计和契约测试同时完成后才加入 `api_router`：
 
 | Method | Path | Request | Response |
 | --- | --- | --- | --- |

@@ -86,13 +86,16 @@ M2 不实现：
 - 保存 canonical payload 与关系型投影；读取时校验 ID、版本、checksum、来源引用和外键。
 - 覆盖 migration 重入、损坏检测、round trip、唯一键与回滚测试。
 
-### M2.3 确定性评估服务（未开始）
+### M2.3 确定性评估服务（已完成）
 
 - 注册并查询技能树和评估套件。
 - 调用 M2.1 已验证的 `DeterministicRuleEngine`，将纯 `EvaluationOutcome` 与服务端生成的报告 ID、Spec 来源和时间组合为 `EvaluationReport`。
 - 输出只由 HARD/SOFT 规则和显式人工复核决定；JudgeSignal 仅可作为非阻断性附加信息。
 - 评估报告绑定 instance revision、AgentSpec checksum、suite version 和 case-result checksum。
 - 评估期间实例发生变化时仍可保存关于旧 revision 的报告，但该报告不能晋升当前 revision。
+- 原型注册时校验精确 `SkillTreeRef`，并把来源依次复制到 Instance 与 AgentSpec；技能树注册时校验全部精确 `EvaluationSuiteRef`。
+- 规则引擎在写事务外运行；最终写 UoW 原子保存首次生成的 AgentSpec、报告、allowlist 审计和幂等响应。
+- 只有 `REVIEW_REQUIRED` 报告可以接受一次最终复核；PASS/FAIL 报告返回稳定拒绝错误。
 
 ### M2.4 晋升与配置重建
 
@@ -161,7 +164,7 @@ M2 不实现：
 
 ## 9. 阶段报告
 
-当前状态：M2.1 已完成并提交；M2.2 已完成本地实现和第一轮质量门禁，尚未形成实现提交；M2.3 尚未开始。该状态不代表完整技能治理闭环或 M2 阶段已经验收。
+当前状态：M2.1 与 M2.2 已完成并提交；M2.3 已完成本地实现和质量门禁，尚未形成实现提交；M2.4 尚未开始。该状态不代表完整技能治理闭环或 M2 阶段已经验收。
 
 - M1 封存提交：`acf2b5d docs: close M1 milestone`。
 - M1 封存远程证据：GitHub Actions CI #14 在提交 `acf2b5d` 上通过。
@@ -176,4 +179,9 @@ M2 不实现：
 - M2.2 兼容证据：包含 Prototype、Instance 和 AgentSpec 的真实 v2 数据库可迁移到 v3 并继续读取；AgentSpec 1.0 golden checksum 保持不变。
 - M2.2 本地测试：开始前基线 `114 passed`；第一轮完整门禁 `124 passed`，Ruff 与 mypy strict 通过。
 - M2.2 本地质量证据：branch coverage 为 domain 96%、application 94%、total 93%；sdist/wheel 构建成功，且两种产物均包含 `003_skill_governance.sql`、治理仓储和共享 SQLite 基类。
+- M2.2 实现提交：`af65e64 feat: persist M2 skill governance`。
+- M2.3 代码边界：新增 Suite/Tree 注册与查询、精确来源引用校验、Prototype → Instance → AgentSpec 传播、确定性评估报告构造、最终人工复核、治理审计和幂等编排；未新增 REST、晋升、降级或 JudgeSignal 生成流程。
+- M2.3 事务边界：只读 UoW 准备不可变输入，`DeterministicRuleEngine` 在事务外纯计算，最终写 UoW 原子保存缺失的 AgentSpec、报告、审计与幂等结果；幂等请求在计算前和最终写入前各复查一次。
+- M2.3 本地测试：开始前基线 `124 passed`；实现后 `133 passed`，覆盖注册引用、PASS/FAIL/REVIEW_REQUIRED、最终复核、历史 revision、最终写事务回滚、审计脱敏和错误路径。
+- M2.3 本地质量证据：Ruff 通过、mypy strict 对 79 个源码/测试文件通过；branch coverage 为 domain 96%、application 93%、total 93%；sdist/wheel 构建成功且均包含 M2.3 runtime 文件与 `003_skill_governance.sql`。
 - 第 6 节只勾选已经由当前测试直接证明的五项；其余条目等待后续工作包产生证据。

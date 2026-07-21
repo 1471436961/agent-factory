@@ -1,4 +1,4 @@
-"""Allowlisted audit event construction for M1 production operations."""
+"""Allowlisted audit event construction for production operations."""
 
 from collections.abc import Mapping
 from datetime import datetime
@@ -7,6 +7,11 @@ from uuid import UUID
 from agent_factory.application.ports import IdGenerator
 from agent_factory.domain.audit import AuditEvent
 from agent_factory.domain.enums import AuditEntityType, AuditEventType
+from agent_factory.domain.evaluation import (
+    EvaluationReport,
+    EvaluationReview,
+    EvaluationSuite,
+)
 from agent_factory.domain.models import (
     AgentInstance,
     AgentPrototype,
@@ -14,6 +19,7 @@ from agent_factory.domain.models import (
     DomainKnowledge,
     KnowledgeBinding,
 )
+from agent_factory.domain.skills import SkillTree
 
 
 class AuditEventFactory:
@@ -40,6 +46,11 @@ class AuditEventFactory:
                 "version": prototype.version,
                 "checksum": prototype.checksum,
                 "status": prototype.status.value,
+                "skill_tree": (
+                    None
+                    if prototype.skill_tree is None
+                    else prototype.skill_tree.model_dump(mode="json")
+                ),
             },
             at=at,
         )
@@ -119,6 +130,11 @@ class AuditEventFactory:
                 "prototype_version": instance.prototype.version,
                 "prototype_checksum": instance.prototype.checksum,
                 "runtime_target": instance.runtime_target,
+                "skill_tree": (
+                    None
+                    if instance.skill_tree is None
+                    else instance.skill_tree.model_dump(mode="json")
+                ),
             },
             at=at,
         )
@@ -170,6 +186,100 @@ class AuditEventFactory:
                 "schema_version": spec.schema_version,
                 "spec_checksum": spec.spec_checksum,
                 "runtime_target": spec.runtime_target,
+            },
+            at=at,
+        )
+
+    def evaluation_suite_registered(
+        self,
+        suite: EvaluationSuite,
+        *,
+        actor: str,
+        correlation_id: UUID,
+        at: datetime,
+    ) -> AuditEvent:
+        return self._event(
+            event_type=AuditEventType.EVALUATION_SUITE_REGISTERED,
+            entity_type=AuditEntityType.EVALUATION,
+            entity_id=suite.suite_id,
+            actor=actor,
+            correlation_id=correlation_id,
+            payload={
+                "version": suite.version,
+                "checksum": suite.checksum,
+                "rule_count": len(suite.rules),
+                "case_count": len(suite.cases),
+                "require_manual_review": suite.require_manual_review,
+            },
+            at=at,
+        )
+
+    def skill_tree_registered(
+        self,
+        tree: SkillTree,
+        *,
+        actor: str,
+        correlation_id: UUID,
+        at: datetime,
+    ) -> AuditEvent:
+        return self._event(
+            event_type=AuditEventType.SKILL_TREE_REGISTERED,
+            entity_type=AuditEntityType.SKILL,
+            entity_id=tree.tree_id,
+            actor=actor,
+            correlation_id=correlation_id,
+            payload={
+                "version": tree.version,
+                "checksum": tree.checksum,
+                "node_ids": tuple(node.node_id for node in tree.nodes),
+            },
+            at=at,
+        )
+
+    def evaluation_completed(
+        self,
+        report: EvaluationReport,
+        *,
+        actor: str,
+        correlation_id: UUID,
+        at: datetime,
+    ) -> AuditEvent:
+        return self._event(
+            event_type=AuditEventType.EVALUATION_COMPLETED,
+            entity_type=AuditEntityType.EVALUATION,
+            entity_id=str(report.report_id),
+            actor=actor,
+            correlation_id=correlation_id,
+            payload={
+                "instance_id": str(report.instance_id),
+                "instance_revision": report.instance_revision,
+                "agent_spec_checksum": report.agent_spec_checksum,
+                "skill_tree": report.skill_tree.model_dump(mode="json"),
+                "suite": report.suite.model_dump(mode="json"),
+                "decision": report.decision.value,
+                "hard_rules_passed": report.hard_rules_passed,
+                "soft_score": report.soft_score,
+            },
+            at=at,
+        )
+
+    def evaluation_reviewed(
+        self,
+        review: EvaluationReview,
+        *,
+        actor: str,
+        correlation_id: UUID,
+        at: datetime,
+    ) -> AuditEvent:
+        return self._event(
+            event_type=AuditEventType.EVALUATION_REVIEWED,
+            entity_type=AuditEntityType.EVALUATION,
+            entity_id=str(review.report_id),
+            actor=actor,
+            correlation_id=correlation_id,
+            payload={
+                "review_id": str(review.review_id),
+                "decision": review.decision.value,
             },
             at=at,
         )

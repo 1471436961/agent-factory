@@ -1,4 +1,4 @@
-"""Validated application inputs for the M1 production chain."""
+"""Validated application inputs for production and skill governance."""
 
 from typing import Annotated, TypeAlias
 from uuid import UUID
@@ -12,7 +12,11 @@ from agent_factory.domain.common import (
     SemVer,
     Slug,
 )
+from agent_factory.domain.enums import ReviewDecision
+from agent_factory.domain.evaluation import EvaluationSubmission, EvaluationSuiteDraft
 from agent_factory.domain.models import AgentDefinition, DomainKnowledgeDraft
+from agent_factory.domain.references import SkillTreeRef
+from agent_factory.domain.skills import SkillTreeDraft
 
 OptionalIdempotencyKey: TypeAlias = IdempotencyKey | None
 
@@ -21,6 +25,7 @@ class RegisterPrototypeCommand(FrozenModel):
     prototype_id: Slug
     version: SemVer
     definition: AgentDefinition
+    skill_tree: SkillTreeRef | None = None
     publish: bool = False
     actor: Actor
     idempotency_key: OptionalIdempotencyKey = None
@@ -82,3 +87,29 @@ class BindKnowledgeCommand(FrozenModel):
         if len(keys) != len(value):
             raise ValueError("selections contains duplicate knowledge references")
         return value
+
+
+class RegisterEvaluationSuiteCommand(FrozenModel):
+    suite: EvaluationSuiteDraft
+    actor: Actor
+    idempotency_key: OptionalIdempotencyKey = None
+
+
+class RegisterSkillTreeCommand(FrozenModel):
+    tree: SkillTreeDraft
+    actor: Actor
+    idempotency_key: OptionalIdempotencyKey = None
+
+
+class EvaluateInstanceCommand(FrozenModel):
+    submission: EvaluationSubmission
+    actor: Actor
+    idempotency_key: OptionalIdempotencyKey = None
+
+
+class ReviewEvaluationCommand(FrozenModel):
+    report_id: UUID
+    decision: ReviewDecision
+    comment: str = Field(default="", max_length=2_000)
+    actor: Actor
+    idempotency_key: OptionalIdempotencyKey = None

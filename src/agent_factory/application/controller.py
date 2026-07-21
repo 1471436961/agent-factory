@@ -1,4 +1,4 @@
-"""Deterministic application service for the M1 Agent production chain."""
+"""Deterministic application service for Agent production and governance."""
 
 from datetime import datetime
 from uuid import UUID
@@ -8,17 +8,29 @@ from agent_factory.application.commands import (
     BindKnowledgeCommand,
     CloneAgentCommand,
     DeprecatePrototypeCommand,
+    EvaluateInstanceCommand,
     KnowledgeSelection,
     PublishPrototypeCommand,
+    RegisterEvaluationSuiteCommand,
     RegisterKnowledgeCommand,
     RegisterPrototypeCommand,
+    RegisterSkillTreeCommand,
+    ReviewEvaluationCommand,
 )
 from agent_factory.application.idempotency import IdempotencyService
-from agent_factory.application.ports import Clock, CorrelationContext, IdGenerator
+from agent_factory.application.ports import (
+    Clock,
+    CorrelationContext,
+    EvaluationEngine,
+    IdGenerator,
+)
 from agent_factory.application.queries import AuditQuery, Page, PrototypeListQuery
 from agent_factory.application.repositories import (
+    EvaluationReportRepository,
+    EvaluationSuiteRepository,
     InstanceRepository,
     PrototypeRepository,
+    SkillTreeRepository,
 )
 from agent_factory.application.tooling import ToolPolicy
 from agent_factory.application.unit_of_work import UnitOfWork, UnitOfWorkFactory
@@ -29,8 +41,17 @@ from agent_factory.domain.common import (
     semver_tuple,
     sha256_model,
 )
-from agent_factory.domain.enums import InstanceStatus, PrototypeStatus
+from agent_factory.domain.enums import (
+    EvaluationDecision,
+    InstanceStatus,
+    PrototypeStatus,
+)
 from agent_factory.domain.errors import (
+    EvaluationReportNotFoundError,
+    EvaluationReviewConflictError,
+    EvaluationReviewNotRequiredError,
+    EvaluationSuiteMismatchError,
+    EvaluationSuiteNotFoundError,
     InstanceBusyError,
     InstanceNotFoundError,
     InvalidPrototypeStatusError,
@@ -43,6 +64,13 @@ from agent_factory.domain.errors import (
     PrototypeNotPublishedError,
     RepositoryUnavailableError,
     RevisionConflictError,
+    SkillTreeNotBoundError,
+    SkillTreeNotFoundError,
+)
+from agent_factory.domain.evaluation import (
+    EvaluationReport,
+    EvaluationReview,
+    EvaluationSuite,
 )
 from agent_factory.domain.models import (
     AgentInstance,
@@ -52,9 +80,13 @@ from agent_factory.domain.models import (
     KnowledgeBinding,
     PrototypeRef,
 )
+from agent_factory.domain.references import EvaluationSuiteRef, SkillTreeRef
+from agent_factory.domain.services.evaluation import checksum_evaluation_suite
 from agent_factory.domain.services.knowledge import KnowledgeBindingPolicy
 from agent_factory.domain.services.prototype import PrototypePolicy
+from agent_factory.domain.services.skills import checksum_skill_tree
 from agent_factory.domain.services.spec import AgentSpecBuilder
+from agent_factory.domain.skills import SkillTree
 
 REGISTER_PROTOTYPE = "register-prototype"
 PUBLISH_PROTOTYPE = "publish-prototype"
@@ -62,6 +94,10 @@ DEPRECATE_PROTOTYPE = "deprecate-prototype"
 REGISTER_KNOWLEDGE = "register-knowledge"
 CLONE_AGENT = "clone-agent"
 BIND_KNOWLEDGE = "bind-knowledge"
+REGISTER_EVALUATION_SUITE = "register-evaluation-suite"
+REGISTER_SKILL_TREE = "register-skill-tree"
+EVALUATE_INSTANCE = "evaluate-instance"
+REVIEW_EVALUATION = "review-evaluation"
 
 
 class FactoryController:
@@ -78,6 +114,7 @@ class FactoryController:
         knowledge_policy: KnowledgeBindingPolicy,
         tool_policy: ToolPolicy,
         spec_builder: AgentSpecBuilder,
+        evaluation_engine: EvaluationEngine,
         idempotency: IdempotencyService,
         audit_factory: AuditEventFactory,
         max_inline_knowledge_bytes: int,
@@ -92,6 +129,7 @@ class FactoryController:
         self._knowledge_policy = knowledge_policy
         self._tool_policy = tool_policy
         self._spec_builder = spec_builder
+        self._evaluation_engine = evaluation_engine
         self._idempotency = idempotency
         self._audit_factory = audit_factory
         self._max_inline_knowledge_bytes = max_inline_knowledge_bytes
@@ -115,10 +153,16 @@ class FactoryController:
 
             self._prototype_policy.validate_definition(command.definition)
             self._tool_policy.resolve(command.definition.tools)
+            if command.skill_tree is not None:
+                await self._require_skill_tree_ref(
+                    uow.skill_trees,
+                    command.skill_tree,
+                )
             prototype = AgentPrototype(
                 prototype_id=command.prototype_id,
                 version=command.version,
                 definition=command.definition,
+                skill_tree=command.skill_tree,
                 checksum=self._definition_checksum(command),
                 created_at=now,
                 created_by=command.actor,
@@ -350,6 +394,7 @@ class FactoryController:
                 revision=1,
                 status=InstanceStatus.CREATED,
                 configuration=prototype.definition,
+                skill_tree=prototype.skill_tree,
                 runtime_target=command.runtime_target,
                 created_at=now,
                 updated_at=now,
@@ -497,6 +542,344 @@ class FactoryController:
             await uow.commit()
             return updated
 
+    async def register_evaluation_suite(
+        self,
+        command: RegisterEvaluationSuiteCommand,
+    ) -> EvaluationSuite:
+        now = self._clock.now()
+        async with self._uow_factory() as uow:
+            replay = await self._idempotency.replay(
+                repository=uow.idempotency,
+                command=command,
+                operation=REGISTER_EVALUATION_SUITE,
+                response_type=EvaluationSuite,
+                now=now,
+            )
+            if replay is not None:
+                await uow.commit()
+                return replay
+
+            suite = EvaluationSuite.model_validate(
+                {
+                    **command.suite.model_dump(mode="python"),
+                    "checksum": checksum_evaluation_suite(command.suite),
+                    "created_at": now,
+                    "created_by": command.actor,
+                }
+            )
+            await uow.evaluation_suites.add(suite)
+            correlation_id = self._correlation_id()
+            await uow.audit.append(
+                self._audit_factory.evaluation_suite_registered(
+                    suite,
+                    actor=command.actor,
+                    correlation_id=correlation_id,
+                    at=now,
+                )
+            )
+            await self._idempotency.store(
+                repository=uow.idempotency,
+                command=command,
+                operation=REGISTER_EVALUATION_SUITE,
+                response=suite,
+                now=now,
+            )
+            await uow.commit()
+            return suite
+
+    async def get_evaluation_suite(
+        self,
+        suite_id: str,
+        version: str,
+    ) -> EvaluationSuite:
+        async with self._uow_factory(read_only=True) as uow:
+            return await self._require_evaluation_suite(
+                uow.evaluation_suites,
+                suite_id,
+                version,
+            )
+
+    async def register_skill_tree(
+        self,
+        command: RegisterSkillTreeCommand,
+    ) -> SkillTree:
+        now = self._clock.now()
+        async with self._uow_factory() as uow:
+            replay = await self._idempotency.replay(
+                repository=uow.idempotency,
+                command=command,
+                operation=REGISTER_SKILL_TREE,
+                response_type=SkillTree,
+                now=now,
+            )
+            if replay is not None:
+                await uow.commit()
+                return replay
+
+            suite_refs = {node.evaluation_suite for node in command.tree.nodes}
+            for suite_ref in sorted(
+                suite_refs,
+                key=lambda ref: (ref.suite_id, semver_tuple(ref.version)),
+            ):
+                await self._require_evaluation_suite_ref(
+                    uow.evaluation_suites,
+                    suite_ref,
+                )
+            tree = SkillTree.model_validate(
+                {
+                    **command.tree.model_dump(mode="python"),
+                    "checksum": checksum_skill_tree(command.tree),
+                    "created_at": now,
+                    "created_by": command.actor,
+                }
+            )
+            await uow.skill_trees.add(tree)
+            correlation_id = self._correlation_id()
+            await uow.audit.append(
+                self._audit_factory.skill_tree_registered(
+                    tree,
+                    actor=command.actor,
+                    correlation_id=correlation_id,
+                    at=now,
+                )
+            )
+            await self._idempotency.store(
+                repository=uow.idempotency,
+                command=command,
+                operation=REGISTER_SKILL_TREE,
+                response=tree,
+                now=now,
+            )
+            await uow.commit()
+            return tree
+
+    async def get_skill_tree(
+        self,
+        tree_id: str,
+        version: str,
+    ) -> SkillTree:
+        async with self._uow_factory(read_only=True) as uow:
+            return await self._require_skill_tree(
+                uow.skill_trees,
+                tree_id,
+                version,
+            )
+
+    async def evaluate_instance(
+        self,
+        command: EvaluateInstanceCommand,
+    ) -> EvaluationReport:
+        started_at = self._clock.now()
+        if command.idempotency_key is not None:
+            async with self._uow_factory() as uow:
+                replay = await self._idempotency.replay(
+                    repository=uow.idempotency,
+                    command=command,
+                    operation=EVALUATE_INSTANCE,
+                    response_type=EvaluationReport,
+                    now=started_at,
+                )
+                await uow.commit()
+                if replay is not None:
+                    return replay
+
+        submission = command.submission
+        async with self._uow_factory(read_only=True) as uow:
+            instance = await self._require_instance(
+                uow.instances,
+                submission.instance_id,
+                submission.instance_revision,
+            )
+            if instance.skill_tree is None:
+                raise SkillTreeNotBoundError(
+                    details={
+                        "instance_id": str(instance.instance_id),
+                        "revision": instance.revision,
+                    }
+                )
+            tree = await self._require_skill_tree_ref(
+                uow.skill_trees,
+                instance.skill_tree,
+            )
+            suite = await self._require_evaluation_suite_ref(
+                uow.evaluation_suites,
+                submission.suite,
+            )
+            if all(node.evaluation_suite != submission.suite for node in tree.nodes):
+                raise EvaluationSuiteMismatchError(
+                    details={
+                        "tree": instance.skill_tree.model_dump(mode="json"),
+                        "suite": submission.suite.model_dump(mode="json"),
+                        "reason": "suite-not-referenced-by-tree",
+                    }
+                )
+            spec = await uow.specs.get(instance.instance_id, instance.revision)
+            if spec is None:
+                await self._revalidate_bindings(uow, instance, now=started_at)
+                tools = self._tool_policy.resolve(instance.configuration.tools)
+                spec = self._spec_builder.build(
+                    instance=instance,
+                    tools=tools,
+                    generated_at=started_at,
+                )
+            else:
+                self._validate_spec_source(spec, instance)
+
+        outcome = self._evaluation_engine.evaluate(
+            suite=suite,
+            submission=submission,
+        )
+        completed_at = self._clock.now()
+        correlation_id = self._correlation_id()
+
+        async with self._uow_factory() as uow:
+            replay = await self._idempotency.replay(
+                repository=uow.idempotency,
+                command=command,
+                operation=EVALUATE_INSTANCE,
+                response_type=EvaluationReport,
+                now=completed_at,
+            )
+            if replay is not None:
+                await uow.commit()
+                return replay
+
+            persisted_instance = await self._require_instance(
+                uow.instances,
+                submission.instance_id,
+                submission.instance_revision,
+            )
+            persisted_spec = await uow.specs.get(
+                persisted_instance.instance_id,
+                persisted_instance.revision,
+            )
+            if persisted_spec is None:
+                if not await uow.specs.add_if_absent(spec):
+                    persisted_spec = await uow.specs.get(
+                        persisted_instance.instance_id,
+                        persisted_instance.revision,
+                    )
+                    if persisted_spec is None:
+                        raise RepositoryUnavailableError(
+                            details={
+                                "repository": "agent-specs",
+                                "reason": "insert-conflict-without-row",
+                            }
+                        )
+                else:
+                    persisted_spec = spec
+                    await uow.audit.append(
+                        self._audit_factory.spec_exported(
+                            persisted_spec,
+                            actor=command.actor,
+                            correlation_id=correlation_id,
+                            at=completed_at,
+                        )
+                    )
+            self._validate_spec_source(persisted_spec, persisted_instance)
+            if persisted_instance.skill_tree is None:
+                raise SkillTreeNotBoundError(
+                    details={
+                        "instance_id": str(persisted_instance.instance_id),
+                        "revision": persisted_instance.revision,
+                    }
+                )
+            report = EvaluationReport.model_validate(
+                {
+                    **outcome.model_dump(mode="python"),
+                    "report_id": self._id_generator.new(),
+                    "instance_id": persisted_instance.instance_id,
+                    "instance_revision": persisted_instance.revision,
+                    "agent_spec_checksum": persisted_spec.spec_checksum,
+                    "skill_tree": persisted_instance.skill_tree,
+                    "suite": self._evaluation_suite_ref(suite),
+                    "runtime_model": submission.runtime_model,
+                    "started_at": started_at,
+                    "completed_at": completed_at,
+                }
+            )
+            await uow.evaluation_reports.add(report)
+            await uow.audit.append(
+                self._audit_factory.evaluation_completed(
+                    report,
+                    actor=command.actor,
+                    correlation_id=correlation_id,
+                    at=completed_at,
+                )
+            )
+            await self._idempotency.store(
+                repository=uow.idempotency,
+                command=command,
+                operation=EVALUATE_INSTANCE,
+                response=report,
+                now=completed_at,
+            )
+            await uow.commit()
+            return report
+
+    async def review_evaluation(
+        self,
+        command: ReviewEvaluationCommand,
+    ) -> EvaluationReview:
+        now = self._clock.now()
+        async with self._uow_factory() as uow:
+            replay = await self._idempotency.replay(
+                repository=uow.idempotency,
+                command=command,
+                operation=REVIEW_EVALUATION,
+                response_type=EvaluationReview,
+                now=now,
+            )
+            if replay is not None:
+                await uow.commit()
+                return replay
+
+            report = await self._require_evaluation_report(
+                uow.evaluation_reports,
+                command.report_id,
+            )
+            if report.decision is not EvaluationDecision.REVIEW_REQUIRED:
+                raise EvaluationReviewNotRequiredError(
+                    details={
+                        "report_id": str(report.report_id),
+                        "decision": report.decision.value,
+                    }
+                )
+            existing = await uow.evaluation_reviews.get_for_report(report.report_id)
+            if existing is not None:
+                raise EvaluationReviewConflictError(
+                    details={
+                        "report_id": str(report.report_id),
+                        "review_id": str(existing.review_id),
+                    }
+                )
+            review = EvaluationReview(
+                review_id=self._id_generator.new(),
+                report_id=report.report_id,
+                reviewer=command.actor,
+                decision=command.decision,
+                comment=command.comment,
+                reviewed_at=now,
+            )
+            await uow.evaluation_reviews.add(review)
+            await uow.audit.append(
+                self._audit_factory.evaluation_reviewed(
+                    review,
+                    actor=command.actor,
+                    correlation_id=self._correlation_id(),
+                    at=now,
+                )
+            )
+            await self._idempotency.store(
+                repository=uow.idempotency,
+                command=command,
+                operation=REVIEW_EVALUATION,
+                response=review,
+                now=now,
+            )
+            await uow.commit()
+            return review
+
     async def export_spec(
         self,
         instance_id: UUID,
@@ -583,6 +966,121 @@ class FactoryController:
                 }
             )
         return instance
+
+    @staticmethod
+    async def _require_evaluation_suite(
+        repository: EvaluationSuiteRepository,
+        suite_id: str,
+        version: str,
+    ) -> EvaluationSuite:
+        suite = await repository.get(suite_id, version)
+        if suite is None:
+            raise EvaluationSuiteNotFoundError(
+                details={"suite_id": suite_id, "version": version}
+            )
+        return suite
+
+    @classmethod
+    async def _require_evaluation_suite_ref(
+        cls,
+        repository: EvaluationSuiteRepository,
+        reference: EvaluationSuiteRef,
+    ) -> EvaluationSuite:
+        suite = await cls._require_evaluation_suite(
+            repository,
+            reference.suite_id,
+            reference.version,
+        )
+        expected = cls._evaluation_suite_ref(suite)
+        if reference != expected:
+            raise EvaluationSuiteMismatchError(
+                details={
+                    "expected": expected.model_dump(mode="json"),
+                    "actual": reference.model_dump(mode="json"),
+                }
+            )
+        return suite
+
+    @staticmethod
+    async def _require_skill_tree(
+        repository: SkillTreeRepository,
+        tree_id: str,
+        version: str,
+    ) -> SkillTree:
+        tree = await repository.get(tree_id, version)
+        if tree is None:
+            raise SkillTreeNotFoundError(
+                details={"tree_id": tree_id, "version": version}
+            )
+        return tree
+
+    @classmethod
+    async def _require_skill_tree_ref(
+        cls,
+        repository: SkillTreeRepository,
+        reference: SkillTreeRef,
+    ) -> SkillTree:
+        tree = await cls._require_skill_tree(
+            repository,
+            reference.tree_id,
+            reference.version,
+        )
+        expected = cls._skill_tree_ref(tree)
+        if reference != expected:
+            raise SkillTreeNotFoundError(
+                details={
+                    "expected": expected.model_dump(mode="json"),
+                    "actual": reference.model_dump(mode="json"),
+                    "reason": "reference-mismatch",
+                },
+            )
+        return tree
+
+    @staticmethod
+    async def _require_evaluation_report(
+        repository: EvaluationReportRepository,
+        report_id: UUID,
+    ) -> EvaluationReport:
+        report = await repository.get(report_id)
+        if report is None:
+            raise EvaluationReportNotFoundError(details={"report_id": str(report_id)})
+        return report
+
+    @staticmethod
+    def _evaluation_suite_ref(suite: EvaluationSuite) -> EvaluationSuiteRef:
+        return EvaluationSuiteRef(
+            suite_id=suite.suite_id,
+            version=suite.version,
+            checksum=suite.checksum,
+        )
+
+    @staticmethod
+    def _skill_tree_ref(tree: SkillTree) -> SkillTreeRef:
+        return SkillTreeRef(
+            tree_id=tree.tree_id,
+            version=tree.version,
+            checksum=tree.checksum,
+        )
+
+    @staticmethod
+    def _validate_spec_source(
+        spec: AgentSpec,
+        instance: AgentInstance,
+    ) -> None:
+        if (
+            spec.instance_id != instance.instance_id
+            or spec.revision != instance.revision
+            or spec.prototype != instance.prototype
+            or spec.skill_tree != instance.skill_tree
+        ):
+            raise RepositoryUnavailableError(
+                details={
+                    "repository": "agent-specs",
+                    "reason": "spec-source-mismatch",
+                    "instance_id": str(instance.instance_id),
+                    "revision": instance.revision,
+                }
+            )
 
     @staticmethod
     def _definition_checksum(command: RegisterPrototypeCommand) -> str:

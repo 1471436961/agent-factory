@@ -5,6 +5,11 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from agent_factory.domain.evaluation import (
+    EvaluationOutcome,
+    EvaluationSubmission,
+    EvaluationSuite,
+)
 from agent_factory.domain.models import ResolvedToolSpec
 
 
@@ -43,3 +48,15 @@ class ToolCatalog(Protocol):
 
     def names(self) -> frozenset[str]:
         """Return all registered tool names."""
+
+
+class EvaluationEngine(Protocol):
+    """Evaluate caller-supplied evidence without running an Agent."""
+
+    def evaluate(
+        self,
+        *,
+        suite: EvaluationSuite,
+        submission: EvaluationSubmission,
+    ) -> EvaluationOutcome:
+        """Return a deterministic outcome for one registered suite."""
