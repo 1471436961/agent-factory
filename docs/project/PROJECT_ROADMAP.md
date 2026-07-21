@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前里程碑：M1，技术验收证据已齐备，等待项目 owner 作出阶段退出决定；详见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)。M0 已于 2026-07-18 通过项目 owner 验收，阶段报告见 [`docs/milestones/m0-foundation.md`](../milestones/m0-foundation.md)。
+M1 已于 2026-07-21 通过项目 owner 人工验收并封存，阶段报告见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)。下一里程碑为 M2 技能治理；M2 尚未开始实现，必须先完成阶段目标、范围、工作包、验收标准与已知风险的规划，并经 owner 确认后再落盘。M0 已于 2026-07-18 通过项目 owner 验收，阶段报告见 [`docs/milestones/m0-foundation.md`](../milestones/m0-foundation.md)。
 
 ## 5. 最终展示物
 
