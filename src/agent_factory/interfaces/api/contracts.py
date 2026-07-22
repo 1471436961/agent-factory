@@ -1,4 +1,4 @@
-"""Pydantic request and response contracts for the M1 REST interface."""
+"""Pydantic request and response contracts for the REST interface."""
 
 from typing import Annotated
 from uuid import UUID
@@ -12,7 +12,14 @@ from agent_factory.domain.common import (
     SemVer,
     Slug,
 )
+from agent_factory.domain.enums import ReviewDecision
+from agent_factory.domain.evaluation import (
+    EvaluationSuiteDraft,
+    SubmittedCaseResult,
+)
 from agent_factory.domain.models import AgentDefinition, DomainKnowledgeDraft
+from agent_factory.domain.references import EvaluationSuiteRef, SkillTreeRef
+from agent_factory.domain.skills import SkillTreeDraft
 
 
 class ErrorBody(FrozenModel):
@@ -34,6 +41,7 @@ class RegisterPrototypeRequest(FrozenModel):
     prototype_id: Slug
     version: SemVer
     definition: AgentDefinition
+    skill_tree: SkillTreeRef | None = None
     publish: bool = False
 
 
@@ -71,3 +79,58 @@ class BindKnowledgeRequest(FrozenModel):
 
 class ExportSpecRequest(FrozenModel):
     revision: PositiveInt | None = None
+
+
+class RegisterEvaluationSuiteRequest(EvaluationSuiteDraft):
+    pass
+
+
+class RegisterSkillTreeRequest(SkillTreeDraft):
+    pass
+
+
+class EvaluateInstanceRequest(FrozenModel):
+    expected_revision: PositiveInt
+    suite: EvaluationSuiteRef
+    runtime_model: str = Field(min_length=1, max_length=128)
+    case_results: Annotated[
+        tuple[SubmittedCaseResult, ...],
+        Field(min_length=1),
+    ]
+
+
+class ReviewEvaluationRequest(FrozenModel):
+    decision: ReviewDecision
+    comment: str = Field(default="", max_length=2_000)
+
+
+class PromoteAgentRequest(FrozenModel):
+    expected_revision: PositiveInt
+    target_node_id: Slug
+    evaluation_report_id: UUID
+    evaluation_review_id: UUID | None = None
+    knowledge_selections: tuple[KnowledgeSelection, ...] = ()
+
+    @field_validator("knowledge_selections")
+    @classmethod
+    def knowledge_selections_must_be_unique(
+        cls,
+        value: tuple[KnowledgeSelection, ...],
+    ) -> tuple[KnowledgeSelection, ...]:
+        refs = {
+            (selection.slot_name, selection.knowledge_id, selection.version)
+            for selection in value
+        }
+        if len(refs) != len(value):
+            raise ValueError(
+                "knowledge_selections contains duplicate knowledge references"
+            )
+        return value
+
+
+class RecordTaskOutcomeRequest(FrozenModel):
+    expected_revision: PositiveInt
+    task_id: UUID
+    skill_node_id: Slug
+    passed: bool
+    evaluation_report_id: UUID

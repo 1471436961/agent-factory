@@ -12,8 +12,8 @@
 | --- | --- | --- |
 | M0 | 工程骨架、配置、迁移、基础端口、CI | 应用启动；空库迁移；质量检查通过 |
 | M1 | 原型、知识、实例、AgentSpec、仓储与核心 REST | 注册、克隆、绑定、导出及重启重放测试 |
-| M2 | 技能 DAG、评估、晋升与降级 | 决策、并发和回退测试 |
-| M3 | 完整 REST、SDK、Tool adapter 与 Demo | 三种入口产生同构结果 |
+| M2 | 技能 DAG、评估、晋升、降级与最小治理 REST | 决策、并发、回退及 HTTP 重启恢复测试 |
+| M3 | SDK、Tool adapter、运行接口与 Demo | 三种入口产生同构结果 |
 | M4 | 完整安全与回归门禁 | 安全测试、OpenAPI/回归快照和部署检查通过 |
 | M5 | 对照实验与分析 | 原始数据、执行配置和统计结果可复算 |
 | M6 | 开源准备 | 新环境按文档在 30 分钟内跑通 Demo |
@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前里程碑：M2 技能治理。阶段目标、范围、工作包、验收标准与风险已于 2026-07-21 经项目 owner 确认，详见 [`docs/milestones/m2-skill-governance.md`](../milestones/m2-skill-governance.md)；M2.1-M2.4 已完成并提交，M2.5 观察期与降级已完成本地实现，M2.6 治理 REST 与闭环验收尚未开始。该进度不构成完整 M2 验收。M1 已于 2026-07-21 人工验收并封存，阶段报告见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)；M0 已于 2026-07-18 验收完成。
+当前里程碑：M2 技能治理。阶段目标、范围、工作包、验收标准与风险已于 2026-07-21 经项目 owner 确认，详见 [`docs/milestones/m2-skill-governance.md`](../milestones/m2-skill-governance.md)；M2.1-M2.5 已完成并提交，M2.6 治理 REST、重启恢复主链与本地质量门禁已完成，提交、远程 CI 与项目 owner 阶段验收尚未完成。该进度不构成完整 M2 验收。M1 已于 2026-07-21 人工验收并封存，阶段报告见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)；M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 

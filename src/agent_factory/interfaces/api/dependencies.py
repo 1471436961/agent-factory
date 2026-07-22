@@ -1,4 +1,4 @@
-"""FastAPI dependency adapters for the M1 application service."""
+"""FastAPI dependency adapters for application commands and queries."""
 
 from typing import Annotated, TypeVar
 

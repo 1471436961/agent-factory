@@ -117,13 +117,13 @@ M2 不实现：
 - 生成 `DEGRADED` 的新快照，并记录触发窗口、移除节点、移除绑定和 resulting revision。
 - 窗口限定在当前 instance revision；同一 EvaluationReport 只能计入一次，防止跨配置污染和证据重放。
 
-### M2.6 REST 与闭环验收
+### M2.6 REST 与闭环验收（本地门禁已通过，待远程 CI 与验收）
 
-- 增加技能树、评估套件、评估、复核、晋升和 TaskOutcome 的最小路由。
-- Router 只做 DTO/Command 转换，领域错误继续使用统一 envelope。
-- 实现 `test_evaluate_promote_observe_degrade`，从 M1 实例完成 M2 主链。
-- 关闭并重建 app 后重放树、套件、报告、复核、实例 revision 与审计。
-- 执行 Ruff、mypy strict、pytest、三层 branch coverage、sdist/wheel 和 GitHub Actions。
+- 已增加技能树、评估套件、评估、复核、晋升和 TaskOutcome 的八个最小路由。
+- Router 只做 DTO/Command 转换，领域错误继续使用统一 envelope；原型注册 DTO 增加可选 `SkillTreeRef`，使 HTTP 主链能够绑定技能树来源。
+- 已实现 `test_m2_rest_governance_loop_survives_restart`，从 M1 实例完成评估、最终复核、晋升、观察和降级主链。
+- 关闭并重建 app 后查询 Tree/Suite/Spec/Audit，并通过幂等键重放 Report、Review、Promotion 与最终 TaskOutcome。
+- 本地 Ruff、mypy strict、pytest、三层 branch coverage 与 sdist/wheel 门禁已通过；GitHub Actions 只在提交推送后确认。
 
 ## 6. 验收标准
 
@@ -137,7 +137,7 @@ M2 不实现：
 - [x] 未达到观察阈值时 revision 不变；达到阈值后移除目标及后代并产生新 revision。
 - [x] 降级后的配置从原型重建，不残留已移除节点独有工具、Prompt 或知识绑定。
 - [x] 所有当前已实现的治理写操作均有审计、幂等和失败原子性证据。
-- [ ] M1 历史快照可读取，M2 数据在应用重启后可完整恢复。
+- [x] M1 历史快照可读取，M2 数据在应用重启后可完整恢复。
 - [x] domain、application 和全项目 branch coverage 分别不低于 90%、85% 和 80%。
 - [ ] Ruff、mypy strict、pytest、sdist/wheel 与 M2 退出候选 GitHub Actions 全部通过。
 
@@ -152,7 +152,7 @@ M2 不实现：
 | 晋升、降级与事务 | Controller integration tests |
 | revision 与 stale report | concurrency integration tests |
 | REST 契约与脱敏错误 | API contract tests |
-| 重启恢复主链 | `test_evaluate_promote_observe_degrade` |
+| 重启恢复主链 | `test_m2_rest_governance_loop_survives_restart` |
 | 覆盖率、构建与资源 | CI workflow 与 wheel 内容检查 |
 
 ## 8. 已知风险与处理
@@ -168,7 +168,7 @@ M2 不实现：
 
 ## 9. 阶段报告
 
-当前状态：M2.1-M2.4 已完成并提交；M2.5 已完成本地实现，M2.6 尚未开始。该状态不代表完整技能治理 REST 闭环或 M2 阶段已经验收。
+当前状态：M2.1-M2.5 已完成并提交；M2.6 已完成本地实现与退出质量门禁，尚未提交、推送或通过远程 CI。该状态不代表 M2 阶段已经验收。
 
 - M1 封存提交：`acf2b5d docs: close M1 milestone`。
 - M1 封存远程证据：GitHub Actions CI #14 在提交 `acf2b5d` 上通过。
@@ -199,4 +199,11 @@ M2 不实现：
 - M2.5 行为证据：未达阈值时 revision 不变；达到阈值时目标及激活后代被移除，独立分支保留，节点独有 Prompt、工具、Schema 和知识 binding 不残留；审计故障整体回滚，同 revision 并发跨阈值只有一个请求产生降级快照。
 - M2.5 本地测试：开始前基线 `147 passed`；实现后 `160 passed`，覆盖纯阈值、证据一致性、schema v5、脏数据迁移原子失败、revision 窗口、报告重放、配置/知识回退、幂等、审计回滚和并发单胜。
 - M2.5 本地质量证据：Ruff 通过、mypy strict 对 85 个源码/测试文件通过；branch coverage 为 domain 96%、application 92%、total 93%；sdist/wheel 构建成功且均包含 `DegradationPolicy` 与 `005_task_outcome_integrity.sql`。
-- 第 6 节只勾选已经由当前测试直接证明的条目；重启恢复主链、治理 REST 和远程退出候选 CI 等待 M2.6。
+- M2.5 实现提交：`d6db225 feat: implement deterministic M2 degradation`。
+- M2.6 代码边界：新增 Suite/Tree 注册查询、评估、复核、晋升和 TaskOutcome 的最小 REST DTO 与路由；原型注册请求支持可选 `SkillTreeRef`；未新增业务策略、Repository、migration、SDK、Tool adapter 或运行时执行器。
+- M2.6 HTTP 证据：真实 ASGI/FastAPI + 文件型 SQLite 链路从空库完成 Suite/Tree/Prototype/Knowledge 注册、克隆、REVIEW_REQUIRED、最终复核、晋升、三次观察、自动降级、Spec 导出与审计查询。
+- M2.6 重启证据：关闭并重建 app 后精确恢复 Suite、Tree、降级后 AgentSpec 与审计；使用原幂等键重放 Report、Review、Promotion 和最终 TaskOutcome，响应不变且不新增审计。
+- M2.6 定向测试：DTO/OpenAPI 契约 `8 passed`；新增 M2 REST 主链与错误 envelope `2 passed`。
+- M2.6 本地测试：开始前基线 `160 passed`；实现后 `163 passed`。Ruff、mypy strict（88 个源码/测试文件）和 pytest 全部通过。
+- M2.6 本地质量证据：branch coverage 为 domain 96%、application 92%、total 93%；sdist/wheel 构建成功，两种制品均包含新增治理 routers、M2 runtime 模块与 `003`-`005` migration。
+- 第 6 节只勾选已经由当前测试直接证明的条目；提交后的远程退出候选 CI 仍待完成。

@@ -399,6 +399,25 @@ async def test_readiness_error_and_configurable_api_prefix(
             "/factory/v2/instances/{instance_id}/spec-exports"
         ]
     )
+    m2_paths = {
+        "/factory/v2/evaluation-suites": {"post"},
+        "/factory/v2/evaluation-suites/{suite_id}/versions/{version}": {"get"},
+        "/factory/v2/skill-trees": {"post"},
+        "/factory/v2/skill-trees/{tree_id}/versions/{version}": {"get"},
+        "/factory/v2/instances/{instance_id}/evaluations": {"post"},
+        "/factory/v2/evaluation-reports/{report_id}/reviews": {"post"},
+        "/factory/v2/instances/{instance_id}/promotions": {"post"},
+        "/factory/v2/instances/{instance_id}/task-outcomes": {"post"},
+    }
+    openapi_paths = app.openapi()["paths"]
+    for path, expected_methods in m2_paths.items():
+        assert path in openapi_paths
+        actual_methods = {
+            method
+            for method in openapi_paths[path]
+            if method in {"get", "post", "put", "patch", "delete"}
+        }
+        assert actual_methods == expected_methods
 
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(

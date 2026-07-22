@@ -6,11 +6,18 @@ import pytest
 from pydantic import ValidationError
 
 from agent_factory.application.commands import KnowledgeSelection
+from agent_factory.domain.enums import ReviewDecision
 from agent_factory.domain.errors import FactoryError
+from agent_factory.domain.evaluation import SubmittedCaseResult
 from agent_factory.domain.models import AgentDefinition
+from agent_factory.domain.references import EvaluationSuiteRef
 from agent_factory.interfaces.api.contracts import (
     BindKnowledgeRequest,
+    EvaluateInstanceRequest,
+    PromoteAgentRequest,
+    RecordTaskOutcomeRequest,
     RegisterPrototypeRequest,
+    ReviewEvaluationRequest,
 )
 from agent_factory.interfaces.api.errors import ERROR_STATUS_BY_CODE, error_response
 
@@ -45,6 +52,50 @@ def test_request_contracts_reject_extra_and_duplicate_selections(
         BindKnowledgeRequest(
             expected_revision=1,
             selections=(selection, selection),
+        )
+
+    with pytest.raises(ValidationError, match="duplicate knowledge references"):
+        PromoteAgentRequest(
+            expected_revision=1,
+            target_node_id="junior-engineer",
+            evaluation_report_id=UUID("00000000-0000-0000-0000-000000000401"),
+            knowledge_selections=(selection, selection),
+        )
+
+
+def test_m2_request_contracts_are_strict_and_bounded() -> None:
+    suite = EvaluationSuiteRef(
+        suite_id="engineer-readiness",
+        version="1.0.0",
+        checksum="a" * 64,
+    )
+    with pytest.raises(ValidationError, match="extra"):
+        EvaluateInstanceRequest.model_validate(
+            {
+                "expected_revision": 1,
+                "suite": suite.model_dump(mode="json"),
+                "runtime_model": "test-model-1",
+                "case_results": [
+                    SubmittedCaseResult(
+                        case_id="testing-strategy",
+                        output_text="Use deterministic tests.",
+                    ).model_dump(mode="json")
+                ],
+                "submitted_decision": "pass",
+            }
+        )
+    with pytest.raises(ValidationError):
+        RecordTaskOutcomeRequest(
+            expected_revision=0,
+            task_id=UUID("00000000-0000-0000-0000-000000000402"),
+            skill_node_id="junior-engineer",
+            passed=True,
+            evaluation_report_id=UUID("00000000-0000-0000-0000-000000000403"),
+        )
+    with pytest.raises(ValidationError, match="at most 2000"):
+        ReviewEvaluationRequest(
+            decision=ReviewDecision.APPROVED,
+            comment="x" * 2_001,
         )
 
 

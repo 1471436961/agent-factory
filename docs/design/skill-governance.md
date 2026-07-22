@@ -463,7 +463,7 @@ M2 最小路由：
 | 评估契约 | `domain/evaluation.py` | 参数、唯一性、报告不变量测试 |
 | 确定性规则引擎 | `domain/services/evaluation.py` | 六类规则、决策顺序和 timeout 测试 |
 
-M2.1 只完成纯领域能力。M2.2 通过数据库外键保证持久化的 `SkillTreeRef` 指向已注册对象；报告的服务端来源构造现已由 M2.3 完成，晋升事务和 REST 暴露仍分别属于 M2.4 与 M2.6，不能由领域层或持久层测试推导为已完成。
+M2.1 只完成纯领域能力。M2.2 通过数据库外键保证持久化的 `SkillTreeRef` 指向已注册对象；报告的服务端来源构造随后由 M2.3 完成，晋升事务和 REST 暴露分别由 M2.4 与 M2.6 完成，不能由领域层或持久层测试推导为已完成。
 
 ## 11. M2.2 实现映射
 
@@ -550,3 +550,16 @@ M2.3 允许显式评估历史 revision：报告记录的是该 revision 已发�
 | 原子观察和降级 | `application/controller.py`、`application/audit.py` | 审计故障回滚、幂等重放、同 revision 并发单胜测试 |
 
 M2.5 不运行 Agent，也不生成观察 evidence。外部提交的 EvaluationReport 仍不具备可信执行来源；本工作包只保证同一份 evidence 不会重复计数、不同配置快照不会混合统计，以及给定窗口下的降级变换可重复。未触发阈值时只写 TaskOutcome、`task-outcome.recorded` 审计和幂等结果；触发时在同一 UoW 内再写 `DEGRADED` snapshot 与 `skill.degraded` 审计。M2 没有自动晋升。
+
+## 15. M2.6 实现映射
+
+| 契约 | 代码位置 | 直接证据 |
+| --- | --- | --- |
+| Suite/Tree 注册与查询 DTO | `interfaces/api/contracts.py`、`routers/evaluations.py`、`routers/skills.py` | DTO 严格校验和 OpenAPI method 集合测试 |
+| 原型绑定 SkillTreeRef | `RegisterPrototypeRequest.skill_tree`、`routers/prototypes.py` | HTTP 注册响应保留精确 Tree ref |
+| 评估、复核、晋升、观察路由 | `routers/evaluations.py`、`routers/instances.py` | 真实 HTTP 完整治理链 |
+| 稳定领域错误 envelope | `interfaces/api/errors.py` | 缺失 Suite 404、未知字段 422 与输入脱敏测试 |
+| 重启恢复与持久化幂等 | `tests/contract/test_m2_rest_api.py` | 关闭/重建 app 后重放 report、review、promotion、outcome |
+| 制品资源约束 | `.github/workflows/ci.yml` | wheel 必须包含新增 routers 与 003-005 migrations |
+
+M2.6 没有增加 report、review 或 instance 的通用 GET。退出测试通过不可变 Suite/Tree 查询、指定 revision 的 AgentSpec、审计接口及写命令幂等重放证明恢复，避免为测试便利扩大公开接口。HTTP 链路仍接受不可信 `X-Actor-ID` 和外部 evidence，因此只能作为 owner 控制的本地治理演示，不能推导出可信审批或公网部署能力。

@@ -1,4 +1,4 @@
-"""FastAPI application factory for the M1 REST contract."""
+"""FastAPI application factory for the Agent Factory REST contract."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager

@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M2，核心生产链已完成，正在实现确定性技能治理
+**当前阶段**：Alpha / M2，确定性技能治理、最小 REST 闭环与本地门禁已完成，等待提交、远程 CI 与阶段验收
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[M1 REST API 设计说明](design/rest-api.md)、[M2 技能治理设计说明](design/skill-governance.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[M2 技能治理设计说明](design/skill-governance.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -2733,6 +2733,7 @@ class RegisterPrototypeRequest(FrozenModel):
     prototype_id: Slug
     version: SemVer
     definition: AgentDefinition
+    skill_tree: SkillTreeRef | None = None
     publish: bool = False
 
 
@@ -2796,7 +2797,7 @@ class RecordTaskOutcomeRequest(FrozenModel):
     evaluation_report_id: UUID
 ```
 
-所有请求模型 `extra="forbid"`。客户端提交未知字段时返回 422，避免拼写错误被静默忽略。`BindKnowledgeRequest` 还拒绝完全重复的知识引用；知识槽、版本范围和 cardinality 等业务规则仍由 application policy 校验。M2 DTO 是已确认的实现规格，但在相应 Controller、持久化和契约测试完成前不装配公开路由。
+所有请求模型 `extra="forbid"`。客户端提交未知字段时返回 422，避免拼写错误被静默忽略。`BindKnowledgeRequest` 和 `PromoteAgentRequest` 还拒绝完全重复的知识引用；知识槽、版本范围和 cardinality 等业务规则仍由 application policy 校验。M2 DTO 与路由已在 M2.6 装配，OpenAPI contract test 固定每个路径允许的方法集合。
 
 ### 10.2 FastAPI 应用与依赖
 
@@ -2835,7 +2836,6 @@ IdempotencyHeader = Annotated[
 ]
 
 
-@asynccontextmanager
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or Settings()
     container = build_container(resolved_settings)
@@ -2887,7 +2887,7 @@ async def register_prototype(
 ) -> AgentPrototype:
     return await controller.register_prototype(
         RegisterPrototypeCommand(
-            **body.model_dump(),
+            **body.model_dump(mode="python"),
             actor=actor,
             idempotency_key=idempotency_key,
         )
@@ -3057,7 +3057,7 @@ async def register_knowledge(
 
 ### 10.4 评估、晋升与状态路由
 
-以下是 M2 最小 REST 契约。M2.3 已实现 Suite/Tree 注册查询、评估和复核，M2.4 已实现显式晋升 application service，M2.5 已实现观察与确定性降级 application service，但本节路由仍统一留在 M2.6 实现和装配。每个写路由只有在对应 Controller、migration、幂等、审计和契约测试同时完成后才加入 `api_router`：
+以下 M2 最小 REST 契约已在 M2.6 实现并装配。M2.3 提供 Suite/Tree 注册查询、评估和复核 application service，M2.4 提供显式晋升，M2.5 提供观察与确定性降级；M2.6 只增加 DTO、路由映射和 HTTP 契约测试，没有把业务规则复制到接口层：
 
 | Method | Path | Request | Response |
 | --- | --- | --- | --- |
@@ -3085,20 +3085,21 @@ async def evaluate_instance(
     actor: ActorDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> EvaluationReport:
-    submission = EvaluationSubmission(
-        instance_id=instance_id,
-        instance_revision=body.expected_revision,
-        suite=body.suite,
-        runtime_model=body.runtime_model,
-        case_results=body.case_results,
+    command = validate_command(
+        EvaluateInstanceCommand,
+        {
+            "submission": {
+                "instance_id": instance_id,
+                "instance_revision": body.expected_revision,
+                "suite": body.suite,
+                "runtime_model": body.runtime_model,
+                "case_results": body.case_results,
+            },
+            "actor": actor,
+            "idempotency_key": idempotency_key,
+        },
     )
-    return await controller.evaluate_instance(
-        EvaluateInstanceCommand(
-            submission=submission,
-            actor=actor,
-            idempotency_key=idempotency_key,
-        )
-    )
+    return await controller.evaluate_instance(command)
 
 
 @instance_router.post(
@@ -3112,14 +3113,16 @@ async def promote_agent(
     actor: ActorDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
-    return await controller.promote_agent(
-        PromoteAgentCommand(
-            instance_id=instance_id,
-            **body.model_dump(),
-            actor=actor,
-            idempotency_key=idempotency_key,
-        )
+    command = validate_command(
+        PromoteAgentCommand,
+        {
+            "instance_id": instance_id,
+            **body.model_dump(mode="python"),
+            "actor": actor,
+            "idempotency_key": idempotency_key,
+        },
     )
+    return await controller.promote_agent(command)
 ```
 
 URL 中的 `instance_id` 由 router 写入 command，body 不重复接受该字段，避免两个来源不一致。评估输入是调用方提交的 evidence；API 不能接受 `decision`、`soft_score` 或 rule result 等服务端派生字段。
@@ -3172,7 +3175,7 @@ class PromotionRejectedError(FactoryError):
 
 领域异常只携带稳定业务码、消息和结构化详情，不携带 HTTP status。接口层必须按下表显式映射，不允许临时返回自由文本错误；未登记的错误码按 500 处理并记录日志，不将异常字符串返回客户端。测试必须断言 `ERROR_STATUS_BY_CODE` 与当前 `FactoryError` 子类错误码集合相等，防止新增错误漏配。
 
-| HTTP | M1 已实现错误码 |
+| HTTP | 已实现错误码（M1 基线，M2 追加项见下文） |
 | --- | --- |
 | 400 | `INVALID_OUTPUT_SCHEMA`, `INVALID_CORRELATION_ID`, `INVALID_CONTENT_LENGTH` |
 | 403 | `TOOL_NOT_GRANTED`, `TOOL_PERMISSION_DENIED` |
@@ -3184,7 +3187,7 @@ class PromotionRejectedError(FactoryError):
 | 500 | `INTERNAL_ERROR` |
 | 503 | `REPOSITORY_UNAVAILABLE`, `SERVICE_NOT_READY` |
 
-M2 application service 已增加 `SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_NOT_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`TASK_OUTCOME_MISMATCH`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED` 等稳定错误，并由映射集合测试防止漏配。M2.6 只负责把现有命令暴露为路由，不重新定义业务错误。认证和工具执行错误仍属于后续里程碑。
+M2 application service 已增加 `SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_NOT_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`TASK_OUTCOME_MISMATCH`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED` 等稳定错误，并由映射集合测试防止漏配。M2.6 将这些既有命令暴露为路由，不重新定义业务错误。认证和工具执行错误仍属于后续里程碑。
 
 ### 10.6 FastAPI 异常处理
 
@@ -3237,6 +3240,8 @@ api_router.include_router(prototype_router)
 api_router.include_router(instance_router)
 api_router.include_router(knowledge_router)
 api_router.include_router(audit_router)
+api_router.include_router(evaluation_router)
+api_router.include_router(skill_router)
 application.include_router(
     api_router,
     prefix=resolved_settings.api_prefix,
@@ -3245,7 +3250,7 @@ application.include_router(
 
 ### 10.8 Python SDK
 
-**当前 Alpha/M1 不实现。** M3 SDK 必须复用 REST DTO，并在认证方案确定后接入可信 Principal；在此之前不得把 `X-Actor-ID` 包装成认证能力。目标方法保持业务语义：
+**当前 Alpha/M2 不实现。** M3 SDK 必须复用 REST DTO，并在认证方案确定后接入可信 Principal；在此之前不得把 `X-Actor-ID` 包装成认证能力。目标方法保持业务语义：
 
 ```python
 class AgentFactoryClient:
@@ -3287,7 +3292,7 @@ class AgentFactoryClient:
 
 ### 10.9 面向 Agent 的工具映射
 
-**当前 Alpha/M1 不实现。** M3 工具适配器与 REST 路由共享 request model 和 `FactoryController`，工具层只做参数/返回值转换：
+**当前 Alpha/M2 不实现。** M3 工具适配器与 REST 路由共享 request model 和 `FactoryController`，工具层只做参数/返回值转换：
 
 ```python
 class CloneAgentToolInput(FrozenModel):
@@ -3725,7 +3730,7 @@ async def unbound_instance(
 
 每个测试使用独立数据库文件，避免 SQLite 内存数据库因多连接产生不同 database。migration 必须使用生产同一套脚本。
 
-### 12.5 完整生产链退出测试
+### 12.5 完整 HTTP 链路退出测试
 
 正式退出测试固定为 `tests/contract/test_rest_api.py::test_register_clone_bind_export`。它使用真实文件型 SQLite、生产 migration、`create_app(settings)` 和 ASGI lifespan，从空库只通过公开 REST 接口执行：
 
@@ -3746,7 +3751,22 @@ register draft -> idempotent replay -> publish -> register knowledge
 - 关闭第一个 app、重新执行 migration 并创建第二个 app 后，原型、规格和审计仍存在。
 - 重启后再次导出同一 revision 返回字节等价 JSON，`spec.exported` 总数仍为 1。
 
-这不是外部网络部署测试，但已经贯穿 HTTP adapter、application service、domain policy、SQLite repository、migration 和 lifespan。真实 Uvicorn 进程、认证及运行时执行不属于 M1 退出范围。
+M2 的退出候选测试为 `tests/contract/test_m2_rest_api.py::test_m2_rest_governance_loop_survives_restart`。它同样只通过公开 REST 接口执行：
+
+```text
+register suite/tree -> register published prototype with SkillTreeRef
+-> register knowledge -> clone revision 1
+-> evaluate REVIEW_REQUIRED -> approve review -> promote revision 2
+-> pass/fail/fail observations -> degrade revision 3
+-> export degraded spec -> query audit
+-> close app -> recreate app with the same database
+-> load suite/tree -> replay report/review/promotion/outcome idempotently
+-> reload spec/audit without additional writes
+```
+
+测试断言晋升获得节点 Prompt、工具和知识，达到观察阈值后这些节点特有配置全部消失；重启后的 Suite、Tree、AgentSpec 和审计与重启前 JSON 相同，四类写操作的幂等响应也可从数据库精确重放。
+
+这些测试不是外部网络部署测试，但已贯穿 HTTP adapter、application service、domain policy、SQLite repository、migration 和 lifespan。真实 Uvicorn 进程、认证及运行时执行不属于 M2 退出范围。
 
 ### 12.6 并发与事务测试
 
