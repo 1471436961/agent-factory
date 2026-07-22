@@ -334,3 +334,185 @@
    - 易混点：跨完整技术栈的 ASGI 测试即使不打开真实网络端口，仍属于契约/集成层证据；重建 HTTP client 不等于重建应用，必须关闭旧 lifespan 并调用新的 `create_app()`；高覆盖率不能替代失败样本设计；M1 验收的是确定性生产治理，不是 Agent 回答质量。
    - 验证边界：M1.5 没有验证真实 LLM、运行时任务执行、技能晋升、认证授权、多进程并发或 PostgreSQL 部署；SQLite 单机闭环和当前失败矩阵支持 Alpha 技术可行性，不构成生产规模与安全性结论。
    - 后续应用：每个后续里程碑在开始前定义可观察验收标准和证据矩阵，退出时同时提供主闭环、责任层失败测试、静态检查、覆盖率门禁、构建产物与远程 CI 证据，并由 owner 单独记录人工进入下一阶段的决定。
+
+1. **M2 以 revision 级证据和显式配置变换治理能力演化**
+
+   - 日期：2026-07-22
+   - 里程碑：M2 全局
+   - 主题：评估证据作用域、显式晋升、观察降级和不可变配置演化。
+   - 上下文：理解 M1 交付 AgentSpec 后，M2 如何在不运行 Agent、不依赖 LLM 做内部决策的前提下，对特定实例快照建立可审计的评估、晋升与降级闭环。
+   - 证据：`tests/contract/test_m2_rest_api.py::test_m2_rest_governance_loop_survives_restart` 从空库经 REST 注册 Suite、SkillTree、绑定技能树的 Prototype 和 Knowledge，克隆 revision 1，提交外部 case result 生成 `REVIEW_REQUIRED` 报告，经最终人工复核后显式晋升为 revision 2，再记录“通过、失败、失败”三次观察并触发 revision 3 降级；重启后可恢复 Suite、Tree、Spec 和审计，并可幂等重放 Report、Review、Promotion 与最终 TaskOutcome。项目 owner 在讲解问答中确认 EvaluationReport 只是证据，修改实例必须显式调用 `promote_agent()`，并确认从 Prototype 重建配置可以防止已移除技能的 Prompt、工具或知识残留。
+   - 结论：
+     - M1 回答“如何生产可追溯的 AgentSpec”，M2 回答“如何在确定性治理规则下演化某个实例配置”；M2 不执行任务，也不把规则通过描述成语义质量已得到保证。
+     - `EvaluationReport` 是绑定特定 instance revision、AgentSpec checksum、SkillTreeRef、EvaluationSuiteRef、runtime model 和一次 submitted evidence 的历史测量。模型、Prompt、工具、知识、Suite 或 revision 变化后，结论不能自动外推为永久能力。
+     - 评估事实与配置变更必须分离。规则通过只产生报告；需要人工复核时追加不可变 `EvaluationReview`；真正晋升必须由显式 `PromoteAgentCommand` 触发，从而保留操作意图、人工决策权和审计边界。
+     - 晋升生成 `revision + 1` 的新快照，不覆盖旧配置；TaskOutcome 只进入对应 revision 的观察窗口。达到确定性阈值后，降级再生成新 revision，旧报告和旧快照仍作为历史事实保留。
+     - 晋升与降级都从来源 Prototype 和完整 active node 集合全量重建配置，而不是在当前配置上做反向 patch。这样既能清除已移除节点的 Prompt、工具、Schema 和知识槽，也能保证相同输入得到相同配置与 checksum。
+   - 流程图：
+
+     ```text
+     M1 Instance revision 1
+              │ 提交外部 case results
+              ▼
+       EvaluationReport ──► 可选最终 EvaluationReview
+              │ 显式 PromoteAgentCommand
+              ▼
+        Instance revision 2
+              │ 记录当前 revision 的 TaskOutcome 窗口
+              ▼
+       未达阈值：revision 不变
+       达到阈值：从 Prototype + 剩余 active nodes 重建
+              │
+              ▼
+       Instance revision 3 / DEGRADED
+     ```
+
+   - 易混点：报告通过不等于实例已经晋升；人工 review 在没有认证时仍是不可信 actor 标签；`DEGRADED` 是新快照的状态，不是删除历史 revision；规则对 submitted evidence 可重复不等于 evidence 来自可信运行时。
+   - 验证边界：当前闭环证明给定输入下的评估、配置变换、持久化、幂等和审计可重复，不证明 Agent 永久具备某项能力、真实模型输出可靠、人工复核身份可信或服务可安全部署到公网。
+   - 后续应用：运行时接入后必须把真实执行结果显式转换为 EvaluationSubmission，并保留 runtime/model 来源；任何新增配置演化操作都继续使用 expected revision、新快照、来源校验和显式命令，不允许评估器直接修改实例。
+
+1. **M2.1 用不可变引用、稳定 DAG 和纯函数建立治理领域契约**
+
+   - 日期：2026-07-22
+   - 里程碑：M2.1
+   - 主题：精确版本引用、技能树合法性、稳定拓扑顺序、全量配置重建与纯评估输入。
+   - 上下文：理解 M2 在进入 Repository 和 Controller 之前，如何先把技能、评估和配置演化定义为可独立验证、无 I/O 副作用的领域规则。
+   - 证据：`tests/unit/domain/test_skills.py` 覆盖非法图、多分支 DAG、稳定顺序、依赖、配置组合与冲突；`tests/unit/domain/test_evaluation.py` 覆盖 Suite、Submission、Report 不变量和六类规则参数；`tests/unit/domain/test_m2_checksums.py` 验证无序集合和输入顺序不改变 Tree/Suite checksum；`tests/unit/domain/test_m2_compatibility.py` 验证新增可选技能树来源仍可读取 M1 快照。项目 owner 在问答中确认规则引擎只有拿到实际 `case_results` 才能评估，因为 M2 不负责运行 Agent。
+   - 结论：
+     - `SkillTreeRef` 和 `EvaluationSuiteRef` 使用 `id + version + checksum` 精确标识不可变内容。`id + version` 只能说明逻辑名称，checksum 进一步发现同名版本内容被替换或错误引用；checksum 是一致性证据，不是来源签名。
+     - `SkillTreeDraft` 在模型边界拒绝重复节点、自依赖、缺失父节点和环，并规范化节点顺序；非法图不能先注册再等待运行时发现。`SkillNode` 只声明父依赖和对 Prompt、工具、知识槽、输出 Schema、评估 Suite 与观察策略的配置影响。
+     - `topological_order()` 先满足父子依赖，再使用节点 ID 对同时 ready 的节点稳定排序。即使两个节点互不依赖，也不能依赖 set/frozenset 的遍历顺序，否则 Prompt appendix 顺序、最终配置和 checksum 可能随输入顺序或进程变化。
+     - `apply_skill_nodes(base, tree, active_node_ids)` 是纯数据变换：从不可变 Prototype definition 开始，按稳定顺序叠加完整 active node 集合，检测 Schema 和知识槽冲突，返回新的 `AgentDefinition`；它不读取仓储、不修改输入、不生成 ID 或时间，也不写审计。
+     - `EvaluationSuite` 定义题目和规则，`EvaluationSubmission` 提供特定实例 revision 的实际 case results，`DeterministicRuleEngine` 只根据二者返回 `EvaluationOutcome`。只有 AgentSpec 和测试题目时并不存在待检查的输出，因此不能完成评估。
+     - `EvaluationReport` 中的 report ID、服务端时间、Spec/Tree 来源和持久化事实不应由纯规则引擎伪造；M2.1 只定义结果和报告不变量，M2.3 再由 application service 组合服务端来源并提交事务。
+   - 易混点：DAG 合法不代表任意 active node 子集合法，激活子节点时仍必须包含父节点；拓扑排序不稳定可能不影响工具集合，却会影响有顺序的 Prompt 和整体 checksum；纯函数返回新模型不等于结果已经持久化或实例已经晋升。
+   - 验证边界：M2.1 能证明相同规范化输入产生相同图校验、规则结果、配置和 checksum，不能证明 submitted evidence 真实、SkillTree/Suite 已注册、报告来源由服务端生成、事务成功或 revision 已发生变化。
+   - 后续应用：新增技能字段时必须明确组合顺序与冲突规则，并进入 canonical checksum；新增 RuleKind 时保持规则执行器纯计算和有界输入；涉及 Repository、clock、ID、审计或事务的职责继续留在 application/infrastructure 层。
+
+1. **M2.2 用精确来源外键和双重存储建立治理持久化基础**
+
+   - 日期：2026-07-22
+   - 里程碑：M2.2
+   - 主题：治理快照、关系投影、复合外键、读取验真和 M1 数据兼容。
+   - 上下文：理解 M2.1 的不可变领域对象如何进入 SQLite，并保证 EvaluationReport、AgentSpec、SkillTree、EvaluationSuite、Review 和 TaskOutcome 之间的来源关系不能由调用方任意拼接。
+   - 证据：`003_skill_governance.sql` 新增 EvaluationSuite、SkillTree、EvaluationReport、EvaluationReview 和 TaskOutcome 五类表，以及 `skill_node_suites`、`prototype_skill_trees`、`instance_skill_trees` 三类来源关系投影；`tests/integration/test_skill_governance_repositories.py::test_governance_snapshots_round_trip_after_restart` 在真实文件型 SQLite 中写入治理对象，关闭旧连接并创建新 UoW Factory 后完整读回；同文件的唯一约束、外键、rollback 和损坏投影测试证明非法来源组合与 JSON/列漂移会被拒绝。项目 owner 在问答中确认完整 JSON 与关系型投影并存是 Alpha 阶段的折中，并理解不同来源约束分别由 Report、Tree/Suite 和 TaskOutcome 的复合外键承担。
+   - 结论：
+     - M2.2 分别保存不可变 Suite、Tree、Report、Review 和 TaskOutcome，而不是把全部治理历史塞入当前 Instance JSON。独立记录允许按自身身份查询、追加最终事实并建立跨对象来源约束。
+     - Report 通过 `(instance_id, instance_revision, agent_spec_checksum)` 外键绑定确切 AgentSpec 快照；SkillTree 和 EvaluationSuite 分别通过 `id + version + checksum` 外键绑定精确版本。一个实例 ID 存在不足以证明报告来源有效。
+     - TaskOutcome 使用自己的 `(evaluation_report_id, instance_id, instance_revision)` 关系约束，保证观察样本引用的报告属于同一实例 revision。Tree/Suite 来源和 TaskOutcome 一致性不是 AgentSpec 复合外键单独完成，而是多组外键共同形成证据链。
+     - 完整 `payload_json` 用于恢复 Pydantic 对象和降低 Alpha 阶段的 Schema 演进成本；关系型投影列用于主键、唯一约束、外键、索引和常用查询。两者重复是受校验的工程冗余，不是两个可以独立修改的数据源。
+     - Repository 读取时先用 Pydantic 解码 JSON，再比较 ID、版本、decision、时间和来源投影，并重新计算 definition/payload checksum；SkillTree 还核对每个节点的 Suite 关系。任一不一致都转换为安全的 `RepositoryUnavailableError`，不会静默返回损坏对象。
+     - 五个治理 Repository 保持各自的聚合边界，但由同一个 `SqliteUnitOfWork` connection 和事务管理。M2.3 因而可以把 AgentSpec、Report、AuditEvent 和 IdempotencyRecord 放入同一提交中，而不要求某个 Repository 承担跨聚合事务。
+     - `003` 保持 forward-only，只新增表和索引，不修改已经发布的 `001`、`002`。M1 Prototype、Instance 和 AgentSpec 缺少技能树来源时按可选字段 `None` 读取，新 M2 对象再通过关系表保存精确 `SkillTreeRef`。
+   - 易混点：数据库中存在 `instance_id` 不代表任意 report 都可挂载到该实例；JSON 能通过 Pydantic 校验不代表关系投影和 checksum 一致；保存多个对象的 Repository 方法都是 async 不代表它们自动共享事务，共享事务来自同一个 UoW connection。
+   - 验证边界：M2.2 证明治理对象可以可靠 round trip、重启恢复并受当前外键与 checksum 约束，但不负责生成可信的服务端 Report 字段、执行规则、写治理审计、处理幂等或决定晋升/降级；这些编排从 M2.3 开始进入 Controller。
+   - 后续应用：新增持久化来源关系时优先为稳定身份和高价值约束增加关系投影，同时保留完整 canonical payload；任何冗余列都必须在读取测试中验证与 JSON 一致；涉及多 Repository 的业务变化继续由 UoW 原子提交。
+
+1. **M2.3 用三段式评估和服务端来源构造生成可追溯报告**
+
+   - 日期：2026-07-22
+   - 里程碑：M2.3
+   - 主题：治理定义注册、事务外规则计算、最终写事务、双重幂等复查和最终人工复核。
+   - 上下文：理解 M2.3 如何把 M2.1 的纯规则引擎与 M2.2 的治理 Repository 组合为实际应用服务，同时控制 SQLite 写锁时间、并发幂等、报告来源和人工复核边界。
+   - 证据：`tests/integration/test_evaluation_controller.py` 覆盖 Suite/Tree 注册与精确引用、PASS/FAIL/REVIEW_REQUIRED、最终复核、历史 revision、幂等重放、审计脱敏和最终写事务回滚；`FactoryController.evaluate_instance()` 先在只读 UoW 中准备 Instance、Tree、Suite 和 AgentSpec，在事务外调用 `DeterministicRuleEngine`，再在最终写 UoW 中复查幂等并原子保存缺失 Spec、Report、AuditEvent 和 IdempotencyRecord。项目 owner 在问答中确认第一次幂等检查用于避免重复计算，最终事务中的第二次检查负责并发正确性；同时确认 report ID、Spec checksum 和时间必须由服务端从数据库事实构造，不能信任客户端提交。
+   - 结论：
+     - Suite 注册由 Controller 根据 Draft 计算 definition checksum，并补充 `created_at/created_by`；SkillTree 注册前逐个解析节点的精确 EvaluationSuiteRef。Prototype 绑定的 SkillTreeRef 再传播到 Instance revision 和 AgentSpec，形成评估所需的来源链。
+     - 评估采用“只读准备 -> 事务外纯计算 -> 最终写入”三段式。只读阶段加载指定历史 revision、精确 Tree/Suite 和已有或候选 AgentSpec；纯规则计算不持有 SQLite 写锁；最终事务重新加载持久化来源并一次提交业务事实。
+     - 第一次幂等检查位于规则计算前，是减少重复计算的快速重放；两个并发请求仍可能同时未命中，因此最终写事务必须再次检查。第二次复查与 Report/Audit/Idempotency 写入处于同一串行化事务，才是防止重复报告和重复审计的正确性边界。
+     - 客户端只负责提交 case results、runtime model 和目标 Suite 引用。Controller 从 Repository 和系统端口生成 report ID、实际 instance revision、AgentSpec checksum、SkillTreeRef、EvaluationSuiteRef、开始/完成时间；这既减少主动伪造，也阻止客户端误传过期来源。
+     - `DeterministicRuleEngine` 的决策顺序固定为：任一 HARD 失败或 SOFT 低于阈值则 FAIL；规则通过且 Suite 要求复核则 REVIEW_REQUIRED；其余为 PASS。人工复核不能把 FAIL 改为通过，默认路径也不生成或依赖 LLM JudgeSignal。
+     - Report 不持久化完整 `output_text`，只保存 case-result checksum、可选 artifact URI 和有界 rule evidence；审计进一步只保存 allowlist 元数据。该设计降低自由文本泄露，但没有 artifact 时不能只凭 Report 独立重放原始输出。
+     - `EvaluationReview` 是独立于 Report 的追加事实，只允许 REVIEW_REQUIRED 报告拥有一次最终 APPROVED/REJECTED 结果；应用检查与数据库唯一约束共同防止重复或反向改写。Review comment 不进入审计，但当前 reviewer 仍只是未经认证的 actor 标签。
+     - 旧 revision 可以继续被评估，因为 Report 表达的是该快照的历史测量事实；报告是否仍能修改当前 head 属于使用时关系，M2.4 再通过 stale 检查禁止旧证据晋升新 revision。
+   - 流程图：
+
+     ```text
+     快速幂等重放
+            │ 未命中
+            ▼
+     只读 UoW：加载 Instance revision + Tree + Suite + Spec
+            │ 关闭事务
+            ▼
+     DeterministicRuleEngine：事务外纯计算 EvaluationOutcome
+            │
+            ▼
+     最终写 UoW：再次检查幂等
+            │ 未命中
+            ▼
+     缺失 AgentSpec + EvaluationReport + AuditEvent + IdempotencyRecord
+            │
+            ▼
+          单次 commit
+     ```
+
+   - 易混点：两次幂等检查不是重复代码，只有最终事务内的复查解决 check-then-act 竞态；服务端生成来源字段不代表 submitted evidence 真实；允许保存历史 revision 报告不代表该报告还能晋升当前实例；REVIEW_REQUIRED 不是 PASS，也不是 FAIL。
+   - 验证边界：M2.3 能证明给定 evidence 下规则结果、服务端来源绑定、事务和幂等可重复，不能证明 evidence 来自真实 Agent 执行、runtime model 名称真实、reviewer 身份可信或报告对应永久能力。
+   - 后续应用：耗时的纯计算继续移出 SQLite 写事务，但最终提交前必须复查并重新加载关键持久化事实；外部 Runtime Adapter 只提交 evidence，不得构造服务端 provenance；任何消费 Report 的操作都要在使用时重新检查 revision、Spec、Tree、Suite 和 Review 关系。
+
+1. **M2.4 用显式晋升、来源重建和 CAS 生成新配置快照**
+
+   - 日期：2026-07-22
+   - 里程碑：M2.4
+   - 主题：显式证据消费、纯晋升策略、配置来源校验、完整知识绑定和实例配置 checksum。
+   - 上下文：理解 M2.3 的 EvaluationReport 如何在不修改历史事实的前提下，被显式晋升命令消费并转化为新的 AgentInstance revision，以及为什么晋升不能直接 patch 当前配置或只验证新增字段。
+   - 证据：`tests/unit/domain/test_promotion.py` 覆盖状态、节点、父依赖、stale、Suite、PASS/FAIL/REVIEW_REQUIRED 和 Review 规则；`tests/integration/test_promotion_controller.py` 覆盖连续全量重建、必填知识、未知工具、旧 binding 来源保留、幂等、同 revision 并发单胜、事务回滚和 configuration checksum；`004_instance_configuration_checksum.sql` 为历史快照回填并要求后续 snapshot 保存独立配置 checksum。项目 owner 在问答中确认 Controller 重建当前配置是为了证明其确实来自声明的 Prototype 和 active nodes，并进一步理解完整知识校验不仅保留旧 binding 来源，还要发现缺失槽位、重复绑定和跨新旧集合的 cardinality/版本/模式问题。
+   - 结论：
+     - 规则通过只产生 EvaluationReport，不能自动改变实例；只有包含 target node、expected revision、report/review 引用、知识选择、actor 和幂等键的 `PromoteAgentCommand` 能触发晋升。这样把历史测量事实与配置变更意图区分开。
+     - 纯 `PromotionPolicy` 不访问 Repository、clock 或 ID，只验证实例状态、技能树与目标节点、父依赖、当前 AgentSpec、Report provenance、目标节点 EvaluationSuite 和最终 Review。Controller 负责加载这些对象并管理事务，两层职责不能混合。
+     - stale 是证据与当前 head 的使用时关系：Report 仍是其原 revision 的有效历史事实，但 instance/revision、Spec checksum、Tree 或 active nodes 与当前状态不匹配时，不得用于新 head 的晋升；系统不修改 Report 增加 mutable stale 标志。
+     - 晋升前先从来源 Prototype 和当前完整 active node 集合重建 expected configuration，并与已保存配置比较。该检查证明当前快照符合业务来源；如果来源不明，即使 Report 与 Spec 字段彼此匹配，也不能继续演化。
+     - 候选配置始终从 Prototype definition 和“旧 active nodes + target node”全量重建，而不是在 current configuration 上增量 patch。这样可防止 Prompt 重复、隐藏字段传播和配置漂移，并重新执行工具、知识槽、输出 Schema 的顺序与冲突规则。
+     - SkillNode 的工具声明只是授权意图；候选配置中的全部工具仍需通过 ToolCatalog/ToolPolicy 解析。未知或越权工具会在 snapshot 写入前拒绝，不能因为来自已注册技能树就绕过白名单。
+     - 知识校验面向完整候选定义和“现有 bindings + 新 selections”集合。只检查新增项无法发现其他必填槽遗漏、新旧组合超过 cardinality、重复引用或现有绑定的 checksum、版本、kind、injection mode 已不匹配。
+     - 通过完整复验的旧 binding 原样保留原始 `bound_at/bound_by`，只有新增 selection 生成新的绑定来源；晋升只追加知识，不静默替换已有 binding，也不把旧知识伪装成本次重新绑定。
+     - 晋升以 `expected_revision` 保存 `revision + 1` snapshot，并把 `skill.promoted` 审计和幂等结果放在同一 UoW 中。并发请求即使读取相同 head，也只有一个能通过 instance head CAS；失败事务的 snapshot、审计和幂等记录整体回滚。
+     - M1 的“Instance configuration checksum 等于 Prototype checksum”只适用于未特化配置。`004` 增加独立 `configuration_checksum`：历史 M1 snapshot 可用 Prototype checksum 回填，新 revision 保存实际配置摘要，Repository 读取时重新计算并核对。
+     - `configuration_checksum` 检查存储内容是否损坏；Controller 从 Prototype + active nodes 重建则检查配置是否来自声明的业务规则。错误程序即使同时改写 JSON 和 checksum，也不能由此证明来源正确，因此两层校验不可互相替代。
+   - 易混点：Report 通过不等于已晋升；Review ID 存在不等于它属于当前 Report 且为 APPROVED；SkillNode 声明工具不等于工具已获系统白名单授权；旧 binding 被保留不等于可以跳过完整知识复验；checksum 一致不等于业务来源正确。
+   - 验证边界：M2.4 证明给定当前快照和证据时，晋升判定、配置/知识重建、revision CAS、审计与幂等提交可重复；不证明外部 evidence 或 reviewer 可信，也不执行新 revision 的真实 Agent 任务。晋升不会自动生成语义能力保证。
+   - 后续应用：所有消费历史证据并修改实例的操作都在使用时校验当前 revision 和完整 provenance；新增技能配置字段必须进入全量重建与 configuration checksum；需要替换知识时使用独立显式命令和审计语义，不把替换隐藏在晋升中。
+
+1. **M2.5 用 revision 级观察窗口和单次证据消费实现确定性降级**
+
+   - 日期：2026-07-22
+   - 里程碑：M2.5
+   - 主题：观察证据一致性、确定性阈值、依赖后代移除、revision 隔离、报告单次消费和原子降级。
+   - 上下文：理解技能晋升后如何持续记录可审计的任务结果，并在不依赖 LLM 或后台自主决策的情况下，根据固定窗口和阈值生成可重复的降级快照。
+   - 证据：`tests/unit/domain/test_degradation.py` 覆盖最小样本数、最新窗口、顺序无关性、连续失败、失败率、状态、active node、Suite/Spec/Report/Review 来源和 submitted passed 一致性；`tests/integration/test_degradation_controller.py` 覆盖未降级 revision 不变、目标及后代移除、独立分支保留、Prompt/工具/Schema/知识回退、Report 重放拒绝、审计故障整体回滚和并发跨阈值单胜；`005_task_outcome_integrity.sql` 增加 Report 单次消费唯一索引与 revision 级窗口索引。项目 owner 在问答中确认旧 revision 的结果不能直接评价新配置，并准确区分幂等键防止同一命令重试与唯一索引防止更换 task ID 后重复消费同一 Report。
+   - 结论：
+     - `RecordTaskOutcomeCommand.passed` 是调用方声明，不能直接进入窗口。`DegradationPolicy` 必须根据 Report 决策和可选最终 Review 重新推导 evidence_passed；两者矛盾时返回 `TASK_OUTCOME_MISMATCH`，防止调用方隐瞒失败或伪造失败触发降级。
+     - Observation 只接受当前 head revision、当前 AgentSpec、精确 Tree/Suite、当前 active node 和匹配 Report/Review 的证据。旧 Report 可作为历史事实保留，但不能混入新配置的观察窗口。
+     - 阈值算法先按 `recorded_at + task_id` 稳定排序并截取最新固定窗口；只有样本数达到 `minimum_samples` 后，尾部连续失败达到阈值或窗口失败率达到阈值任一成立才降级。稳定顺序使 Repository 返回顺序不影响结果。
+     - 未达阈值时只追加 TaskOutcome、`task-outcome.recorded` 审计和幂等结果，`resulting_revision` 等于当前 revision；记录一次观察事实不会无意义地产生新配置快照。
+     - 达到阈值时移除目标节点和它的所有已激活后代，因为父节点消失会破坏后代依赖；与目标无依赖关系的独立 active 分支继续保留，避免把局部能力失败扩大为全实例清空。
+     - 降级配置从 Prototype 和剩余完整 active node 集合重新构建，并再次解析工具白名单；系统不通过删除 Prompt 字符串或反向撤销 patch 来猜测旧节点贡献，避免残留后代 Prompt、技能工具或 Schema override。
+     - 新配置不再声明的技能知识槽对应 binding 被移除，知识包本身不删除；仍声明的 binding 重新验证 checksum 和 injection mode 后原样保留来源。降级收缩的是新 revision 的引用关系，不改写旧 revision 或知识包历史。
+     - 窗口查询必须包含 `(instance_id, instance_revision, skill_node_id)`。revision 变化意味着 AgentSpec 可能变化；即使变化来自独立技能分支，Alpha 仍保守地重新积累样本，优点是证据边界明确，代价是丢弃部分可能仍可比较的历史观察。
+     - Idempotency-Key 只识别相同 operation 和 request hash 的重试；调用方仍可更换 task ID、参数或幂等键重复引用同一 FAIL Report。`UNIQUE(evaluation_report_id)` 提供业务级单次消费约束，使一份 EvaluationReport 最多形成一个 TaskOutcome。
+     - `005` 创建唯一索引时若历史数据已重复消费 Report，migration 必须整体失败并回滚，`schema_migrations` 不记录 v5；这避免实际 Schema 未满足新不变量却被标记为升级成功。revision 级复合索引则与真实窗口查询路径匹配。
+     - 触发降级时，TaskOutcome、`task-outcome.recorded`、`DEGRADED` revision + 1 snapshot、`skill.degraded` 和 IdempotencyRecord 在同一 UoW 提交。任一步失败连本次 Outcome 也回滚；并发跨阈值请求依赖 expected revision/CAS，只允许一个产生新 head。
+   - 易混点：自动降级不是后台 Agent 自主运行，而是在显式记录 TaskOutcome 时按纯规则同步判断；task ID 唯一不能阻止同一 Report 换 ID 重放；未降级时不增加 revision 不代表 Outcome 没有持久化；降级删除 binding 不等于删除知识包；`DEGRADED` 新状态不覆盖旧快照。
+   - 验证边界：M2.5 能证明给定当前快照、可信来源关系和 submitted evidence 时，窗口、阈值、配置回退、事务与并发结果可重复；不能证明 evidence 由真实 Agent 任务产生，也不能证明阈值适合真实业务。当前单机 SQLite CAS 证据不代表分布式调度能力。
+   - 后续应用：Runtime Adapter 接入后仍需为每个 Outcome 提供可验证 Report 来源；真实实验应根据误降级/漏降级数据校准窗口和阈值；只有出现明确且可证明安全的跨 revision 等价规则时，才考虑复用历史样本，默认继续保持 revision 隔离。
+
+1. **M2.6 用薄 REST Adapter 和重启重放验证完整治理闭环**
+
+   - 日期：2026-07-22
+   - 里程碑：M2.6
+   - 主题：治理 DTO、薄 Router、统一错误契约、持久化幂等重放和跨层退出证据。
+   - 上下文：理解 M2.3-M2.5 已有应用服务如何通过最小 REST 契约对外暴露，以及关闭并重建应用后的重放测试如何证明治理状态来自 SQLite，而不是旧进程内存。
+   - 证据：`tests/contract/test_m2_rest_api.py::test_m2_rest_governance_loop_survives_restart` 从空库仅经 HTTP 完成 Suite/Tree/绑定 Tree 的 Prototype/Knowledge 注册、克隆、`REVIEW_REQUIRED`、最终 Review、晋升、三次观察、降级、Spec 导出和审计查询；关闭第一个 app 后使用同一数据库创建新 app，精确读回 Suite、Tree、revision 3 AgentSpec 和审计，并用原幂等键重放 revision 1 Evaluation/Review/Promotion 与 revision 2 最终 TaskOutcome，响应与首次相同且审计未增加。`tests/contract/test_rest_api.py` 还固定八个 M2 路径在自定义 prefix 下的唯一允许方法；CI wheel 检查包含新增 Router。项目 owner 在问答中确认旧 Promotion/TaskOutcome 在当前 revision 3 下若没有持久化幂等重放应发生 revision 冲突，并理解 Router 复制业务规则会导致 REST、SDK、Tool adapter 形成多套治理真相。
+   - 结论：
+     - M2.6 只增加请求 DTO、Router 装配、OpenAPI/错误契约和完整 HTTP 退出测试，不重新定义 stale、Review、知识、工具、晋升或降级规则，也不新增 Repository 和 migration。
+     - `RegisterPrototypeRequest` 增加可选 `SkillTreeRef`，使 HTTP 客户端能建立 Prototype -> Instance -> AgentSpec 的技能树来源链；Suite/Tree 注册查询、评估、复核、晋升和 TaskOutcome 共形成八个最小治理端点。
+     - Router 只合并 path 中的实体 ID、body DTO 和 actor/idempotency header，调用 `validate_command()` 构造 transport-neutral Command，再交给 `FactoryController`。它不访问 Repository、clock、ID generator，也不在 HTTP 层重新判断业务条件。
+     - DTO 只校验传输结构；Command 还组合 path/header，因此 `validate_command()` 把 Pydantic `ValidationError` 转为 `RequestValidationError`，使组合后的错误继续返回统一 `422 REQUEST_VALIDATION_FAILED`，而不是泄漏为 500。
+     - 所有请求模型继续 `extra="forbid"`；错误响应只返回 location/message/type，不回显原始 evidence 或 review comment。`X-Actor-ID` 仍是不可信审计标签，统一 envelope 和脱敏不能替代认证授权。
+     - Alpha 没有为测试便利增加通用 Report/Review/Instance GET。恢复证据由不可变 Suite/Tree GET、指定 revision AgentSpec、审计查询和写命令的持久化幂等重放共同组成，避免在需求未确认前扩大公共 API。
+     - `ASGITransport` 不打开真实网络端口，但测试进入真实 FastAPI lifespan、migration、Container、Router、Controller 和文件型 SQLite，能够验证应用内部跨层契约；它不覆盖 TLS、反向代理、认证、网络故障或公网部署安全。
+     - 重启后旧 Promotion（`expected_revision=1`）和 TaskOutcome（`expected_revision=2`）面对 revision 3 时，若被当作新请求必然冲突；返回首次 JSON 证明幂等响应已持久化，审计完全不变进一步证明请求没有重新执行或产生重复副作用。只断言 HTTP 200 不能提供这两层证据。
+     - Router 复制 stale、Review 或阈值规则会造成 REST、未来 SDK 和 Tool adapter 行为漂移，并把检查放到 UoW 外形成竞态；共享 Controller 才能让不同入口得到相同规则、错误、事务、审计和幂等语义。
+     - OpenAPI contract test 固定路径和唯一方法集合；wheel 内容检查确保新增 Router 与 003-005 migration 进入安装产物，避免源码环境测试通过但发布制品缺资源。
+   - 易混点：`ASGITransport` 测试不是纯 Router 单元测试，也不等于真实网络部署测试；HTTP 200 不等于幂等重放成功，必须比较首次响应和副作用数量；统一 DTO 不等于业务规则应写在 DTO；`X-Actor-ID` 出现在 Review 中不代表 reviewer 经过认证。
+   - 验证边界：M2.6 证明本地单机条件下完整治理链可经 HTTP 重放、重启恢复并保持稳定错误、幂等和审计契约，不证明外部 evidence、runtime model 或 reviewer 可信，也不证明 API 可安全暴露公网、支持多进程或具备 SDK/Tool adapter。
+   - 后续应用：M3 SDK 和 Tool adapter 只负责把各自输入转换为相同 application Command，继续复用 `FactoryController`；认证接入后由服务端 Principal 替代自报 actor；增加公共查询端点前先确认真实调用需求、权限模型和分页/脱敏契约。
