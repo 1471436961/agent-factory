@@ -2,11 +2,12 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中。
+- 状态：已完成并封存。
 - 开始时间：2026-07-21。
+- 完成时间：2026-07-22。
 - 进入依据：M1 已由项目 owner 人工验收并封存；提交 `acf2b5d` 已推送，GitHub Actions CI #14 通过。
 - 规划依据：项目 owner 于 2026-07-21 确认本阶段目标、关键取舍、工作包、风险和验收标准后进入 M2。
-- 退出决策：本文第 6 节证据齐备后，由项目 owner 人工决定是否结束 M2 并进入 M3。
+- 退出决策：项目 owner 于 2026-07-22 确认本文第 6 节验收证据满足 M2 退出条件，正式结束并封存 M2；M3 需另行完成规划确认后再开始实现。
 
 ## 2. 阶段目标
 
@@ -117,13 +118,13 @@ M2 不实现：
 - 生成 `DEGRADED` 的新快照，并记录触发窗口、移除节点、移除绑定和 resulting revision。
 - 窗口限定在当前 instance revision；同一 EvaluationReport 只能计入一次，防止跨配置污染和证据重放。
 
-### M2.6 REST 与闭环验收（本地门禁已通过，待远程 CI 与验收）
+### M2.6 REST 与闭环验收（已完成）
 
 - 已增加技能树、评估套件、评估、复核、晋升和 TaskOutcome 的八个最小路由。
 - Router 只做 DTO/Command 转换，领域错误继续使用统一 envelope；原型注册 DTO 增加可选 `SkillTreeRef`，使 HTTP 主链能够绑定技能树来源。
 - 已实现 `test_m2_rest_governance_loop_survives_restart`，从 M1 实例完成评估、最终复核、晋升、观察和降级主链。
 - 关闭并重建 app 后查询 Tree/Suite/Spec/Audit，并通过幂等键重放 Report、Review、Promotion 与最终 TaskOutcome。
-- 本地 Ruff、mypy strict、pytest、三层 branch coverage 与 sdist/wheel 门禁已通过；GitHub Actions 只在提交推送后确认。
+- 本地 Ruff、mypy strict、pytest、三层 branch coverage 与 sdist/wheel 门禁已通过；实现提交和学习记录推送后的 GitHub Actions CI #15、#16 均通过。
 
 ## 6. 验收标准
 
@@ -139,7 +140,7 @@ M2 不实现：
 - [x] 所有当前已实现的治理写操作均有审计、幂等和失败原子性证据。
 - [x] M1 历史快照可读取，M2 数据在应用重启后可完整恢复。
 - [x] domain、application 和全项目 branch coverage 分别不低于 90%、85% 和 80%。
-- [ ] Ruff、mypy strict、pytest、sdist/wheel 与 M2 退出候选 GitHub Actions 全部通过。
+- [x] Ruff、mypy strict、pytest、sdist/wheel 与 M2 退出候选 GitHub Actions 全部通过。
 
 ## 7. 验收证据矩阵
 
@@ -168,7 +169,7 @@ M2 不实现：
 
 ## 9. 阶段报告
 
-当前状态：M2.1-M2.5 已完成并提交；M2.6 已完成本地实现与退出质量门禁，尚未提交、推送或通过远程 CI。该状态不代表 M2 阶段已经验收。
+当前状态：M2.1-M2.6 已完成，全部验收项已有本地或远程证据；项目 owner 已于 2026-07-22 正式结束并封存 M2。该结论只覆盖确定性技能治理闭环，不扩大为 Agent 真实任务执行、语义质量、可信审批、生产规模或公网部署安全已经得到验证。
 
 - M1 封存提交：`acf2b5d docs: close M1 milestone`。
 - M1 封存远程证据：GitHub Actions CI #14 在提交 `acf2b5d` 上通过。
@@ -206,4 +207,8 @@ M2 不实现：
 - M2.6 定向测试：DTO/OpenAPI 契约 `8 passed`；新增 M2 REST 主链与错误 envelope `2 passed`。
 - M2.6 本地测试：开始前基线 `160 passed`；实现后 `163 passed`。Ruff、mypy strict（88 个源码/测试文件）和 pytest 全部通过。
 - M2.6 本地质量证据：branch coverage 为 domain 96%、application 92%、total 93%；sdist/wheel 构建成功，两种制品均包含新增治理 routers、M2 runtime 模块与 `003`-`005` migration。
-- 第 6 节只勾选已经由当前测试直接证明的条目；提交后的远程退出候选 CI 仍待完成。
+- M2.6 实现提交：`6d943d9 feat: expose M2 governance REST loop`；GitHub Actions [`CI #15`](https://github.com/1471436961/agent-factory/actions/runs/29885839998) 通过。
+- M2 学习记录提交：`1ef14d7 docs: record M2 learning notes`。
+- M2 退出候选远程证据：GitHub Actions [`CI #16`](https://github.com/1471436961/agent-factory/actions/runs/29930384388) 在完整提交 `1ef14d73ffcfe3b26e668dd58bf1137408947933` 上通过。
+- M2 退出人工结论：项目 owner 于 2026-07-22 确认 M2 目标、自动化证据、文档边界与已知风险达到阶段退出条件，正式结束并封存 M2。
+- M3 后续状态：尚未进入。SDK、Tool adapter、运行接口与 Demo 的范围、取舍、工作包和验收标准必须单独规划并经项目 owner 确认，不能由 M2 完成自动推导。

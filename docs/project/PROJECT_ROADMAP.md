@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前里程碑：M2 技能治理。阶段目标、范围、工作包、验收标准与风险已于 2026-07-21 经项目 owner 确认，详见 [`docs/milestones/m2-skill-governance.md`](../milestones/m2-skill-governance.md)；M2.1-M2.5 已完成并提交，M2.6 治理 REST、重启恢复主链与本地质量门禁已完成，提交、远程 CI 与项目 owner 阶段验收尚未完成。该进度不构成完整 M2 验收。M1 已于 2026-07-21 人工验收并封存，阶段报告见 [`docs/milestones/m1-core-production-chain.md`](../milestones/m1-core-production-chain.md)；M0 已于 2026-07-18 验收完成。
+当前状态：M2 技能治理已于 2026-07-22 通过项目 owner 人工验收并封存，阶段目标、实现证据、已知边界和退出结论见 [`docs/milestones/m2-skill-governance.md`](../milestones/m2-skill-governance.md)。M2 退出候选提交 `1ef14d7` 的 GitHub Actions CI #16 已通过。M3 尚未进入，SDK、Tool adapter、运行接口与 Demo 需要单独完成阶段规划并经 owner 确认后实施。M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 
