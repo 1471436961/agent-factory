@@ -22,6 +22,7 @@ from agent_factory.interfaces.api.main import create_app
 from agent_factory.settings import Settings
 
 CORRELATION_ID = "00000000-0000-0000-0000-000000000301"
+AUTH_TOKEN = "rest-contract-token-that-is-at-least-32-characters"
 
 
 def _settings(
@@ -40,6 +41,7 @@ def _settings(
             "data_dir": tmp_path,
             "api_prefix": api_prefix,
             "max_request_bytes": max_request_bytes,
+            "auth_token": AUTH_TOKEN,
         }
     )
 
@@ -66,7 +68,7 @@ def _headers(
     idempotency_key: str | None = None,
     correlation_id: str | None = None,
 ) -> dict[str, str]:
-    headers = {"X-Actor-ID": "owner"}
+    headers = {"Authorization": f"Bearer {AUTH_TOKEN}"}
     if idempotency_key is not None:
         headers["Idempotency-Key"] = idempotency_key
     if correlation_id is not None:
@@ -111,6 +113,7 @@ async def test_register_clone_bind_export(
         listed = await client.get(
             "/api/v1/prototypes",
             params={"status": "draft"},
+            headers=_headers(),
         )
         assert listed.status_code == 200
         assert listed.json()["total"] == 1
@@ -188,6 +191,7 @@ async def test_register_clone_bind_export(
         audit = await client.get(
             "/api/v1/audit-events",
             params=[("event_type", "prototype.registered"), ("page_size", "100")],
+            headers=_headers(),
         )
         assert audit.status_code == 200
         assert audit.json()["total"] == 1
@@ -196,6 +200,7 @@ async def test_register_clone_bind_export(
         all_audit = await client.get(
             "/api/v1/audit-events",
             params={"page_size": 100},
+            headers=_headers(),
         )
         assert all_audit.json()["total"] == 7
 
@@ -206,6 +211,7 @@ async def test_register_clone_bind_export(
                 "entity_id": instance_id,
                 "page_size": 100,
             },
+            headers=_headers(),
         )
         assert [
             event["event_type"] for event in reversed(instance_audit.json()["items"])
@@ -222,6 +228,7 @@ async def test_register_clone_bind_export(
         persisted_prototypes = await client.get(
             "/api/v1/prototypes",
             params={"status": "deprecated"},
+            headers=_headers(),
         )
         assert persisted_prototypes.status_code == 200
         assert persisted_prototypes.json()["total"] == 1
@@ -237,6 +244,7 @@ async def test_register_clone_bind_export(
         persisted_audit = await client.get(
             "/api/v1/audit-events",
             params={"page_size": 100},
+            headers=_headers(),
         )
         assert persisted_audit.status_code == 200
         assert persisted_audit.json()["total"] == 7
@@ -264,12 +272,15 @@ async def test_rest_errors_are_stable_correlated_and_redacted(
     }
 
     async with _running_client(settings) as (client, app):
-        missing_actor = await client.post(
+        missing_authentication = await client.post(
             "/api/v1/prototypes",
             json=prototype_body,
         )
-        assert missing_actor.status_code == 422
-        assert missing_actor.json()["error"]["code"] == ("REQUEST_VALIDATION_FAILED")
+        assert missing_authentication.status_code == 401
+        assert missing_authentication.json()["error"]["code"] == (
+            "AUTHENTICATION_REQUIRED"
+        )
+        assert missing_authentication.headers["www-authenticate"] == "Bearer"
 
         invalid_body = await client.post(
             "/api/v1/prototypes",
@@ -326,7 +337,7 @@ async def test_rest_errors_are_stable_correlated_and_redacted(
             raise RuntimeError("sqlite failure at E:/private/factory.db")
 
         monkeypatch.setattr(FactoryController, "list_prototypes", explode)
-        internal = await client.get("/api/v1/prototypes")
+        internal = await client.get("/api/v1/prototypes", headers=_headers())
         assert internal.status_code == 500
         assert internal.json()["error"]["code"] == "INTERNAL_ERROR"
         assert "sqlite" not in internal.text.lower()

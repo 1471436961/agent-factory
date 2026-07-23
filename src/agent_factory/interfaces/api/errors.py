@@ -42,6 +42,7 @@ ERROR_STATUS_BY_CODE: Mapping[str, int] = MappingProxyType(
         "INVALID_STATE_TRANSITION": HTTPStatus.CONFLICT,
         "REVISION_CONFLICT": HTTPStatus.CONFLICT,
         "IDEMPOTENCY_KEY_REUSED": HTTPStatus.CONFLICT,
+        "AUTHORIZATION_DENIED": HTTPStatus.FORBIDDEN,
         "TOOL_NOT_GRANTED": HTTPStatus.FORBIDDEN,
         "UNKNOWN_TOOL": HTTPStatus.UNPROCESSABLE_ENTITY,
         "TOOL_PERMISSION_DENIED": HTTPStatus.FORBIDDEN,
@@ -82,11 +83,13 @@ class ApiContractError(Exception):
         message: str,
         status_code: int,
         details: Mapping[str, object] | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> None:
         self.code = code
         self.message = message
         self.status_code = status_code
         self.details = details or {}
+        self.headers = headers or {}
         super().__init__(message)
 
 
@@ -109,6 +112,7 @@ def error_response(
     message: str,
     correlation_id: UUID,
     details: Mapping[str, object] | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     body = ErrorResponse(
         error=ErrorBody(
@@ -118,10 +122,12 @@ def error_response(
             correlation_id=correlation_id,
         )
     )
+    response_headers = {"X-Correlation-ID": str(correlation_id)}
+    response_headers.update(headers or {})
     return JSONResponse(
         status_code=status_code,
         content=body.model_dump(mode="json"),
-        headers={"X-Correlation-ID": str(correlation_id)},
+        headers=response_headers,
     )
 
 
@@ -159,6 +165,7 @@ def install_exception_handlers(app: FastAPI) -> None:
             code=exc.code,
             message=exc.message,
             details=exc.details,
+            headers=exc.headers,
             correlation_id=correlation_id_for(request),
         )
 

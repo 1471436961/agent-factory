@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前里程碑：M3 接口、运行时与演示。阶段目标、身份与生命周期前置条件、七个工作包、验收标准和风险已于 2026-07-23 经项目 owner 确认，详见 [`docs/milestones/m3-interfaces-runtime-demo.md`](../milestones/m3-interfaces-runtime-demo.md)。当前尚未开始 M3.1 代码，可运行基线仍是已封存的 M2；M2 封存提交 `da4b408` 的 GitHub Actions CI #17 已通过。M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
+当前里程碑：M3 接口、运行时与演示。阶段目标、身份与生命周期前置条件、七个工作包、验收标准和风险已于 2026-07-23 经项目 owner 确认，详见 [`docs/milestones/m3-interfaces-runtime-demo.md`](../milestones/m3-interfaces-runtime-demo.md)。M3.1 身份与授权基础已完成本地实现和质量门禁，尚待提交与远程 CI；M3.2 生命周期与 Runtime 契约尚未开始。M2 封存提交 `da4b408` 的 GitHub Actions CI #17 已通过，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 

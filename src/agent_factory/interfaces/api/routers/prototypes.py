@@ -21,8 +21,9 @@ from agent_factory.interfaces.api.contracts import (
     RegisterPrototypeRequest,
 )
 from agent_factory.interfaces.api.dependencies import (
-    ActorDep,
     ControllerDep,
+    FactoryReadPrincipalDep,
+    FactoryWritePrincipalDep,
     IdempotencyHeader,
     validate_command,
 )
@@ -38,14 +39,14 @@ router = APIRouter(prefix="/prototypes", tags=["prototypes"])
 async def register_prototype(
     body: RegisterPrototypeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentPrototype:
     command = validate_command(
         RegisterPrototypeCommand,
         {
             **body.model_dump(mode="python"),
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -55,6 +56,7 @@ async def register_prototype(
 @router.get("", response_model=Page[AgentPrototype])
 async def list_prototypes(
     controller: ControllerDep,
+    _principal: FactoryReadPrincipalDep,
     status_filter: Annotated[
         PrototypeStatus | None,
         Query(alias="status"),
@@ -80,7 +82,7 @@ async def publish_prototype(
     prototype_id: Slug,
     version: SemVer,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentPrototype:
     command = validate_command(
@@ -88,7 +90,7 @@ async def publish_prototype(
         {
             "prototype_id": prototype_id,
             "version": version,
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -104,7 +106,7 @@ async def deprecate_prototype(
     version: SemVer,
     body: DeprecatePrototypeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentPrototype:
     command = validate_command(
@@ -113,7 +115,7 @@ async def deprecate_prototype(
             "prototype_id": prototype_id,
             "version": version,
             "reason": body.reason,
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -130,7 +132,7 @@ async def clone_agent(
     version: SemVer,
     body: CloneAgentRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
     command = validate_command(
@@ -139,7 +141,7 @@ async def clone_agent(
             "prototype_id": prototype_id,
             "prototype_version": version,
             "runtime_target": body.runtime_target,
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )

@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M3，阶段规划已于 2026-07-23 确认，尚未开始 M3.1 代码
+**当前阶段**：Alpha / M3，M3.1 已完成本地实现与质量门禁，待提交和远程 CI；M3.2 尚未开始
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[M2 技能治理设计说明](design/skill-governance.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -563,6 +563,9 @@ from pathlib import Path
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from agent_factory.application.security import FactoryRole
+from agent_factory.domain.common import Actor
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -581,6 +584,16 @@ class Settings(BaseSettings):
     idempotency_ttl_seconds: int = 86_400
     sqlite_busy_timeout_ms: int = 5_000
     audit_log_level: str = "INFO"
+    auth_token: SecretStr | None = Field(
+        default=None,
+        min_length=32,
+        max_length=4_096,
+    )
+    auth_subject: Actor = "local-owner"
+    auth_roles: frozenset[FactoryRole] = Field(
+        default=frozenset({FactoryRole.ADMIN}),
+        min_length=1,
+    )
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
     data_dir: Path = Field(default=Path("./data"))
@@ -2803,33 +2816,104 @@ class RecordTaskOutcomeRequest(FrozenModel):
 
 ```python
 from contextlib import asynccontextmanager
+from http import HTTPStatus
 from typing import Annotated, AsyncIterator
 
 from fastapi import Depends, FastAPI, Header, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 
-def get_controller(request: Request) -> FactoryController:
-    return request.app.state.container.controller
+bearer_scheme = HTTPBearer(auto_error=False, scheme_name="BearerAuth")
 
 
-def get_actor(
-    x_actor_id: Annotated[
-        str,
-        Header(alias="X-Actor-ID", min_length=1, max_length=128),
+def get_container(request: Request) -> Container:
+    return request.app.state.container
+
+
+def get_controller(
+    container: Annotated[Container, Depends(get_container)],
+) -> FactoryController:
+    return container.controller
+
+
+def get_authenticator(
+    container: Annotated[Container, Depends(get_container)],
+) -> Authenticator:
+    return container.authenticator
+
+
+def get_authorization_policy(
+    container: Annotated[Container, Depends(get_container)],
+) -> AuthorizationPolicy:
+    return container.authorization_policy
+
+
+def get_principal(
+    request: Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Depends(bearer_scheme),
     ],
-) -> str:
-    actor = x_actor_id.strip()
-    if not actor:
+    authenticator: Annotated[Authenticator, Depends(get_authenticator)],
+) -> Principal:
+    if "x-actor-id" in request.headers:
         raise ApiContractError(
-            code="INVALID_ACTOR_ID",
-            message="X-Actor-ID must not be blank",
-            status_code=422,
+            code="ACTOR_HEADER_NOT_ALLOWED",
+            message="X-Actor-ID is not accepted; actor comes from authentication",
+            status_code=HTTPStatus.BAD_REQUEST,
         )
-    return actor
+    if not authenticator.ready:
+        raise ApiContractError(
+            code="AUTHENTICATION_NOT_CONFIGURED",
+            message="Authentication is not configured",
+            status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+        )
+    if credentials is None:
+        raise ApiContractError(
+            code="AUTHENTICATION_REQUIRED",
+            message="Bearer authentication is required",
+            status_code=HTTPStatus.UNAUTHORIZED,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    principal = authenticator.authenticate(credentials.credentials)
+    if principal is None:
+        raise ApiContractError(
+            code="AUTHENTICATION_FAILED",
+            message="Bearer credential is invalid",
+            status_code=HTTPStatus.UNAUTHORIZED,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return principal
+
+
+def require_factory_read(
+    principal: Annotated[Principal, Depends(get_principal)],
+    policy: Annotated[AuthorizationPolicy, Depends(get_authorization_policy)],
+) -> Principal:
+    policy.require(principal, FactoryPermission.FACTORY_READ)
+    return principal
+
+
+def require_factory_write(
+    principal: Annotated[Principal, Depends(get_principal)],
+    policy: Annotated[AuthorizationPolicy, Depends(get_authorization_policy)],
+) -> Principal:
+    policy.require(principal, FactoryPermission.FACTORY_WRITE)
+    return principal
+
+
+def require_audit_read(
+    principal: Annotated[Principal, Depends(get_principal)],
+    policy: Annotated[AuthorizationPolicy, Depends(get_authorization_policy)],
+) -> Principal:
+    policy.require(principal, FactoryPermission.AUDIT_READ)
+    return principal
 
 
 ControllerDep = Annotated[FactoryController, Depends(get_controller)]
-ActorDep = Annotated[str, Depends(get_actor)]
+FactoryReadPrincipalDep = Annotated[Principal, Depends(require_factory_read)]
+FactoryWritePrincipalDep = Annotated[Principal, Depends(require_factory_write)]
+AuditReadPrincipalDep = Annotated[Principal, Depends(require_audit_read)]
 IdempotencyHeader = Annotated[
     str | None,
     Header(alias="Idempotency-Key", min_length=8, max_length=128),
@@ -2860,7 +2944,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return application
 ```
 
-M1 明确不实现认证。`X-Actor-ID` 只是调用方提供的审计标签，不是可信身份或授权依据，因此当前服务不得直接暴露到不可信网络。认证完成后，actor 必须改为从认证后的 `Principal.subject` 获取，不能继续信任该 header。
+M3.1 已删除 `X-Actor-ID` 的身份作用。静态 Bearer 适配器只在接口边界生成一个配置驱动的 `Principal`，actor 统一取自 `Principal.subject`；缺失配置时 ready 与业务路由 fail-closed。它不支持多用户目录、Token 轮换、撤销、过期或第三方身份，因此当前服务仍不得直接暴露到不可信网络。
 
 `RequestContextMiddleware` 在进入 FastAPI 前以 `max_request_bytes` 为上限缓冲并回放请求体，确保声明长度和 chunked body 都不能绕过限制；超限请求不进入 Controller。它还严格校验或生成 `X-Correlation-ID`，写入 `ContextVar`，并在 `finally` 中 reset。
 
@@ -2882,13 +2966,13 @@ knowledge_router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 async def register_prototype(
     body: RegisterPrototypeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentPrototype:
     return await controller.register_prototype(
         RegisterPrototypeCommand(
             **body.model_dump(mode="python"),
-            actor=actor,
+            actor=principal.subject,
             idempotency_key=idempotency_key,
         )
     )
@@ -2897,6 +2981,7 @@ async def register_prototype(
 @prototype_router.get("", response_model=Page[AgentPrototype])
 async def list_prototypes(
     controller: ControllerDep,
+    _principal: FactoryReadPrincipalDep,
     status_filter: Annotated[
         PrototypeStatus | None, Query(alias="status")
     ] = None,
@@ -2922,14 +3007,14 @@ async def publish_prototype(
     prototype_id: Slug,
     version: SemVer,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentPrototype:
     return await controller.publish_prototype(
         PublishPrototypeCommand(
             prototype_id=prototype_id,
             version=version,
-            actor=actor,
+            actor=principal.subject,
             idempotency_key=idempotency_key,
         )
     )
@@ -2944,7 +3029,7 @@ async def deprecate_prototype(
     version: SemVer,
     body: DeprecatePrototypeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentPrototype:
     return await controller.deprecate_prototype(
@@ -2952,7 +3037,7 @@ async def deprecate_prototype(
             prototype_id=prototype_id,
             version=version,
             reason=body.reason,
-            actor=actor,
+            actor=principal.subject,
             idempotency_key=idempotency_key,
         )
     )
@@ -2968,7 +3053,7 @@ async def clone_agent(
     version: SemVer,
     body: CloneAgentRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
     return await controller.clone_agent(
@@ -2976,7 +3061,7 @@ async def clone_agent(
             prototype_id=prototype_id,
             prototype_version=version,
             runtime_target=body.runtime_target,
-            actor=actor,
+            actor=principal.subject,
             idempotency_key=idempotency_key,
         )
     )
@@ -2990,7 +3075,7 @@ async def bind_knowledge(
     instance_id: UUID,
     body: BindKnowledgeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
     return await controller.bind_knowledge(
@@ -2999,7 +3084,7 @@ async def bind_knowledge(
             expected_revision=body.expected_revision,
             selections=body.selections,
             replace_existing=body.replace_existing,
-            actor=actor,
+            actor=principal.subject,
             idempotency_key=idempotency_key,
         )
     )
@@ -3013,12 +3098,12 @@ async def export_spec(
     instance_id: UUID,
     body: ExportSpecRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
 ) -> AgentSpec:
     return await controller.export_spec(
         instance_id,
         revision=body.revision,
-        actor=actor,
+        actor=principal.subject,
     )
 ```
 
@@ -3037,7 +3122,7 @@ class RegisterKnowledgeRequest(DomainKnowledgeDraft):
 async def register_knowledge(
     body: RegisterKnowledgeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> DomainKnowledge:
     return await controller.register_knowledge(
@@ -3045,7 +3130,7 @@ async def register_knowledge(
             knowledge=DomainKnowledgeDraft.model_validate(
                 body.model_dump()
             ),
-            actor=actor,
+            actor=principal.subject,
             idempotency_key=idempotency_key,
         )
     )
@@ -3082,7 +3167,7 @@ async def evaluate_instance(
     instance_id: UUID,
     body: EvaluateInstanceRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> EvaluationReport:
     command = validate_command(
@@ -3095,7 +3180,7 @@ async def evaluate_instance(
                 "runtime_model": body.runtime_model,
                 "case_results": body.case_results,
             },
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -3110,7 +3195,7 @@ async def promote_agent(
     instance_id: UUID,
     body: PromoteAgentRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
     command = validate_command(
@@ -3118,7 +3203,7 @@ async def promote_agent(
         {
             "instance_id": instance_id,
             **body.model_dump(mode="python"),
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -3177,17 +3262,18 @@ class PromotionRejectedError(FactoryError):
 
 | HTTP | 已实现错误码（M1 基线，M2 追加项见下文） |
 | --- | --- |
-| 400 | `INVALID_OUTPUT_SCHEMA`, `INVALID_CORRELATION_ID`, `INVALID_CONTENT_LENGTH` |
-| 403 | `TOOL_NOT_GRANTED`, `TOOL_PERMISSION_DENIED` |
+| 400 | `INVALID_OUTPUT_SCHEMA`, `INVALID_CORRELATION_ID`, `INVALID_CONTENT_LENGTH`, `ACTOR_HEADER_NOT_ALLOWED` |
+| 401 | `AUTHENTICATION_REQUIRED`, `AUTHENTICATION_FAILED` |
+| 403 | `AUTHORIZATION_DENIED`, `TOOL_NOT_GRANTED`, `TOOL_PERMISSION_DENIED` |
 | 404 | `PROTOTYPE_NOT_FOUND`, `INSTANCE_NOT_FOUND`, `KNOWLEDGE_NOT_FOUND`, `ROUTE_NOT_FOUND` |
 | 405 | `METHOD_NOT_ALLOWED` |
 | 409 | `PROTOTYPE_ALREADY_EXISTS`, `PROTOTYPE_NOT_PUBLISHED`, `INVALID_PROTOTYPE_STATUS`, `KNOWLEDGE_ALREADY_EXISTS`, `KNOWLEDGE_ALREADY_BOUND`, `REVISION_CONFLICT`, `INVALID_STATE_TRANSITION`, `INSTANCE_BUSY`, `IDEMPOTENCY_KEY_REUSED` |
 | 413 | `KNOWLEDGE_PAYLOAD_TOO_LARGE`, `REQUEST_TOO_LARGE` |
-| 422 | `REQUEST_VALIDATION_FAILED`, `INVALID_ACTOR_ID`, `INSTANCE_NOT_READY`, `UNKNOWN_KNOWLEDGE_SLOT`, `MISSING_KNOWLEDGE_BINDING`, `KNOWLEDGE_KIND_MISMATCH`, `KNOWLEDGE_VERSION_MISMATCH`, `KNOWLEDGE_INJECTION_MODE_MISMATCH`, `KNOWLEDGE_CARDINALITY_INVALID`, `KNOWLEDGE_CHECKSUM_MISMATCH`, `UNKNOWN_TOOL` |
+| 422 | `REQUEST_VALIDATION_FAILED`, `INSTANCE_NOT_READY`, `UNKNOWN_KNOWLEDGE_SLOT`, `MISSING_KNOWLEDGE_BINDING`, `KNOWLEDGE_KIND_MISMATCH`, `KNOWLEDGE_VERSION_MISMATCH`, `KNOWLEDGE_INJECTION_MODE_MISMATCH`, `KNOWLEDGE_CARDINALITY_INVALID`, `KNOWLEDGE_CHECKSUM_MISMATCH`, `UNKNOWN_TOOL` |
 | 500 | `INTERNAL_ERROR` |
-| 503 | `REPOSITORY_UNAVAILABLE`, `SERVICE_NOT_READY` |
+| 503 | `AUTHENTICATION_NOT_CONFIGURED`, `REPOSITORY_UNAVAILABLE`, `SERVICE_NOT_READY` |
 
-M2 application service 已增加 `SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_NOT_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`TASK_OUTCOME_MISMATCH`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED` 等稳定错误，并由映射集合测试防止漏配。M2.6 将这些既有命令暴露为路由，不重新定义业务错误。认证和工具执行错误仍属于后续里程碑。
+M2 application service 已增加 `SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_NOT_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`TASK_OUTCOME_MISMATCH`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED` 等稳定错误，并由映射集合测试防止漏配。M2.6 将这些既有命令暴露为路由，不重新定义业务错误。M3.1 增加认证接口错误和领域授权错误；运行时工具执行错误仍属于后续工作包。
 
 ### 10.6 FastAPI 异常处理
 
@@ -3420,6 +3506,7 @@ audit_router = APIRouter(prefix="/audit-events", tags=["audit"])
 @audit_router.get("", response_model=Page[AuditEvent])
 async def query_audit_events(
     controller: ControllerDep,
+    _principal: AuditReadPrincipalDep,
     entity_type: AuditEntityType | None = None,
     entity_id: str | None = Query(default=None, max_length=128),
     event_type: Annotated[
@@ -3446,7 +3533,7 @@ async def query_audit_events(
     )
 ```
 
-M1 尚未实现认证，因此审计查询当前也未做权限隔离，这是阻止服务暴露到不可信网络的明确限制。M3 接入认证后，审计查询至少要求 `principal.roles` 包含 `auditor` 或 `admin`，无权限返回 `403 AUDIT_ACCESS_DENIED`。查询排序固定为 `created_at DESC, event_id DESC`；分页期间新增事件可能进入前页，导出完整审计链时应改用基于 `created_at + event_id` 的游标接口。
+M3.1 通过 `AuditReadPrincipalDep` 要求 `audit:read` 权限；当前角色矩阵中 `auditor` 和 `admin` 具备该权限，其他角色返回 `403 AUTHORIZATION_DENIED`。查询排序固定为 `created_at DESC, event_id DESC`；分页期间新增事件可能进入前页，导出完整审计链时应改用基于 `created_at + event_id` 的游标接口。
 
 ### 11.3 事件载荷
 
@@ -3815,7 +3902,7 @@ async def test_missing_knowledge_returns_stable_error(
     async with AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"X-Actor-ID": "contract-test"},
+        headers={"Authorization": f"Bearer {AUTH_TOKEN}"},
     ) as client:
         response = await client.post(
             f"/api/v1/instances/{unbound_instance.instance_id}/spec-exports",
@@ -4128,7 +4215,7 @@ pytest -q tests/unit
 
 ### 14.5 M3 规格
 
-- M3.1 建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权；它不是完整生产身份系统。
+- M3.1 已建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权，并通过本地质量门禁；它不是完整生产身份系统，提交与远程 CI 证据仍待完成。
 - M3.2 实现实例生命周期 transition、revision CAS、幂等、审计与 Runtime 契约。
 - SDK 覆盖所有公开 REST 路由。
 - Tool adapter 只做 DTO 转换，生成的 input schema 与 REST 请求模型共享。

@@ -9,8 +9,9 @@ from agent_factory.domain.common import SemVer, Slug
 from agent_factory.domain.skills import SkillTree, SkillTreeDraft
 from agent_factory.interfaces.api.contracts import RegisterSkillTreeRequest
 from agent_factory.interfaces.api.dependencies import (
-    ActorDep,
     ControllerDep,
+    FactoryReadPrincipalDep,
+    FactoryWritePrincipalDep,
     IdempotencyHeader,
     validate_command,
 )
@@ -26,14 +27,14 @@ router = APIRouter(prefix="/skill-trees", tags=["skills"])
 async def register_skill_tree(
     body: RegisterSkillTreeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> SkillTree:
     command = validate_command(
         RegisterSkillTreeCommand,
         {
             "tree": SkillTreeDraft.model_validate(body.model_dump(mode="python")),
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -48,5 +49,6 @@ async def get_skill_tree(
     tree_id: Slug,
     version: SemVer,
     controller: ControllerDep,
+    _principal: FactoryReadPrincipalDep,
 ) -> SkillTree:
     return await controller.get_skill_tree(tree_id, version)

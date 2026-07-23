@@ -86,7 +86,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 5. 实施工作包
 
-### M3.1 身份与授权基础
+### M3.1 身份与授权基础（本地门禁已通过，待提交与远程 CI）
 
 - 定义不可变 `Principal`、稳定角色和 `Authenticator` Protocol。
 - 实现配置驱动的静态 Bearer Token 适配器，使用常量时间比较，不把 Token 写入日志、异常、审计或 repr。
@@ -149,8 +149,8 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 6. 验收标准
 
-- [ ] 非健康 REST 路由不再信任 `X-Actor-ID`，actor 来自认证后的 Principal。
-- [ ] 无凭据、错误凭据和角色不足分别返回稳定 401/403，且不泄露 Token。
+- [x] 非健康 REST 路由不再信任 `X-Actor-ID`，actor 来自认证后的 Principal。
+- [x] 未配置认证、无凭据、错误凭据和角色不足分别返回稳定 503/401/403，且不泄露 Token。
 - [ ] 生命周期全部允许迁移和关键非法迁移有纯策略测试。
 - [ ] 状态变更具有 revision CAS、幂等、审计、失败原子性和并发单胜证据。
 - [ ] SDK 覆盖全部公开 OpenAPI operation，并完整保留业务错误信息。
@@ -160,9 +160,9 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - [ ] Demo Runtime 校验 AgentSpec、revision 和知识 checksum，默认运行不访问网络。
 - [ ] Gradio 不导入 domain/Repository，并能完成固定 Writer 主链。
 - [ ] 关闭并重建应用后，M3 状态、调用记录和审计可恢复。
-- [ ] M1/M2 全部回归测试继续通过。
-- [ ] 默认测试和 CI 不需要模型 API key 或互联网访问。
-- [ ] domain、application 和全项目 branch coverage 分别不低于 90%、85% 和 80%。
+- [x] M1/M2 全部回归测试继续通过。
+- [x] 默认测试和本地质量门禁不需要模型 API key 或互联网访问。
+- [x] domain、application 和全项目 branch coverage 分别不低于 90%、85% 和 80%。
 - [ ] Ruff、mypy strict、pytest、sdist/wheel、optional extras 与 M3 退出候选 GitHub Actions 全部通过。
 
 ## 7. 验收证据矩阵
@@ -195,10 +195,16 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 9. 阶段报告
 
-当前状态：M3 规划已于 2026-07-23 经项目 owner 确认，尚未开始 M3.1 代码。当前可运行基线仍是已封存的 M2：`163 passed`，封存提交 `da4b408` 的 GitHub Actions CI #17 通过。
+当前状态：M3.1 已完成本地实现和质量门禁，尚未提交、推送或取得远程 CI 证据；M3.2 尚未开始。M3.1 将 M2 的不可信 `X-Actor-ID` 替换为静态 Bearer Token 生成的 `Principal`，对读取、写入和审计查询执行最小角色授权。该能力只面向单机 Alpha，不构成生产级身份系统。
 
 - M2 封存提交：`da4b408 docs: close M2 milestone`。
 - M2 封存远程证据：GitHub Actions [`CI #17`](https://github.com/1471436961/agent-factory/actions/runs/29930708726) 通过。
 - M3 规划确认时间：2026-07-23。
-- M3 进入边界：先完成阶段文档与设计纠偏，不把计划中的认证、生命周期、SDK、Tool adapter、Runtime 或 Gradio 描述为已有实现。
-
+- M3.1 代码边界：新增 `Principal`、角色/权限矩阵、`Authenticator` Protocol、静态/未配置认证适配器和 FastAPI 权限依赖；未新增数据库 migration。
+- M3.1 信任边界：健康检查公开；未配置 Token 时 live 为 200，ready 与业务路由为 503；写命令 actor 只来自 `Principal.subject`；客户端提交 `X-Actor-ID` 会被拒绝。
+- M3.1 契约证据：覆盖未配置认证、缺失/错误凭据、错误 scheme、四角色矩阵、审计主体、OpenAPI security requirement、Token 脱敏和双 app 上下文隔离。
+- M3.1 本地测试：`193 passed`，相较 M2 封存基线增加 30 个测试且既有回归继续通过。
+- M3.1 覆盖率：domain 96%、application 93%、全项目 94%，均为 branch coverage。
+- M3.1 静态门禁：Ruff format/check 通过，mypy strict 通过 93 个 source/test 文件。
+- M3.1 构建门禁：sdist 与 wheel 构建通过，wheel 包含新增 security 与 authentication 模块。
+- 未完成能力：生命周期、SDK、Tool adapter、Runtime 和 Gradio 仍是后续工作包，不能描述为已有实现。

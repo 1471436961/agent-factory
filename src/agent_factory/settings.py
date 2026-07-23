@@ -6,6 +6,9 @@ from typing import Literal, Self
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from agent_factory.application.security import FactoryRole
+from agent_factory.domain.common import Actor
+
 DEFAULT_MIGRATIONS_DIR = (
     Path(__file__).resolve().parent / "infrastructure" / "sqlite" / "sql"
 )
@@ -32,6 +35,16 @@ class Settings(BaseSettings):
     idempotency_ttl_seconds: int = Field(default=86_400, ge=60)
     sqlite_busy_timeout_ms: int = Field(default=5_000, ge=100, le=60_000)
     audit_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    auth_token: SecretStr | None = Field(
+        default=None,
+        min_length=32,
+        max_length=4_096,
+    )
+    auth_subject: Actor = "local-owner"
+    auth_roles: frozenset[FactoryRole] = Field(
+        default=frozenset({FactoryRole.ADMIN}),
+        min_length=1,
+    )
     openai_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
     data_dir: Path = Field(default=Path("./data"))

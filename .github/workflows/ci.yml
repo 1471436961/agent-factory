@@ -75,6 +75,8 @@ jobs:
             'agent_factory/domain/services/evaluation.py',
             'agent_factory/domain/services/degradation.py',
             'agent_factory/domain/services/skills.py',
+            'agent_factory/application/security.py',
+            'agent_factory/infrastructure/authentication.py',
             'agent_factory/interfaces/api/contracts.py',
             'agent_factory/interfaces/api/errors.py',
             'agent_factory/interfaces/api/main.py',

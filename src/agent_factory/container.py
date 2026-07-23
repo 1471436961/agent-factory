@@ -11,6 +11,11 @@ from agent_factory.application.ports import (
     IdGenerator,
     ToolCatalog,
 )
+from agent_factory.application.security import (
+    Authenticator,
+    AuthorizationPolicy,
+    Principal,
+)
 from agent_factory.application.tooling import ToolPolicy
 from agent_factory.application.unit_of_work import UnitOfWorkFactory
 from agent_factory.domain.enums import ToolPermission
@@ -20,6 +25,10 @@ from agent_factory.domain.services.knowledge import KnowledgeBindingPolicy
 from agent_factory.domain.services.promotion import PromotionPolicy
 from agent_factory.domain.services.prototype import PrototypePolicy
 from agent_factory.domain.services.spec import AgentSpecBuilder
+from agent_factory.infrastructure.authentication import (
+    StaticBearerAuthenticator,
+    UnavailableAuthenticator,
+)
 from agent_factory.infrastructure.sqlite import (
     SqliteMigrationRunner,
     SqliteUnitOfWorkFactory,
@@ -41,6 +50,8 @@ class Container:
     clock: Clock
     id_generator: IdGenerator
     correlation_context: CorrelationContext
+    authenticator: Authenticator
+    authorization_policy: AuthorizationPolicy
     migration_runner: SqliteMigrationRunner
     uow_factory: UnitOfWorkFactory
     tool_catalog: ToolCatalog
@@ -49,7 +60,7 @@ class Container:
 
     @property
     def ready(self) -> bool:
-        return self._ready
+        return self._ready and self.authenticator.ready
 
     async def start(self) -> None:
         await self.migration_runner.migrate()
@@ -65,6 +76,19 @@ def build_container(settings: Settings) -> Container:
     clock = SystemClock()
     id_generator = UUID4Generator()
     correlation_context = ContextVarCorrelationContext()
+    principal = Principal(
+        subject=settings.auth_subject,
+        roles=settings.auth_roles,
+    )
+    authenticator: Authenticator
+    if settings.auth_token is None:
+        authenticator = UnavailableAuthenticator()
+    else:
+        authenticator = StaticBearerAuthenticator.from_secret(
+            settings.auth_token,
+            principal,
+        )
+    authorization_policy = AuthorizationPolicy()
     migration_runner = SqliteMigrationRunner.from_database_url(
         database_url=settings.database_url,
         migrations_dir=settings.migrations_dir,
@@ -99,6 +123,8 @@ def build_container(settings: Settings) -> Container:
         clock=clock,
         id_generator=id_generator,
         correlation_context=correlation_context,
+        authenticator=authenticator,
+        authorization_policy=authorization_policy,
         migration_runner=migration_runner,
         uow_factory=uow_factory,
         tool_catalog=tool_catalog,

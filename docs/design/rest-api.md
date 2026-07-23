@@ -2,16 +2,17 @@
 
 ## 1. 目标与边界
 
-M1.4 将 `FactoryController` 的核心生产链暴露为 FastAPI 接口；M2.6 在同一边界上增加评估套件、技能树、评估、人工复核、晋升和观察结果路由。接口层只负责传输契约、请求上下文、DTO 转换和异常映射；原型状态、知识槽、工具权限、评估、晋升、降级、幂等与 revision 规则仍由 application/domain 层执行。
+M1.4 将 `FactoryController` 的核心生产链暴露为 FastAPI 接口；M2.6 在同一边界上增加评估套件、技能树、评估、人工复核、晋升和观察结果路由；M3.1 增加静态 Bearer 认证、可信 `Principal` 与最小角色授权。接口层只负责传输契约、身份边界、请求上下文、DTO 转换和异常映射；原型状态、知识槽、工具权限、评估、晋升、降级、幂等与 revision 规则仍由 application/domain 层执行。
 
-当前接口不实现用户认证、授权、Python SDK、Tool adapter 或 Agent 任务执行。评估路由只接收外部提交的 case result，不负责执行 Agent。写接口要求 `X-Actor-ID`，但该值只是调用方提供的审计标签，**不构成可信身份**。在认证层完成前，服务不得直接暴露到不可信网络。
+M3.1 认证适配器只支持一个配置驱动的本地 Alpha 身份，不实现多用户目录、Token 轮换、撤销、第三方身份联合或公网防护。Python SDK、Tool adapter 和 Agent 任务执行仍未实现；评估路由只接收外部提交的 case result，不负责执行 Agent。当前服务仍不得直接暴露到不可信网络。
 
 ## 2. 模块边界
 
 ```text
 HTTP request
   -> RequestContextMiddleware（请求体上限、correlation）
-  -> FastAPI dependency / Pydantic request DTO
+  -> Bearer authentication -> Principal -> permission dependency
+  -> Pydantic request DTO
   -> route（DTO -> command/query）
   -> FactoryController（业务规则与事务）
   -> response_model / exception handler
@@ -23,11 +24,13 @@ HTTP request
 | 模块 | 职责 |
 | --- | --- |
 | `contracts.py` | M1/M2 请求、健康检查和统一错误模型 |
-| `dependencies.py` | Container/Controller 注入、actor 与幂等 header 解析、command 二次校验 |
+| `dependencies.py` | Container/Controller 注入、Bearer 认证、权限依赖、幂等 header 解析、command 二次校验 |
 | `middleware.py` | correlation 生命周期和请求体大小上限 |
 | `errors.py` | 领域错误到 HTTP status 的显式映射及安全错误响应 |
 | `routers/*.py` | 路由参数到 application command/query 的机械转换 |
 | `main.py` | app factory、lifespan、中间件、异常 handler 与 router 装配 |
+| `application/security.py` | `Principal`、稳定角色/权限、认证端口与授权策略 |
+| `infrastructure/authentication.py` | 静态 Bearer Token 和未配置认证适配器 |
 
 ## 3. 公共 HTTP 契约
 
@@ -42,9 +45,11 @@ HTTP request
 
 | Header | 适用范围 | 约束 | 语义 |
 | --- | --- | --- | --- |
-| `X-Actor-ID` | 全部写路由 | 必填，trim 后 1-128 字符 | 不可信审计标签，不是认证主体 |
+| `Authorization` | 除健康检查外的全部业务路由 | 必填，`Bearer <token>` | 认证成功后生成 `Principal`；Token 不进入响应、日志或审计 |
 | `Idempotency-Key` | 除规格导出外的写路由 | 可选，8-128 字符 | 相同 operation 与请求重放；不同请求返回 409 |
 | `X-Correlation-ID` | 全部请求 | 可选，严格 UUID | 缺失时生成；响应 header、错误体和审计共用 |
+
+`X-Actor-ID` 已从公开契约删除；客户端提交该 header 时返回 `400 ACTOR_HEADER_NOT_ALLOWED`，避免认证主体和自报 actor 形成双重事实来源。写命令的 `actor` 只取自 `Principal.subject`。
 
 `X-Correlation-ID` 在 middleware 中写入 `CorrelationContext`，并在 `finally` 中通过 `ContextVar.reset(token)` 恢复进入请求前的上下文，避免并发请求之间串值。
 
@@ -132,27 +137,27 @@ class RecordTaskOutcomeRequest(FrozenModel):
 
 ## 5. 路由清单
 
-| Method | Path | 请求体 | 成功响应 | actor | 幂等键 |
+| Method | Path | 请求体 | 成功响应 | 权限 | 幂等键 |
 | --- | --- | --- | --- | --- | --- |
 | GET | `/health/live` | 无 | 200 `HealthResponse` | 否 | 否 |
 | GET | `/health/ready` | 无 | 200 或 503 | 否 | 否 |
-| POST | `/api/v1/prototypes` | `RegisterPrototypeRequest` | 201 `AgentPrototype` | 是 | 可选 |
-| GET | `/api/v1/prototypes` | query | 200 `Page[AgentPrototype]` | 否 | 否 |
-| POST | `/api/v1/prototypes/{id}/versions/{version}/publish` | 无 | 200 `AgentPrototype` | 是 | 可选 |
-| POST | `/api/v1/prototypes/{id}/versions/{version}/deprecate` | `DeprecatePrototypeRequest` | 200 `AgentPrototype` | 是 | 可选 |
-| POST | `/api/v1/prototypes/{id}/versions/{version}/instances` | `CloneAgentRequest` | 201 `AgentInstance` | 是 | 可选 |
-| POST | `/api/v1/knowledge` | `RegisterKnowledgeRequest` | 201 `DomainKnowledge` | 是 | 可选 |
-| POST | `/api/v1/instances/{id}/knowledge-bindings` | `BindKnowledgeRequest` | 200 `AgentInstance` | 是 | 可选 |
-| POST | `/api/v1/instances/{id}/spec-exports` | `ExportSpecRequest` | 200 `AgentSpec` | 是 | 否 |
-| GET | `/api/v1/audit-events` | query | 200 `Page[AuditEvent]` | 否 | 否 |
-| POST | `/api/v1/evaluation-suites` | `RegisterEvaluationSuiteRequest` | 201 `EvaluationSuite` | 是 | 可选 |
-| GET | `/api/v1/evaluation-suites/{id}/versions/{version}` | 无 | 200 `EvaluationSuite` | 否 | 否 |
-| POST | `/api/v1/skill-trees` | `RegisterSkillTreeRequest` | 201 `SkillTree` | 是 | 可选 |
-| GET | `/api/v1/skill-trees/{id}/versions/{version}` | 无 | 200 `SkillTree` | 否 | 否 |
-| POST | `/api/v1/instances/{id}/evaluations` | `EvaluateInstanceRequest` | 201 `EvaluationReport` | 是 | 可选 |
-| POST | `/api/v1/evaluation-reports/{id}/reviews` | `ReviewEvaluationRequest` | 201 `EvaluationReview` | 是 | 可选 |
-| POST | `/api/v1/instances/{id}/promotions` | `PromoteAgentRequest` | 200 `AgentInstance` | 是 | 可选 |
-| POST | `/api/v1/instances/{id}/task-outcomes` | `RecordTaskOutcomeRequest` | 200 `DegradationCheckResult` | 是 | 可选 |
+| POST | `/api/v1/prototypes` | `RegisterPrototypeRequest` | 201 `AgentPrototype` | `factory:write` | 可选 |
+| GET | `/api/v1/prototypes` | query | 200 `Page[AgentPrototype]` | `factory:read` | 否 |
+| POST | `/api/v1/prototypes/{id}/versions/{version}/publish` | 无 | 200 `AgentPrototype` | `factory:write` | 可选 |
+| POST | `/api/v1/prototypes/{id}/versions/{version}/deprecate` | `DeprecatePrototypeRequest` | 200 `AgentPrototype` | `factory:write` | 可选 |
+| POST | `/api/v1/prototypes/{id}/versions/{version}/instances` | `CloneAgentRequest` | 201 `AgentInstance` | `factory:write` | 可选 |
+| POST | `/api/v1/knowledge` | `RegisterKnowledgeRequest` | 201 `DomainKnowledge` | `factory:write` | 可选 |
+| POST | `/api/v1/instances/{id}/knowledge-bindings` | `BindKnowledgeRequest` | 200 `AgentInstance` | `factory:write` | 可选 |
+| POST | `/api/v1/instances/{id}/spec-exports` | `ExportSpecRequest` | 200 `AgentSpec` | `factory:write` | 否 |
+| GET | `/api/v1/audit-events` | query | 200 `Page[AuditEvent]` | `audit:read` | 否 |
+| POST | `/api/v1/evaluation-suites` | `RegisterEvaluationSuiteRequest` | 201 `EvaluationSuite` | `factory:write` | 可选 |
+| GET | `/api/v1/evaluation-suites/{id}/versions/{version}` | 无 | 200 `EvaluationSuite` | `factory:read` | 否 |
+| POST | `/api/v1/skill-trees` | `RegisterSkillTreeRequest` | 201 `SkillTree` | `factory:write` | 可选 |
+| GET | `/api/v1/skill-trees/{id}/versions/{version}` | 无 | 200 `SkillTree` | `factory:read` | 否 |
+| POST | `/api/v1/instances/{id}/evaluations` | `EvaluateInstanceRequest` | 201 `EvaluationReport` | `factory:write` | 可选 |
+| POST | `/api/v1/evaluation-reports/{id}/reviews` | `ReviewEvaluationRequest` | 201 `EvaluationReview` | `factory:write` | 可选 |
+| POST | `/api/v1/instances/{id}/promotions` | `PromoteAgentRequest` | 200 `AgentInstance` | `factory:write` | 可选 |
+| POST | `/api/v1/instances/{id}/task-outcomes` | `RecordTaskOutcomeRequest` | 200 `DegradationCheckResult` | `factory:write` | 可选 |
 
 规格导出使用 POST，因为首次导出会持久化 `AgentSpec` 并追加审计事件，不满足 GET 的 safe method 语义。重复导出同一 revision 由 Controller 返回已持久化快照，不重复写审计。
 
@@ -173,7 +178,7 @@ async def bind_knowledge(
     instance_id: UUID,
     body: BindKnowledgeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
     command = validate_command(
@@ -183,7 +188,7 @@ async def bind_knowledge(
             "expected_revision": body.expected_revision,
             "selections": body.selections,
             "replace_existing": body.replace_existing,
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -202,7 +207,7 @@ async def evaluate_instance(
     instance_id: UUID,
     body: EvaluateInstanceRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> EvaluationReport:
     command = validate_command(
@@ -215,7 +220,7 @@ async def evaluate_instance(
                 "runtime_model": body.runtime_model,
                 "case_results": body.case_results,
             },
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -244,15 +249,16 @@ async def evaluate_instance(
 
 | HTTP | 代表性错误码 |
 | --- | --- |
-| 400 | `INVALID_OUTPUT_SCHEMA`, `INVALID_CORRELATION_ID`, `INVALID_CONTENT_LENGTH` |
-| 403 | `TOOL_NOT_GRANTED`, `TOOL_PERMISSION_DENIED` |
+| 400 | `INVALID_OUTPUT_SCHEMA`, `INVALID_CORRELATION_ID`, `INVALID_CONTENT_LENGTH`, `ACTOR_HEADER_NOT_ALLOWED` |
+| 401 | `AUTHENTICATION_REQUIRED`, `AUTHENTICATION_FAILED` |
+| 403 | `AUTHORIZATION_DENIED`, `TOOL_NOT_GRANTED`, `TOOL_PERMISSION_DENIED` |
 | 404 | `PROTOTYPE_NOT_FOUND`, `KNOWLEDGE_NOT_FOUND`, `INSTANCE_NOT_FOUND`, `SKILL_TREE_NOT_FOUND`, `SKILL_NODE_NOT_FOUND`, `EVALUATION_SUITE_NOT_FOUND`, `EVALUATION_REPORT_NOT_FOUND`, `ROUTE_NOT_FOUND` |
 | 405 | `METHOD_NOT_ALLOWED` |
 | 409 | 重复对象、原型/实例/技能状态、review、revision 与 idempotency 冲突 |
 | 413 | `KNOWLEDGE_PAYLOAD_TOO_LARGE`, `REQUEST_TOO_LARGE` |
 | 422 | Pydantic 请求错误、知识约束、未知工具、技能依赖、suite/report 来源、晋升拒绝或观察证据矛盾 |
 | 500 | `INTERNAL_ERROR` |
-| 503 | `REPOSITORY_UNAVAILABLE`, `SERVICE_NOT_READY` |
+| 503 | `AUTHENTICATION_NOT_CONFIGURED`, `REPOSITORY_UNAVAILABLE`, `SERVICE_NOT_READY` |
 
 `ERROR_STATUS_BY_CODE` 必须覆盖当前全部 `FactoryError` 直接子类；契约测试以集合相等检查，新增领域错误却未注册 HTTP 映射时测试立即失败。
 
@@ -260,7 +266,7 @@ async def evaluate_instance(
 
 ## 8. 生命周期与 readiness
 
-`create_app(settings)` 每次构造独立 `Container`。构造阶段只组装对象；FastAPI lifespan 启动时执行 migration 并将 Container 标记为 ready，关闭时释放资源。`/health/live` 只证明进程可响应，`/health/ready` 同时检查 Container ready 状态与数据库 ping。
+`create_app(settings)` 每次构造独立 `Container`。构造阶段只组装对象；FastAPI lifespan 启动时执行 migration 并将 Container 标记为 ready，关闭时释放资源。`/health/live` 只证明进程可响应；`/health/ready` 同时检查 Container 启动状态、认证适配器 `ready` 与数据库 ping。未配置 `AGENT_FACTORY_AUTH_TOKEN` 时，live 保持 200，ready 和业务路由返回 503，形成 fail-closed 边界。
 
 测试必须显式进入 `app.router.lifespan_context(app)`，否则 readiness 应稳定返回 503。这避免测试绕过真实启动协议。
 
@@ -270,7 +276,9 @@ async def evaluate_instance(
 
 - 真实 SQLite 上的注册、幂等重放、列表、发布、知识注册、克隆、绑定、规格导出、废弃和审计查询。
 - 关闭并重建 app 后，使用同一数据库恢复原型、规格和审计；重复导出不新增 `spec.exported`。
-- 缺失 actor、未知字段、非法 correlation ID、404、405、领域 404/409、500 脱敏。
+- 未配置认证、缺失/错误凭据、错误认证 scheme、旧 actor header、四角色权限矩阵和 Token 脱敏。
+- OpenAPI 声明 `BearerAuth`，且全部非健康 operation 都包含 security requirement；两个 app 的 Token 与 Principal 上下文互不串值。
+- 未知字段、非法 correlation ID、404、405、领域 404/409、500 脱敏。
 - `Content-Length` 与 chunked body 超限，包括下游不会读取 body 的端点。
 - correlation response header、错误体和审计事件一致，ContextVar 在请求后恢复。
 - 自定义 API prefix、lifespan 前 readiness 503、规格导出只暴露 POST。
@@ -279,4 +287,4 @@ async def evaluate_instance(
 - 关闭并重建 app 后，精确恢复 Suite、Tree 和降级后 `AgentSpec`；使用原幂等键重放 report、review、promotion 和最终 outcome，响应与首次结果相同且审计总量不变。
 - M2 未知字段和 review comment/evidence 不进入 422 错误体；缺失 Suite 返回稳定 `EVALUATION_SUITE_NOT_FOUND`。
 
-当前限制：认证和授权缺失；审计读取尚未受权限保护；评估 evidence 由调用方提供且不可信；请求体采用有界缓冲；SQLite 仍为单进程 Alpha 后端。这些限制必须在部署说明中保留，不能将当前 REST 契约描述为可直接公网部署的生产服务。
+当前限制：静态 Token 只映射到单一配置 Principal，不支持多用户、轮换、撤销、过期、速率限制或第三方身份；评估 evidence 由调用方提供且不可信；请求体采用有界缓冲；SQLite 仍为单进程 Alpha 后端。TLS、反向代理和完整凭据生命周期也不属于 M3.1。这些限制必须在部署说明中保留，不能将当前 REST 契约描述为可直接公网部署的生产服务。

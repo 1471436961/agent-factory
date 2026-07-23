@@ -22,8 +22,8 @@ from agent_factory.interfaces.api.contracts import (
     RecordTaskOutcomeRequest,
 )
 from agent_factory.interfaces.api.dependencies import (
-    ActorDep,
     ControllerDep,
+    FactoryWritePrincipalDep,
     IdempotencyHeader,
     validate_command,
 )
@@ -40,7 +40,7 @@ async def evaluate_instance(
     instance_id: UUID,
     body: EvaluateInstanceRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> EvaluationReport:
     command = validate_command(
@@ -53,7 +53,7 @@ async def evaluate_instance(
                 "runtime_model": body.runtime_model,
                 "case_results": body.case_results,
             },
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -68,7 +68,7 @@ async def promote_agent(
     instance_id: UUID,
     body: PromoteAgentRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
     command = validate_command(
@@ -76,7 +76,7 @@ async def promote_agent(
         {
             "instance_id": instance_id,
             **body.model_dump(mode="python"),
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -91,7 +91,7 @@ async def record_task_outcome(
     instance_id: UUID,
     body: RecordTaskOutcomeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> DegradationCheckResult:
     command = validate_command(
@@ -99,7 +99,7 @@ async def record_task_outcome(
         {
             "instance_id": instance_id,
             **body.model_dump(mode="python"),
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -114,7 +114,7 @@ async def bind_knowledge(
     instance_id: UUID,
     body: BindKnowledgeRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> AgentInstance:
     command = validate_command(
@@ -124,7 +124,7 @@ async def bind_knowledge(
             "expected_revision": body.expected_revision,
             "selections": body.selections,
             "replace_existing": body.replace_existing,
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -139,10 +139,10 @@ async def export_spec(
     instance_id: UUID,
     body: ExportSpecRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
 ) -> AgentSpec:
     return await controller.export_spec(
         instance_id,
         revision=body.revision,
-        actor=actor,
+        actor=principal.subject,
     )

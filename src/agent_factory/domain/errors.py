@@ -139,6 +139,11 @@ class IdempotencyKeyReusedError(FactoryError):
     default_message = "Idempotency key was reused with a different request"
 
 
+class AuthorizationDeniedError(FactoryError):
+    code = "AUTHORIZATION_DENIED"
+    default_message = "Principal is not authorized for this operation"
+
+
 class ToolNotGrantedError(FactoryError):
     code = "TOOL_NOT_GRANTED"
     default_message = "Tool is not granted to this instance"

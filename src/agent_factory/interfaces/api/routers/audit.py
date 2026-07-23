@@ -8,7 +8,10 @@ from pydantic import AwareDatetime
 from agent_factory.application.queries import AuditQuery, Page
 from agent_factory.domain.audit import AuditEvent
 from agent_factory.domain.enums import AuditEntityType, AuditEventType
-from agent_factory.interfaces.api.dependencies import ControllerDep
+from agent_factory.interfaces.api.dependencies import (
+    AuditReadPrincipalDep,
+    ControllerDep,
+)
 
 router = APIRouter(prefix="/audit-events", tags=["audit"])
 
@@ -16,6 +19,7 @@ router = APIRouter(prefix="/audit-events", tags=["audit"])
 @router.get("", response_model=Page[AuditEvent])
 async def query_audit(
     controller: ControllerDep,
+    _principal: AuditReadPrincipalDep,
     entity_type: AuditEntityType | None = None,
     entity_id: Annotated[str | None, Query(min_length=1, max_length=128)] = None,
     event_types: Annotated[

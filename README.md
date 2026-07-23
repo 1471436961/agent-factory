@@ -2,14 +2,14 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M3 进行中**。M1 核心生产链与 M2 技能治理已经项目 owner 验收并封存；M3 的身份边界、生命周期、Python SDK、Factory Tool adapter、受限 Runtime 与 Gradio 演示规划已于 2026-07-23 确认，尚未开始 M3.1 代码。
+当前仓库处于 **Alpha / M3 进行中**。M1 核心生产链与 M2 技能治理已经项目 owner 验收并封存；M3.1 身份与授权基础已完成本地实现和质量门禁，尚待提交与远程 CI，M3.2 生命周期与 Runtime 契约尚未开始。
 
 ## 核心边界
 
 - 工厂控制器是确定性代码系统，不依赖 LLM 做内部治理决策。
 - 工厂输出运行时无关的 `AgentSpec`，不替代 LangGraph、AutoGen 等运行时。
 - 知识绑定保证版本和槽位关系可验证，不保证模型一定正确使用知识。
-- 当前可运行基线仍不接入真实 LLM，也不运行 Agent 任务；评估输入仍由外部提交。认证、Gradio、Python SDK、Tool adapter 与 Runtime 是 M3 计划能力，尚不能描述为已有实现；多 Agent 协作和分布式基础设施不在 M3 范围。
+- 当前可运行基线仍不接入真实 LLM，也不运行 Agent 任务；评估输入仍由外部提交。M3.1 已提供静态 Bearer Token 和最小角色授权，但它不是生产身份系统；Gradio、Python SDK、Tool adapter 与 Runtime 尚未实现。多 Agent 协作和分布式基础设施不在 M3 范围。
 
 ## 本地开发
 
@@ -21,7 +21,15 @@ uv run pytest -q
 uv run uvicorn agent_factory.interfaces.api.main:app --reload
 ```
 
-默认服务地址为 `http://127.0.0.1:8000`，健康检查端点为 `/health/live` 和 `/health/ready`。
+启动前在 `.env` 中配置本地 Alpha 身份：
+
+```dotenv
+AGENT_FACTORY_AUTH_TOKEN=replace-with-at-least-32-random-characters
+AGENT_FACTORY_AUTH_SUBJECT=local-owner
+AGENT_FACTORY_AUTH_ROLES=["admin"]
+```
+
+默认服务地址为 `http://127.0.0.1:8000`，健康检查端点为 `/health/live` 和 `/health/ready`。未配置 Token 时，live 保持 200，但 ready 和业务路由按 fail-closed 规则返回 503。
 
 ## 文档
 
@@ -36,6 +44,7 @@ uv run uvicorn agent_factory.interfaces.api.main:app --reload
 - [SQLite Persistence 设计说明](docs/design/sqlite-persistence.md)
 - [Application Services 设计说明](docs/design/application-services.md)
 - [REST API 设计说明](docs/design/rest-api.md)
+- [Authentication 设计说明](docs/design/authentication.md)
 - [M2 技能治理设计说明](docs/design/skill-governance.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)

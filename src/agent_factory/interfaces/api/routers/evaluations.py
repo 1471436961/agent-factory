@@ -20,8 +20,9 @@ from agent_factory.interfaces.api.contracts import (
     ReviewEvaluationRequest,
 )
 from agent_factory.interfaces.api.dependencies import (
-    ActorDep,
     ControllerDep,
+    FactoryReadPrincipalDep,
+    FactoryWritePrincipalDep,
     IdempotencyHeader,
     validate_command,
 )
@@ -37,7 +38,7 @@ router = APIRouter(tags=["evaluations"])
 async def register_evaluation_suite(
     body: RegisterEvaluationSuiteRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> EvaluationSuite:
     command = validate_command(
@@ -46,7 +47,7 @@ async def register_evaluation_suite(
             "suite": EvaluationSuiteDraft.model_validate(
                 body.model_dump(mode="python")
             ),
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )
@@ -61,6 +62,7 @@ async def get_evaluation_suite(
     suite_id: Slug,
     version: SemVer,
     controller: ControllerDep,
+    _principal: FactoryReadPrincipalDep,
 ) -> EvaluationSuite:
     return await controller.get_evaluation_suite(suite_id, version)
 
@@ -74,7 +76,7 @@ async def review_evaluation(
     report_id: UUID,
     body: ReviewEvaluationRequest,
     controller: ControllerDep,
-    actor: ActorDep,
+    principal: FactoryWritePrincipalDep,
     idempotency_key: IdempotencyHeader = None,
 ) -> EvaluationReview:
     command = validate_command(
@@ -83,7 +85,7 @@ async def review_evaluation(
             "report_id": report_id,
             "decision": body.decision,
             "comment": body.comment,
-            "actor": actor,
+            "actor": principal.subject,
             "idempotency_key": idempotency_key,
         },
     )

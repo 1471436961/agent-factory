@@ -14,6 +14,8 @@ from agent_factory.domain.common import checksum_knowledge_content
 from agent_factory.interfaces.api.main import create_app
 from agent_factory.settings import Settings
 
+AUTH_TOKEN = "m2-contract-token-that-is-at-least-32-characters"
+
 
 def _settings(tmp_path: Path, migrations_dir: Path) -> Settings:
     return Settings.model_validate(
@@ -23,6 +25,7 @@ def _settings(tmp_path: Path, migrations_dir: Path) -> Settings:
             ),
             "migrations_dir": migrations_dir,
             "data_dir": tmp_path,
+            "auth_token": AUTH_TOKEN,
         }
     )
 
@@ -40,7 +43,7 @@ async def _running_client(settings: Settings) -> AsyncIterator[httpx.AsyncClient
 
 
 def _headers(idempotency_key: str | None = None) -> dict[str, str]:
-    headers = {"X-Actor-ID": "owner"}
+    headers = {"Authorization": f"Bearer {AUTH_TOKEN}"}
     if idempotency_key is not None:
         headers["Idempotency-Key"] = idempotency_key
     return headers
@@ -386,6 +389,7 @@ async def test_m2_rest_governance_loop_survives_restart(
         audit_response = await client.get(
             "/api/v1/audit-events",
             params={"page_size": 100},
+            headers=_headers(),
         )
         assert audit_response.status_code == 200, audit_response.text
         audit_record = audit_response.json()
@@ -402,10 +406,12 @@ async def test_m2_rest_governance_loop_survives_restart(
 
     async with _running_client(settings) as client:
         persisted_suite = await client.get(
-            "/api/v1/evaluation-suites/engineer-readiness/versions/1.0.0"
+            "/api/v1/evaluation-suites/engineer-readiness/versions/1.0.0",
+            headers=_headers(),
         )
         persisted_tree = await client.get(
-            "/api/v1/skill-trees/engineer-skills/versions/1.0.0"
+            "/api/v1/skill-trees/engineer-skills/versions/1.0.0",
+            headers=_headers(),
         )
         assert persisted_suite.status_code == 200
         assert persisted_suite.json() == suite_record
@@ -456,6 +462,7 @@ async def test_m2_rest_governance_loop_survives_restart(
         persisted_audit = await client.get(
             "/api/v1/audit-events",
             params={"page_size": 100},
+            headers=_headers(),
         )
         assert persisted_spec.status_code == 200
         assert persisted_spec.json() == spec_record
@@ -470,7 +477,8 @@ async def test_m2_rest_errors_use_stable_envelopes(
 ) -> None:
     async with _running_client(_settings(tmp_path, migrations_dir)) as client:
         missing_suite = await client.get(
-            "/api/v1/evaluation-suites/missing-suite/versions/1.0.0"
+            "/api/v1/evaluation-suites/missing-suite/versions/1.0.0",
+            headers=_headers(),
         )
         invalid_review = await client.post(
             "/api/v1/evaluation-reports/00000000-0000-0000-0000-000000000999/reviews",
