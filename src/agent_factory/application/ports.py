@@ -27,6 +27,13 @@ class IdGenerator(Protocol):
         """Return a new identifier."""
 
 
+class MonotonicClock(Protocol):
+    """Measure elapsed durations independently of wall-clock adjustments."""
+
+    def now_ns(self) -> int:
+        """Return a monotonic timestamp in nanoseconds."""
+
+
 class CorrelationContext(Protocol):
     """Store a request correlation ID in the current async context."""
 

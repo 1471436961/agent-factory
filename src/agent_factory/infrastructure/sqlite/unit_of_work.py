@@ -21,6 +21,7 @@ from agent_factory.application.repositories import (
     PrototypeRepository,
     SkillTreeRepository,
     TaskOutcomeRepository,
+    ToolCallRepository,
 )
 from agent_factory.infrastructure.sqlite.codec import raise_database_error
 from agent_factory.infrastructure.sqlite.governance_repositories import (
@@ -38,6 +39,9 @@ from agent_factory.infrastructure.sqlite.repositories import (
     SqliteKnowledgeRepository,
     SqlitePrototypeRepository,
 )
+from agent_factory.infrastructure.sqlite.runtime_repositories import (
+    SqliteToolCallRepository,
+)
 
 
 class SqliteUnitOfWork:
@@ -52,6 +56,7 @@ class SqliteUnitOfWork:
     evaluation_reports: EvaluationReportRepository
     evaluation_reviews: EvaluationReviewRepository
     task_outcomes: TaskOutcomeRepository
+    tool_calls: ToolCallRepository
 
     def __init__(
         self,
@@ -99,6 +104,7 @@ class SqliteUnitOfWork:
         self.evaluation_reports = SqliteEvaluationReportRepository(connection)
         self.evaluation_reviews = SqliteEvaluationReviewRepository(connection)
         self.task_outcomes = SqliteTaskOutcomeRepository(connection)
+        self.tool_calls = SqliteToolCallRepository(connection)
         return self
 
     async def __aexit__(

@@ -15,6 +15,7 @@ from agent_factory.application.repositories import (
     PrototypeRepository,
     SkillTreeRepository,
     TaskOutcomeRepository,
+    ToolCallRepository,
 )
 
 
@@ -30,6 +31,7 @@ class UnitOfWork(Protocol):
     evaluation_reports: EvaluationReportRepository
     evaluation_reviews: EvaluationReviewRepository
     task_outcomes: TaskOutcomeRepository
+    tool_calls: ToolCallRepository
 
     async def __aenter__(self) -> Self: ...
 

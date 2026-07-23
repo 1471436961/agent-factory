@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import UUID
 
 from agent_factory.application.ports import IdGenerator
+from agent_factory.application.tool_contracts import ToolCallRecord
 from agent_factory.domain.audit import AuditEvent
 from agent_factory.domain.common import sha256_model
 from agent_factory.domain.enums import AuditEntityType, AuditEventType
@@ -407,6 +408,31 @@ class AuditEventFactory:
                 "configuration_checksum": sha256_model(degraded.configuration),
             },
             at=at,
+        )
+
+    def tool_called(self, record: ToolCallRecord) -> AuditEvent:
+        """Build a content-free event from one persisted tool-call record."""
+
+        return self._event(
+            event_type=AuditEventType.TOOL_CALLED,
+            entity_type=AuditEntityType.TOOL_CALL,
+            entity_id=str(record.call_id),
+            actor=record.actor,
+            correlation_id=record.correlation_id,
+            payload={
+                "task_id": str(record.task_id),
+                "instance_id": str(record.instance_id),
+                "instance_revision": record.instance_revision,
+                "agent_spec_checksum": record.agent_spec_checksum,
+                "tool_name": record.tool_name,
+                "tool_version": record.tool_version,
+                "status": record.status.value,
+                "arguments_hash": record.arguments_hash,
+                "result_hash": record.result_hash,
+                "error_code": record.error_code,
+                "duration_ms": record.duration_ms,
+            },
+            at=record.completed_at,
         )
 
     def _prototype_status_event(

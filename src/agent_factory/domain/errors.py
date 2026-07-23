@@ -159,6 +159,66 @@ class ToolPermissionDeniedError(FactoryError):
     default_message = "Tool requests a permission that is not allowed"
 
 
+class ToolContextMismatchError(FactoryError):
+    code = "TOOL_CONTEXT_MISMATCH"
+    default_message = "Tool call context does not match the current Agent snapshot"
+
+
+class ToolUnavailableError(FactoryError):
+    code = "TOOL_UNAVAILABLE"
+    default_message = "Tool version is unavailable"
+
+
+class ToolVersionMismatchError(FactoryError):
+    code = "TOOL_VERSION_MISMATCH"
+    default_message = "Tool version does not match AgentSpec"
+
+
+class ToolDefinitionMismatchError(FactoryError):
+    code = "TOOL_DEFINITION_MISMATCH"
+    default_message = "Executable tool metadata does not match AgentSpec"
+
+
+class ToolInputValidationError(FactoryError):
+    code = "TOOL_INPUT_VALIDATION_FAILED"
+    default_message = "Tool input validation failed"
+
+
+class ToolOutputValidationError(FactoryError):
+    code = "TOOL_OUTPUT_VALIDATION_FAILED"
+    default_message = "Tool output validation failed"
+
+
+class ToolTimeoutError(FactoryError):
+    code = "TOOL_TIMEOUT"
+    default_message = "Tool execution timed out"
+
+
+class ToolExecutionError(FactoryError):
+    code = "TOOL_EXECUTION_FAILED"
+    default_message = "Tool execution failed"
+
+
+class ToolCallAlreadyExistsError(FactoryError):
+    code = "TOOL_CALL_ALREADY_EXISTS"
+    default_message = "Tool call ID already exists"
+
+
+class ModelGatewayError(FactoryError):
+    code = "MODEL_GATEWAY_FAILED"
+    default_message = "Model provider request failed"
+
+
+class ModelProtocolError(FactoryError):
+    code = "MODEL_PROTOCOL_INVALID"
+    default_message = "Model provider returned an invalid response"
+
+
+class ModelTurnLimitError(FactoryError):
+    code = "MODEL_TURN_LIMIT_EXCEEDED"
+    default_message = "Model run exceeded its configured turn limit"
+
+
 class SkillTreeNotFoundError(FactoryError):
     code = "SKILL_TREE_NOT_FOUND"
     default_message = "Skill tree was not found"

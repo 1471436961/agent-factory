@@ -2,6 +2,7 @@
 
 from contextvars import ContextVar, Token
 from datetime import UTC, datetime
+from time import monotonic_ns
 from uuid import UUID, uuid4
 
 
@@ -17,6 +18,13 @@ class UUID4Generator:
 
     def new(self) -> UUID:
         return uuid4()
+
+
+class SystemMonotonicClock:
+    """Process-local monotonic clock used for operation durations."""
+
+    def now_ns(self) -> int:
+        return monotonic_ns()
 
 
 class ContextVarCorrelationContext:

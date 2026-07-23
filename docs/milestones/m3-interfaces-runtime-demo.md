@@ -111,7 +111,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 非 2xx 响应解析为 `AgentFactoryApiError`，保留业务 code、status、details 和 correlation ID；非标准响应安全降级。
 - 使用 ASGITransport 与真实 FastAPI app 进行 SDK 契约测试；通过 operation manifest 与 OpenAPI 比对防止方法遗漏。
 
-### M3.4 Factory Tool adapter（本地门禁已通过，待提交与远程 CI）
+### M3.4 Factory Tool adapter（本地提交完成，待推送与远程 CI）
 
 - 为五个已确认工具定义严格 Pydantic 输入/输出模型并导出 JSON Schema。
 - Tool 调用上下文携带由宿主认证的 `Principal` 和 correlation ID；工具输入不得提交 actor。
@@ -120,7 +120,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 使用与 REST/SDK 相同的命令和幂等 key 验证精确对象重放与审计不重复。
 - 不在 M3 实现 MCP server；MCP 仍是未来协议适配层。
 
-### M3.5 Runtime 与安全工具执行
+### M3.5 Runtime 与安全工具执行（完整本地质量门禁通过，待提交、推送与远程 CI）
 
 - 定义 `ToolDefinition`、`RegisteredTool`、`ToolCallRequest`、`ToolCallRecord` 和 `ToolRegistry`。
 - `ToolExecutor` 核对 instance/revision、AgentSpec 授权、工具版本和 permission tags，再执行 Pydantic 输入净化、timeout 与输出校验。
@@ -156,10 +156,10 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - [x] SDK 覆盖全部公开 OpenAPI operation，并完整保留业务错误信息。
 - [x] 五个 Factory Tool adapter 只做 DTO/Command 转换，不复制业务策略。
 - [x] REST、SDK、Tool adapter 使用相同幂等命令时返回精确相同对象且不重复审计。
-- [ ] ToolExecutor 拒绝未授权、版本不匹配和非法输入，超时与失败均有脱敏记录。
-- [ ] Demo Runtime 校验 AgentSpec、revision 和知识 checksum，默认运行不访问网络。
+- [x] ToolExecutor 拒绝未授权、版本不匹配和非法输入，超时与失败均有脱敏记录。
+- [x] Demo Runtime 校验 AgentSpec、revision 和知识 checksum，默认运行不访问网络。
 - [ ] Gradio 不导入 domain/Repository，并能完成固定 Writer 主链。
-- [ ] 关闭并重建应用后，M3 状态、调用记录和审计可恢复。
+- [x] 关闭并重建应用后，M3 状态、调用记录和审计可恢复。
 - [x] M1/M2 全部回归测试继续通过。
 - [x] 默认测试和本地质量门禁不需要模型 API key 或互联网访问。
 - [x] domain、application 和全项目 branch coverage 分别不低于 90%、85% 和 80%。
@@ -195,7 +195,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 9. 阶段报告
 
-当前状态：M3.1-M3.3 已完成本地提交；M3.4 已完成代码、设计说明和完整本地质量门禁、尚待提交；M3 工作包均尚未推送或取得远程 CI 证据。M3.4 提供五项 provider-neutral Factory Tool，通过可信宿主上下文复用现有 Controller，不实现 MCP Server 或 Agent 业务工具执行器。
+当前状态：M3.1-M3.4 已完成本地提交；M3.5 已完成代码、migration、设计说明和完整本地质量门禁、尚待提交；M3 工作包均尚未推送或取得远程 CI 证据。M3.5 提供固定只读业务工具执行、离线 Runtime、provider-neutral 模型边界与可选 OpenAI gateway，不实现任意代码执行、外部写工具、沙箱、Gradio 或生产任务调度。
 
 - M2 封存提交：`da4b408 docs: close M2 milestone`。
 - M2 封存远程证据：GitHub Actions [`CI #17`](https://github.com/1471436961/agent-factory/actions/runs/29930708726) 通过。
@@ -235,4 +235,15 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - M3.4 覆盖率：domain 96%、application 94%、Factory Tool 100%、全项目 94%，均为 branch coverage。
 - M3.4 静态门禁：Ruff format/check 通过，mypy strict 通过 112 个 source/test 文件。
 - M3.4 构建门禁：sdist 与 wheel 构建通过；wheel 已核对包含三个 `agent_factory/interfaces/factory_tools` 模块。
-- 未完成能力：Runtime 执行器和 Gradio 仍是后续工作包，不能描述为已有实现。
+- M3.4 本地提交：`9f117fa feat: add M3.4 factory tool adapter`。
+- M3.5 方案已由项目 owner 于 2026-07-23 确认；先完成 Runtime/Tool design note，再实施代码与 migration。
+- M3.5 代码边界：新增 `ToolDefinition`/`RegisteredTool`/`ToolRegistry`、`ToolExecutor`、固定 `document-search@1.0.0`、`ToolCallRecord` repository、`006_tool_call_records.sql`、`OfflineDemoRuntimeAdapter`、provider-neutral `ModelGateway`/`ModelRuntimeAdapter` 和 optional `OpenAIResponsesGateway`。
+- M3.5 授权链：每次调用固定校验持久化 AgentSpec、当前 RUNNING revision、request identity、Spec grant、version、Registry 完整 metadata、Pydantic 输入/输出和 timeout；调用记录与 `tool.called` 审计在同一 UoW 提交。
+- M3.5 数据边界：数据库和审计只保存调用身份、状态、稳定错误码、耗时及参数/结果哈希；不保存参数、结果正文、Prompt、知识正文、API key 或 provider 异常文本。已存在的重复 call ID 在 handler 前拒绝；并发外部写工具仍需未来 reservation/outbox。
+- M3.5 Runtime 边界：离线 Runtime 是无网络默认路径；模型 Runtime 单轮只允许一个工具调用或最终结果，最多 1-8 轮，所有工具仍经 `ToolExecutor`；真实模型调用不进入自动测试。
+- M3.5 OpenAI 边界：官方 SDK 位于 `llm` extra，Responses 映射固定关闭 parallel tool calls 和 server-side store，测试使用结构 fake；本地已锁定安装 `openai==2.46.0` 并完成无网络 client 构造 smoke test。
+- M3.5 本地测试：`341 passed`，相较 M3.4 基线增加 38 个测试，M1-M3.4 回归继续通过。
+- M3.5 覆盖率：domain 96%、application 94%、全项目 94%，均为 branch coverage。
+- M3.5 静态门禁：Ruff format/check 通过，mypy strict 通过 126 个 source/test 文件。
+- M3.5 构建门禁：sdist 与 wheel 构建通过；wheel 已核对包含 ModelGateway、Runtime、ToolExecutor、runtime repository 和 `006_tool_call_records.sql`。
+- 未完成能力：Gradio 与 M3.7 跨入口退出验收仍是后续工作包，不能描述为已有实现。

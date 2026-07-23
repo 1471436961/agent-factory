@@ -6,6 +6,7 @@ from uuid import UUID
 
 from agent_factory.application.persistence import IdempotencyRecord
 from agent_factory.application.queries import AuditQuery, Page, PrototypeListQuery
+from agent_factory.application.tool_contracts import ToolCallRecord
 from agent_factory.domain.audit import AuditEvent
 from agent_factory.domain.enums import PrototypeStatus
 from agent_factory.domain.evaluation import (
@@ -141,3 +142,9 @@ class TaskOutcomeRepository(Protocol):
         skill_node_id: str,
         limit: int,
     ) -> tuple[TaskOutcome, ...]: ...
+
+
+class ToolCallRepository(Protocol):
+    async def add(self, record: ToolCallRecord) -> None: ...
+
+    async def get(self, call_id: UUID) -> ToolCallRecord | None: ...

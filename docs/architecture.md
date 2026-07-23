@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M3，M3.1-M3.3 已完成本地提交；M3.4 Factory Tool adapter 已通过完整本地质量门禁、尚待提交；M3 工作包均待推送与远程 CI
+**当前阶段**：Alpha / M3，M3.1-M3.4 已完成本地提交；M3.5 Runtime 与安全工具执行已通过完整本地质量门禁、尚待提交；M3 工作包均待推送与远程 CI
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -68,8 +68,9 @@
   - [9.1 状态迁移表](#91-状态迁移表)
   - [9.2 状态命令](#92-状态命令)
   - [9.3 上下文边界](#93-上下文边界)
-  - [9.4 并发规则](#94-并发规则)
-  - [9.5 事件钩子](#95-事件钩子)
+  - [9.4 Runtime 实现](#94-runtime-实现)
+  - [9.5 并发规则](#95-并发规则)
+  - [9.6 事件钩子](#96-事件钩子)
 - [第十章 双模接口](#第十章-双模接口)
   - [10.1 API DTO](#101-api-dto)
   - [10.2 FastAPI 应用与依赖](#102-fastapi-应用与依赖)
@@ -2286,7 +2287,7 @@ M2.5 新增 forward-only `005_task_outcome_integrity.sql`。`evaluation_report_i
 
 ## 第八章 工具绑定与安全执行
 
-本章分为两个边界：M1/M2 生产层只实现工具元数据白名单和权限解析；工具 handler、参数执行、超时和调用记录属于 M3.5 运行接口，M2 封存基线尚未实现。
+本章分为两个边界：M1/M2 生产层实现工具元数据白名单和权限解析；M3.5 在保持该边界的前提下增加固定 handler、参数执行、超时和脱敏调用记录。详细取舍见 [Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)。
 
 ### 8.1 工具模型
 
@@ -2294,7 +2295,7 @@ M2.5 新增 forward-only `005_task_outcome_integrity.sql`。`evaluation_report_i
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Awaitable, Callable
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 
 class ToolPermission(StrEnum):
@@ -2304,13 +2305,7 @@ class ToolPermission(StrEnum):
     WRITE_EXTERNAL = "write-external"
 
 
-class ToolDefinition(FrozenModel):
-    name: Slug
-    version: SemVer
-    description: str = Field(min_length=1, max_length=1_000)
-    input_schema: JsonObject
-    output_schema: JsonObject
-    permission_tags: frozenset[ToolPermission]
+class ToolDefinition(ResolvedToolSpec):
     timeout_seconds: float = Field(default=10.0, gt=0, le=120)
     enabled: bool = True
 
@@ -2326,9 +2321,12 @@ class ResolvedToolSpec(FrozenModel):
 
 class ToolCallRequest(FrozenModel):
     call_id: UUID
+    task_id: UUID
     instance_id: UUID
     instance_revision: int = Field(ge=1)
+    agent_spec_checksum: Sha256
     tool_name: Slug
+    tool_version: SemVer
     arguments: JsonObject
 
 
@@ -2341,29 +2339,38 @@ class ToolCallStatus(StrEnum):
 
 class ToolCallRecord(FrozenModel):
     call_id: UUID
+    task_id: UUID
+    instance_id: UUID
+    instance_revision: int = Field(ge=1)
+    agent_spec_checksum: Sha256
     tool_name: Slug
     tool_version: SemVer
     status: ToolCallStatus
-    arguments_hash: Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
-    result_hash: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
-    error_code: str | None = None
-    duration_ms: int = Field(ge=0)
-    started_at: datetime
-    completed_at: datetime
+    arguments_hash: Sha256
+    result_hash: Sha256 | None = None
+    error_code: ErrorCode | None = None
+    duration_ms: int = Field(ge=0, le=600_000)
+    actor: Actor
+    correlation_id: UUID
+    started_at: AwareDatetime
+    completed_at: AwareDatetime
 
 
-ToolHandler = Callable[[BaseModel], Awaitable[BaseModel]]
+ToolHandler = Callable[
+    [FrozenModel, ToolExecutionContext],
+    Awaitable[FrozenModel],
+]
 
 
 @dataclass(frozen=True, slots=True)
 class RegisteredTool:
     definition: ToolDefinition
-    input_model: type[BaseModel]
-    output_model: type[BaseModel]
+    input_model: type[FrozenModel]
+    output_model: type[FrozenModel]
     handler: ToolHandler
 ```
 
-`ResolvedToolSpec` 已在 M1 实现并进入 `AgentSpec`。`ToolDefinition`、`ToolCallRequest`、`RegisteredTool` 和 handler 执行列入 M3.5，M2 封存基线尚未实现。
+`ResolvedToolSpec` 已在 M1 实现并进入 `AgentSpec`。M3.5 的 `ToolDefinition` 继承该模型并增加 timeout/enabled；默认 `ToolCatalog` 和固定 `ToolRegistry` 从同一 definition 派生，避免生产授权与执行 Schema 漂移。
 
 ### 8.2 元数据目录与权限解析
 
@@ -2411,7 +2418,7 @@ M1 默认 `InMemoryToolCatalog` 只注册 metadata-only 的 `document-search@1.0
 
 ### 8.3 安全执行器
 
-**M2 封存基线未实现。** 以下是 M3.5 的接口规格，不属于 M1 `ToolCatalog`。
+M3.5 的执行器不属于 M1 `ToolCatalog`，只通过固定 `ToolRegistry` 解析 handler：
 
 ```python
 import asyncio
@@ -2420,105 +2427,18 @@ from pydantic import ValidationError
 
 
 class ToolExecutor:
-    def __init__(
-        self,
-        registry: ToolRegistry,
-        audit: "AuditSink",
-        clock: "Clock",
-    ) -> None:
-        self.registry = registry
-        self.audit = audit
-        self.clock = clock
-
     async def execute(
         self,
         request: ToolCallRequest,
-        spec: AgentSpec,
-        actor: str,
-    ) -> tuple[BaseModel, ToolCallRecord]:
-        allowed = {tool.name: tool for tool in spec.tools}
-        granted = allowed.get(request.tool_name)
-        if granted is None:
-            raise ToolNotGrantedError(
-                details={
-                    "instance_id": str(spec.instance_id),
-                    "tool_name": request.tool_name,
-                }
-            )
-        registered = self.registry.get(request.tool_name)
-        if registered is None or not registered.definition.enabled:
-            raise ToolUnavailableError(
-                details={"tool_name": request.tool_name}
-            )
-
-        try:
-            clean_input = registered.input_model.model_validate(
-                request.arguments
-            )
-        except ValidationError as exc:
-            raise ToolInputValidationError(
-                details={"errors": exc.errors(include_url=False)}
-            ) from exc
-
-        started_at = self.clock.now()
-        started = monotonic()
-        try:
-            async with asyncio.timeout(
-                registered.definition.timeout_seconds
-            ):
-                raw_result = await registered.handler(clean_input)
-                clean_output = registered.output_model.model_validate(
-                    raw_result
-                )
-            status = ToolCallStatus.SUCCEEDED
-            error_code = None
-        except TimeoutError as exc:
-            status = ToolCallStatus.TIMED_OUT
-            error_code = "TOOL_TIMEOUT"
-            await self.audit_tool_failure(request, actor, status, error_code)
-            raise ToolTimeoutError(
-                details={"tool_name": request.tool_name}
-            ) from exc
-        except FactoryError as exc:
-            status = ToolCallStatus.FAILED
-            error_code = exc.code
-            await self.audit_tool_failure(
-                request,
-                actor,
-                status,
-                error_code,
-            )
-            raise
-        except Exception as exc:
-            status = ToolCallStatus.FAILED
-            error_code = "TOOL_EXECUTION_FAILED"
-            await self.audit_tool_failure(request, actor, status, error_code)
-            raise ToolExecutionError(
-                details={"tool_name": request.tool_name}
-            ) from exc
-
-        completed_at = self.clock.now()
-        record = ToolCallRecord(
-            call_id=request.call_id,
-            tool_name=registered.definition.name,
-            tool_version=registered.definition.version,
-            status=status,
-            arguments_hash=sha256_model(clean_input),
-            result_hash=sha256_model(clean_output),
-            duration_ms=int((monotonic() - started) * 1_000),
-            started_at=started_at,
-            completed_at=completed_at,
-            error_code=error_code,
-        )
-        await self.audit.append(AuditEvent.for_tool_call(record, actor))
-        return clean_output, record
+        context: ToolExecutionContext,
+    ) -> ToolExecutionResult: ...
 ```
 
-`TOOL_NOT_GRANTED`、`TOOL_INPUT_VALIDATION_FAILED` 等执行前拒绝也必须写入 `ToolCallRecord(status=REJECTED)`。异常日志只记录异常类型和错误码，不把原始参数、结果、API key 或知识正文写入日志。`audit_tool_failure` 必须在独立短事务中落库，因为工具调用不处于工厂业务写事务中。
+执行器依次验证：持久化 Spec → 当前 RUNNING revision → request/Spec 身份 → Spec 授权 → Registry version/permission/schema → Pydantic 输入 → timeout handler → Pydantic 输出。`TOOL_NOT_GRANTED`、版本漂移和参数错误等执行前拒绝也写入 `ToolCallRecord(status=rejected)`；record 与 `tool.called` 审计在同一短事务提交。异常日志只记录异常类型和错误码，不记录原始参数、结果、API key 或知识正文。
 
 ### 8.4 工具安全规则
 
-- 禁止 `eval`、`exec`、动态 `import_module` 和由模型生成的 shell 命令。
+- 禁止根据模型输出或工具参数执行 `eval`、`exec`、动态模块加载或 shell 命令。可选 provider 装配只允许在显式工厂函数中惰性导入固定的官方 `openai` 包，包名不接受模型或用户输入。
 - 文件工具必须以 `Path.resolve()` 后检查目标位于配置的工作目录中；符号链接逃逸返回 `PATH_OUTSIDE_WORKSPACE`。
 - 网络工具必须使用主机 allowlist；解析 DNS 后拒绝 loopback、link-local、private 和 metadata IP，并将连接固定到已校验 IP，禁止重定向到未校验主机。
 - 写外部系统的工具必须标记 `WRITE_EXTERNAL`，Alpha 默认不加入 `allowed_permissions`。
@@ -2528,25 +2448,31 @@ class ToolExecutor:
 ### 8.5 工具表
 
 ```sql
-CREATE TABLE tool_definitions (
-    name TEXT NOT NULL,
-    version TEXT NOT NULL,
-    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
-    payload_json TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (name, version)
-);
-
 CREATE TABLE tool_call_records (
     call_id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
     instance_id TEXT NOT NULL,
     instance_revision INTEGER NOT NULL,
+    agent_spec_checksum TEXT NOT NULL,
     tool_name TEXT NOT NULL,
+    tool_version TEXT NOT NULL,
     status TEXT NOT NULL,
+    arguments_hash TEXT NOT NULL,
+    result_hash TEXT,
+    error_code TEXT,
+    duration_ms INTEGER NOT NULL,
+    actor TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
     record_json TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    record_checksum TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    FOREIGN KEY (instance_id, instance_revision, agent_spec_checksum)
+        REFERENCES agent_specs(instance_id, revision, checksum)
 );
 ```
+
+M3.5 使用 forward-only `006_tool_call_records.sql`。不持久化 `tool_definitions`：handler 是代码资源，数据库不能恢复；固定 Registry 是 Alpha 的唯一可执行工具真相源。
 
 
 ---
@@ -2736,7 +2662,61 @@ class RuntimeAdapter(Protocol):
 
 `ResolvedRuntimeKnowledge` 必须通过正文 checksum 校验，并与 `AgentSpec.knowledge` 精确一一对应。可选 context 的 instance、revision 和 Spec checksum 必须与 request spec 相同。`RunResult` 的来源字段保持可追溯；failed 必须给出稳定 `error_code`，completed 不得给出错误码，完成时间不得早于开始时间。M3.2 只保存未来工具调用记录的 ID，不提前定义 M3.5 的完整 `ToolCallRecord`。
 
-### 9.4 并发规则
+### 9.4 Runtime 实现
+
+M3.5 提供两种实现。`OfflineDemoRuntimeAdapter` 是默认验收基线：不访问网络，在 Spec 授权时调用一次 `document-search`，生成固定 `{title, body}`，并用 AgentSpec 的 Draft 2020-12 Schema 再校验。`ModelRuntimeAdapter` 依赖 provider-neutral gateway，模型不能绕过 `ToolExecutor`：
+
+```python
+class ModelToolDefinition(FrozenModel):
+    name: Slug
+    version: SemVer
+    description: str = Field(min_length=1, max_length=1_000)
+    input_schema: JsonObject
+
+
+class ModelInvocation(FrozenModel):
+    instructions: str = Field(min_length=1, max_length=64_000)
+    task_input: str = Field(min_length=1, max_length=64_000)
+    tools: tuple[ModelToolDefinition, ...] = ()
+    output_schema: JsonObject
+
+
+class ModelToolCall(FrozenModel):
+    provider_call_id: str = Field(min_length=1, max_length=256)
+    name: Slug
+    arguments: JsonObject
+
+
+class ModelToolResult(FrozenModel):
+    provider_call_id: str = Field(min_length=1, max_length=256)
+    output: JsonObject
+
+
+class ModelTurn(FrozenModel):
+    model_name: str = Field(min_length=1, max_length=128)
+    content: str = Field(default="", max_length=128_000)
+    structured_output: JsonObject | None = None
+    tool_call: ModelToolCall | None = None
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+
+
+class ModelSession(Protocol):
+    async def next(
+        self,
+        tool_results: tuple[ModelToolResult, ...] = (),
+    ) -> ModelTurn: ...
+
+
+class ModelGateway(Protocol):
+    def start(self, invocation: ModelInvocation) -> ModelSession: ...
+```
+
+每个 `ModelTurn` 只能包含一个工具调用或一个最终结构化输出。Runtime 默认最多 4 轮、构造参数硬限制 1-8 轮；同一次运行中 model name 不得变化，provider call ID 不得重复。每个模型工具调用都会生成工厂内部 UUID，并携带当前 instance、revision 和 Spec checksum 进入 `ToolExecutor`。工具失败直接终止运行，只把稳定错误码写入 `RunResult`；成功输出才返回模型。最终 `structured_output` 必须再次通过 AgentSpec Schema，本地验证是最终判据。
+
+可选 `OpenAIResponsesGateway` 使用官方 Responses API，固定 `parallel_tool_calls=False`、`store=False`，手动回放 response output item 与 `function_call_output`。工具声明使用 `strict=False`，因为工厂允许的 Draft 2020-12 Schema 不保证属于 provider strict subset；这不降低本地安全性，所有参数仍由 `ToolExecutor` 的 Pydantic model 重新校验。最终响应要求 JSON object，并再次执行本地 AgentSpec Schema 校验。官方 SDK 仅存在于 `llm` extra，默认容器不构造 client、不读取 API key，也不发起网络请求。
+
+### 9.5 并发规则
 
 - 所有实例写命令必须携带 `expected_revision`。
 - 同一 revision 上的两个并发写入只有一个能更新 `instance_heads`；数据库事务和 head CAS 是正确性保证。
@@ -2745,7 +2725,7 @@ class RuntimeAdapter(Protocol):
 - snapshot、审计和幂等记录位于同一工作单元；任一步失败都会整体回滚。
 - 评估执行可在事务外进行；报告一经创建保持不可变，即使实例 head 随后变化也不写回 `stale` 字段。晋升时把报告的 instance revision、AgentSpec checksum 和 SkillTreeRef 与当前快照比较，动态判定并拒绝 stale 报告。
 
-### 9.5 事件钩子
+### 9.6 事件钩子
 
 **当前 Alpha / M3.2 不实现事件 hook、outbox、dispatcher 或 dead-letter。** 业务变更只在同一事务中追加不可变审计事件。只有后续出现必须可靠投递到外部系统的需求时，才单独设计 forward-only migration、投递租约、重试和消费幂等；不得把尚未实现的 outbox 描述为当前保证。
 
@@ -3323,7 +3303,7 @@ class PromotionRejectedError(FactoryError):
 | 500 | `INTERNAL_ERROR` |
 | 503 | `AUTHENTICATION_NOT_CONFIGURED`, `REPOSITORY_UNAVAILABLE`, `SERVICE_NOT_READY` |
 
-M2 application service 已增加 `SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_NOT_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`TASK_OUTCOME_MISMATCH`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED` 等稳定错误，并由映射集合测试防止漏配。M2.6 将这些既有命令暴露为路由，不重新定义业务错误。M3.1 增加认证接口错误和领域授权错误；运行时工具执行错误仍属于后续工作包。
+M2 application service 已增加 `SKILL_TREE_NOT_FOUND`、`SKILL_TREE_ALREADY_EXISTS`、`SKILL_NODE_NOT_FOUND`、`SKILL_DEPENDENCY_MISSING`、`SKILL_ALREADY_ACTIVE`、`SKILL_NOT_ACTIVE`、`SKILL_CONFIGURATION_CONFLICT`、`EVALUATION_SUITE_NOT_FOUND`、`EVALUATION_SUITE_ALREADY_EXISTS`、`EVALUATION_REPORT_NOT_FOUND`、`EVALUATION_SUITE_MISMATCH`、`EVALUATION_REVIEW_CONFLICT`、`TASK_OUTCOME_ALREADY_EXISTS`、`TASK_OUTCOME_MISMATCH`、`STALE_EVALUATION_REPORT` 和 `PROMOTION_REJECTED` 等稳定错误，并由映射集合测试防止漏配。M2.6 将这些既有命令暴露为路由，不重新定义业务错误。M3.1 增加认证接口错误和领域授权错误；M3.5 增加 `TOOL_CONTEXT_MISMATCH`、`TOOL_UNAVAILABLE`、`TOOL_VERSION_MISMATCH`、`TOOL_DEFINITION_MISMATCH`、输入/输出校验失败、超时、执行失败、调用 ID 冲突以及 `MODEL_GATEWAY_FAILED`、`MODEL_PROTOCOL_INVALID`、`MODEL_TURN_LIMIT_EXCEEDED`，并继续由映射集合测试防止新增 `FactoryError` 漏配。
 
 ### 10.6 FastAPI 异常处理
 
@@ -4287,7 +4267,8 @@ pytest -q tests/unit
 - M3.1 已建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权，并完成本地提交；它不是完整生产身份系统，推送与远程 CI 证据仍待完成。
 - M3.2 已实现实例生命周期 transition、revision CAS、typed idempotency、审计与 Runtime 数据契约，并完成本地提交；推送与远程 CI 仍待完成。
 - M3.3 SDK 已覆盖全部 20 个公开 REST operation，通过完整本地门禁并完成本地提交；推送与远程 CI 仍待完成。
-- M3.4 Factory Tool adapter 已实现五项工具、可信宿主上下文、权限过滤、Pydantic Schema、稳定结果 envelope 和跨 REST/SDK/Tool 精确幂等重放；已通过完整本地门禁，提交、推送与远程 CI 仍待完成。
+- M3.4 Factory Tool adapter 已实现五项工具、可信宿主上下文、权限过滤、Pydantic Schema、稳定结果 envelope 和跨 REST/SDK/Tool 精确幂等重放，并完成本地提交；推送与远程 CI 仍待完成。
+- M3.5 已实现固定 Registry、`ToolExecutor`、脱敏 `ToolCallRecord`、`006_tool_call_records.sql`、离线 Demo Runtime、provider-neutral `ModelGateway` 和可选 OpenAI Responses adapter；`341 passed`，domain/application/全项目 branch coverage 为 96%/94%/94%，本地提交、推送与远程 CI 仍待完成。
 - Gradio 只承担演示，不导入 domain 或 repository。
 - Gradio 调用 SDK 完成生产操作；运行任务时调用默认离线的 `DemoRuntimeAdapter`。
 - 可选 OpenAI adapter 使用官方 SDK，但真实模型调用不进入默认测试或 M3 退出门禁。

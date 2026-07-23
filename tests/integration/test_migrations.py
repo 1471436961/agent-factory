@@ -44,10 +44,10 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
     first = await runner.migrate()
     second = await runner.migrate()
 
-    assert first.applied_versions == (1, 2, 3, 4, 5)
-    assert first.current_version == 5
+    assert first.applied_versions == (1, 2, 3, 4, 5, 6)
+    assert first.current_version == 6
     assert second.applied_versions == ()
-    assert second.current_version == 5
+    assert second.current_version == 6
 
     async with aiosqlite.connect(database_path) as connection:
         cursor = await connection.execute(
@@ -59,7 +59,7 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
         )
         tables = {str(row[0]) for row in await cursor.fetchall()}
 
-    assert len(history) == 5
+    assert len(history) == 6
     assert tuple(history[0]) == (1, "initial", "2026-07-17T12:00:00Z")
     assert tuple(history[1]) == (
         2,
@@ -81,6 +81,11 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
         "task_outcome_integrity",
         "2026-07-17T12:00:00Z",
     )
+    assert tuple(history[5]) == (
+        6,
+        "tool_call_records",
+        "2026-07-17T12:00:00Z",
+    )
     assert {
         "prototypes",
         "knowledge_packages",
@@ -90,6 +95,7 @@ async def test_new_database_migrates_and_second_run_is_idempotent(
         "evaluation_reports",
         "evaluation_reviews",
         "task_outcomes",
+        "tool_call_records",
     } <= tables
 
 
@@ -356,11 +362,12 @@ async def test_existing_m1_snapshots_upgrade_from_v2_to_v5_and_remain_readable(
         "003_skill_governance.sql",
         "004_instance_configuration_checksum.sql",
         "005_task_outcome_integrity.sql",
+        "006_tool_call_records.sql",
     ):
         shutil.copy2(migrations_dir / name, copied_migrations / name)
     upgrade = await runner.migrate()
-    assert upgrade.applied_versions == (3, 4, 5)
-    assert upgrade.current_version == 5
+    assert upgrade.applied_versions == (3, 4, 5, 6)
+    assert upgrade.current_version == 6
 
     async with aiosqlite.connect(database_path) as connection:
         cursor = await connection.execute(
