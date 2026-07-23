@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M2 已于 2026-07-22 验收封存；M3 尚未进入，需先完成独立规划确认
+**当前阶段**：Alpha / M3，阶段规划已于 2026-07-23 确认，尚未开始 M3.1 代码
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[M2 技能治理设计说明](design/skill-governance.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[M2 技能治理设计说明](design/skill-governance.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -2277,7 +2277,7 @@ M2.5 新增 forward-only `005_task_outcome_integrity.sql`。`evaluation_report_i
 
 ## 第八章 工具绑定与安全执行
 
-本章分为两个边界：M1 生产层只实现工具元数据白名单和权限解析；工具 handler、参数执行、超时和沙箱属于 M3 运行接口，当前 Alpha 不实现。
+本章分为两个边界：M1/M2 生产层只实现工具元数据白名单和权限解析；工具 handler、参数执行、超时和调用记录属于 M3.5 运行接口，M2 封存基线尚未实现。
 
 ### 8.1 工具模型
 
@@ -2354,7 +2354,7 @@ class RegisteredTool:
     handler: ToolHandler
 ```
 
-`ResolvedToolSpec` 已在 M1 实现并进入 `AgentSpec`。`ToolDefinition`、`ToolCallRequest`、`RegisteredTool` 和 handler 执行是 M3 规格，当前 Alpha 不实现。
+`ResolvedToolSpec` 已在 M1 实现并进入 `AgentSpec`。`ToolDefinition`、`ToolCallRequest`、`RegisteredTool` 和 handler 执行列入 M3.5，M2 封存基线尚未实现。
 
 ### 8.2 元数据目录与权限解析
 
@@ -2402,7 +2402,7 @@ M1 默认 `InMemoryToolCatalog` 只注册 metadata-only 的 `document-search@1.0
 
 ### 8.3 安全执行器
 
-**当前 Alpha 版本不实现。** 以下是 M3 的接口规格，不属于 M1 `ToolCatalog`。
+**M2 封存基线未实现。** 以下是 M3.5 的接口规格，不属于 M1 `ToolCatalog`。
 
 ```python
 import asyncio
@@ -3250,7 +3250,7 @@ application.include_router(
 
 ### 10.8 Python SDK
 
-**当前 Alpha/M2 不实现。** M3 SDK 必须复用 REST DTO，并在认证方案确定后接入可信 Principal；在此之前不得把 `X-Actor-ID` 包装成认证能力。目标方法保持业务语义：
+**M2 封存基线未实现。** M3.3 SDK 必须复用 REST DTO，并使用 M3.1 建立的可信 Principal；不得把旧 `X-Actor-ID` 包装成认证能力。目标方法保持业务语义：
 
 ```python
 class AgentFactoryClient:
@@ -3292,7 +3292,7 @@ class AgentFactoryClient:
 
 ### 10.9 面向 Agent 的工具映射
 
-**当前 Alpha/M2 不实现。** M3 工具适配器与 REST 路由共享 request model 和 `FactoryController`，工具层只做参数/返回值转换：
+**M2 封存基线未实现。** M3.4 工具适配器与 REST 路由共享 request model 和 `FactoryController`，工具层只做参数/返回值转换：
 
 ```python
 class CloneAgentToolInput(FrozenModel):
@@ -4128,11 +4128,17 @@ pytest -q tests/unit
 
 ### 14.5 M3 规格
 
+- M3.1 建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权；它不是完整生产身份系统。
+- M3.2 实现实例生命周期 transition、revision CAS、幂等、审计与 Runtime 契约。
 - SDK 覆盖所有公开 REST 路由。
 - Tool adapter 只做 DTO 转换，生成的 input schema 与 REST 请求模型共享。
 - Gradio 只承担演示，不导入 domain 或 repository。
-- Gradio 调用 SDK 完成生产操作；运行任务时调用 `DemoRuntimeAdapter`。
+- Gradio 调用 SDK 完成生产操作；运行任务时调用默认离线的 `DemoRuntimeAdapter`。
+- 可选 OpenAI adapter 使用官方 SDK，但真实模型调用不进入默认测试或 M3 退出门禁。
+- 可执行工具只实现固定只读 `document-search`；不实现 shell、动态代码、任意文件或任意网络工具。
 - Demo 页面显示实例 revision、原型来源、知识版本、active skill 和审计时间线。
+
+M3 的完整工作包、退出证据和安全边界以 [M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)为准。
 
 ### 14.6 Alpha 演示脚本
 

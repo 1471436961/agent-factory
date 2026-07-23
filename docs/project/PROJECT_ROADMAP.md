@@ -13,7 +13,7 @@
 | M0 | 工程骨架、配置、迁移、基础端口、CI | 应用启动；空库迁移；质量检查通过 |
 | M1 | 原型、知识、实例、AgentSpec、仓储与核心 REST | 注册、克隆、绑定、导出及重启重放测试 |
 | M2 | 技能 DAG、评估、晋升、降级与最小治理 REST | 决策、并发、回退及 HTTP 重启恢复测试 |
-| M3 | SDK、Tool adapter、运行接口与 Demo | 三种入口产生同构结果 |
+| M3 | 身份边界、生命周期、SDK、Tool adapter、受限 Runtime 与 Demo | 三种入口精确重放同一结果；固定 Demo 完整跑通 |
 | M4 | 完整安全与回归门禁 | 安全测试、OpenAPI/回归快照和部署检查通过 |
 | M5 | 对照实验与分析 | 原始数据、执行配置和统计结果可复算 |
 | M6 | 开源准备 | 新环境按文档在 30 分钟内跑通 Demo |
@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前状态：M2 技能治理已于 2026-07-22 通过项目 owner 人工验收并封存，阶段目标、实现证据、已知边界和退出结论见 [`docs/milestones/m2-skill-governance.md`](../milestones/m2-skill-governance.md)。M2 退出候选提交 `1ef14d7` 的 GitHub Actions CI #16 已通过。M3 尚未进入，SDK、Tool adapter、运行接口与 Demo 需要单独完成阶段规划并经 owner 确认后实施。M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
+当前里程碑：M3 接口、运行时与演示。阶段目标、身份与生命周期前置条件、七个工作包、验收标准和风险已于 2026-07-23 经项目 owner 确认，详见 [`docs/milestones/m3-interfaces-runtime-demo.md`](../milestones/m3-interfaces-runtime-demo.md)。当前尚未开始 M3.1 代码，可运行基线仍是已封存的 M2；M2 封存提交 `da4b408` 的 GitHub Actions CI #17 已通过。M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 

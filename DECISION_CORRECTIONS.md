@@ -163,3 +163,14 @@
    - 最终修正：`list_for_node()` 增加 `instance_revision` 条件；新增 forward-only `005_task_outcome_integrity.sql`，为 `evaluation_report_id` 建立唯一索引和 revision 级窗口索引。Controller 还校验 Report、AgentSpec、Tree、Suite、最终 review 与 `passed` 的一致性。
    - 证据：Repository 集成测试证明错误 revision 返回空窗口且报告重放被稳定拒绝；Controller 集成测试证明阈值只使用当前 revision，并发跨阈值只产生一个降级 revision。
    - 对后续路线的影响：M2.6 REST 必须把报告重复消费映射为 409，把证据结果矛盾映射为 422；若未来需要跨配置连续观察，应显式引入 activation/evaluation cohort ID，不能恢复无边界聚合。
+
+1. **M3 从直接增加适配器修正为先建立身份与生命周期前置契约**
+
+   - 日期：2026-07-23
+   - 里程碑：M3 规划与设计评审
+   - 原判断：项目路线图把 M3 概括为 SDK、Tool adapter、运行接口与 Gradio，默认可以直接在 M2 REST 和 Controller 上增加接口包装并进入演示。
+   - 原判断的不足：M2 REST 的 `X-Actor-ID` 只是可伪造审计标签，无法为直接调用 Controller 的 Tool adapter 提供可信 `Principal`；固定 Demo 脚本又要求 `CREATED -> RUNNING -> WAITING`，但 M2 没有生命周期 Command、事务或 REST 路由。若直接做适配器，只能在不同入口复制身份和状态逻辑，或在 UI 内伪造状态。
+   - 人工 review 结论：M3 必须先建立最小可信身份边界和显式生命周期能力，再实现 SDK、Factory Tool adapter、Runtime 与 Gradio；三种入口都只能转换输入并复用同一 Controller 规则。
+   - 最终修正：M3.1 增加 `Principal`、认证端口、Alpha 静态 Bearer Token 与最小角色授权；M3.2 增加 `LifecyclePolicy`、transition Command、revision CAS、审计、幂等和 REST action；M3.3-M3.7 再依次实现 SDK、Factory Tool adapter、受限 Runtime、Gradio 与同构退出测试。静态 Token 只作为本地 Alpha 信任边界，完整认证与公网安全仍由 M4 验收。
+   - 证据：`src/agent_factory/interfaces/api/dependencies.py` 当前从 `X-Actor-ID` 直接返回 actor；Controller 不存在 `transition_instance()`；`docs/architecture.md` 第 9.1-9.2 节已定义未实现的生命周期规格，第 10.9、11.2、14.6 节分别要求可信 Principal、审计授权和演示状态迁移。
+   - 对后续路线的影响：M3 不从 UI 或 adapter 绕过身份、状态、幂等和审计边界；M3.1/M3.2 需先独立通过回归门禁。M4 负责安全加固而不是首次发现 actor 不可信；Engineer 可执行代码 Demo 在沙箱与工具权限单独验收前不进入 M3。
