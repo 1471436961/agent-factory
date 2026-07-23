@@ -195,6 +195,35 @@ class AuditEventFactory:
             at=at,
         )
 
+    def instance_transitioned(
+        self,
+        previous: AgentInstance,
+        current: AgentInstance,
+        *,
+        reason: str,
+        retry: bool,
+        actor: str,
+        correlation_id: UUID,
+        at: datetime,
+    ) -> AuditEvent:
+        return self._event(
+            event_type=AuditEventType.INSTANCE_TRANSITIONED,
+            entity_type=AuditEntityType.INSTANCE,
+            entity_id=str(current.instance_id),
+            entity_revision=current.revision,
+            actor=actor,
+            correlation_id=correlation_id,
+            payload={
+                "from_status": previous.status.value,
+                "to_status": current.status.value,
+                "from_revision": previous.revision,
+                "to_revision": current.revision,
+                "reason": reason,
+                "retry": retry,
+            },
+            at=at,
+        )
+
     def evaluation_suite_registered(
         self,
         suite: EvaluationSuite,

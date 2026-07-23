@@ -12,7 +12,7 @@ from agent_factory.domain.common import (
     SemVer,
     Slug,
 )
-from agent_factory.domain.enums import ReviewDecision
+from agent_factory.domain.enums import InstanceStatus, ReviewDecision
 from agent_factory.domain.evaluation import (
     EvaluationSuiteDraft,
     SubmittedCaseResult,
@@ -79,6 +79,13 @@ class BindKnowledgeRequest(FrozenModel):
 
 class ExportSpecRequest(FrozenModel):
     revision: PositiveInt | None = None
+
+
+class TransitionInstanceRequest(FrozenModel):
+    expected_revision: PositiveInt
+    target_status: InstanceStatus
+    reason: str = Field(min_length=1, max_length=1_000)
+    retry: bool = False
 
 
 class RegisterEvaluationSuiteRequest(EvaluationSuiteDraft):

@@ -22,6 +22,7 @@ from agent_factory.domain.enums import ToolPermission
 from agent_factory.domain.services.degradation import DegradationPolicy
 from agent_factory.domain.services.evaluation import DeterministicRuleEngine
 from agent_factory.domain.services.knowledge import KnowledgeBindingPolicy
+from agent_factory.domain.services.lifecycle import LifecyclePolicy
 from agent_factory.domain.services.promotion import PromotionPolicy
 from agent_factory.domain.services.prototype import PrototypePolicy
 from agent_factory.domain.services.spec import AgentSpecBuilder
@@ -107,6 +108,7 @@ def build_container(settings: Settings) -> Container:
         prototype_policy=PrototypePolicy(),
         promotion_policy=PromotionPolicy(),
         degradation_policy=DegradationPolicy(),
+        lifecycle_policy=LifecyclePolicy(),
         knowledge_policy=KnowledgeBindingPolicy(),
         tool_policy=ToolPolicy(
             tool_catalog,

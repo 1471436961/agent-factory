@@ -18,6 +18,7 @@ from agent_factory.application.commands import (
     RegisterPrototypeCommand,
     RegisterSkillTreeCommand,
     ReviewEvaluationCommand,
+    TransitionInstanceCommand,
 )
 from agent_factory.application.idempotency import IdempotencyService
 from agent_factory.application.ports import (
@@ -89,6 +90,7 @@ from agent_factory.domain.references import EvaluationSuiteRef, SkillTreeRef
 from agent_factory.domain.services.degradation import DegradationPolicy
 from agent_factory.domain.services.evaluation import checksum_evaluation_suite
 from agent_factory.domain.services.knowledge import KnowledgeBindingPolicy
+from agent_factory.domain.services.lifecycle import LifecyclePolicy
 from agent_factory.domain.services.promotion import PromotionPolicy
 from agent_factory.domain.services.prototype import PrototypePolicy
 from agent_factory.domain.services.skills import (
@@ -111,6 +113,7 @@ EVALUATE_INSTANCE = "evaluate-instance"
 REVIEW_EVALUATION = "review-evaluation"
 PROMOTE_AGENT = "promote-agent"
 RECORD_TASK_OUTCOME = "record-task-outcome"
+TRANSITION_INSTANCE = "transition-instance"
 
 
 class FactoryController:
@@ -126,6 +129,7 @@ class FactoryController:
         prototype_policy: PrototypePolicy,
         promotion_policy: PromotionPolicy,
         degradation_policy: DegradationPolicy,
+        lifecycle_policy: LifecyclePolicy,
         knowledge_policy: KnowledgeBindingPolicy,
         tool_policy: ToolPolicy,
         spec_builder: AgentSpecBuilder,
@@ -143,6 +147,7 @@ class FactoryController:
         self._prototype_policy = prototype_policy
         self._promotion_policy = promotion_policy
         self._degradation_policy = degradation_policy
+        self._lifecycle_policy = lifecycle_policy
         self._knowledge_policy = knowledge_policy
         self._tool_policy = tool_policy
         self._spec_builder = spec_builder
@@ -558,6 +563,72 @@ class FactoryController:
             )
             await uow.commit()
             return updated
+
+    async def transition_instance(
+        self,
+        command: TransitionInstanceCommand,
+    ) -> AgentInstance:
+        now = self._clock.now()
+        async with self._uow_factory() as uow:
+            replay = await self._idempotency.replay(
+                repository=uow.idempotency,
+                command=command,
+                operation=TRANSITION_INSTANCE,
+                response_type=AgentInstance,
+                now=now,
+            )
+            if replay is not None:
+                await uow.commit()
+                return replay
+
+            current = await self._require_instance(
+                uow.instances,
+                command.instance_id,
+                None,
+            )
+            if current.revision != command.expected_revision:
+                raise RevisionConflictError(
+                    details={
+                        "instance_id": str(current.instance_id),
+                        "expected_revision": command.expected_revision,
+                        "actual_revision": current.revision,
+                    }
+                )
+            transitioned = self._lifecycle_policy.transition(
+                current,
+                command.target_status,
+                reason=command.reason,
+                retry=command.retry,
+                now=now,
+            )
+            if command.target_status is InstanceStatus.RUNNING:
+                await self._validate_runtime_readiness(uow, current, now=now)
+
+            await uow.instances.save_snapshot(
+                transitioned,
+                expected_revision=current.revision,
+            )
+            correlation_id = self._correlation_id()
+            await uow.audit.append(
+                self._audit_factory.instance_transitioned(
+                    current,
+                    transitioned,
+                    reason=command.reason,
+                    retry=command.retry,
+                    actor=command.actor,
+                    correlation_id=correlation_id,
+                    at=now,
+                )
+            )
+            await self._idempotency.store(
+                repository=uow.idempotency,
+                command=command,
+                operation=TRANSITION_INSTANCE,
+                response=transitioned,
+                now=now,
+            )
+            await uow.commit()
+            return transitioned
 
     async def register_evaluation_suite(
         self,
@@ -1578,6 +1649,21 @@ class FactoryController:
                 raise KnowledgeInjectionModeMismatchError(
                     details={"slot_name": binding.slot_name}
                 )
+
+    async def _validate_runtime_readiness(
+        self,
+        uow: UnitOfWork,
+        instance: AgentInstance,
+        *,
+        now: datetime,
+    ) -> None:
+        await self._revalidate_bindings(uow, instance, now=now)
+        tools = self._tool_policy.resolve(instance.configuration.tools)
+        self._spec_builder.build(
+            instance=instance,
+            tools=tools,
+            generated_at=now,
+        )
 
     async def _build_promotion_bindings(
         self,

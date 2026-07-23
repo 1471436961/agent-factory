@@ -86,7 +86,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 5. 实施工作包
 
-### M3.1 身份与授权基础（本地门禁已通过，待提交与远程 CI）
+### M3.1 身份与授权基础（本地提交完成，待推送与远程 CI）
 
 - 定义不可变 `Principal`、稳定角色和 `Authenticator` Protocol。
 - 实现配置驱动的静态 Bearer Token 适配器，使用常量时间比较，不把 Token 写入日志、异常、审计或 repr。
@@ -95,7 +95,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 增加 401/403 统一错误 envelope、OpenAPI security scheme 和认证上下文隔离测试。
 - 更新 M1/M2 REST 测试，证明业务行为不因身份来源变化而回退。
 
-### M3.2 生命周期与 Runtime 契约
+### M3.2 生命周期与 Runtime 契约（本地门禁已通过，待提交与远程 CI）
 
 - 实现纯 `LifecyclePolicy` 和完整允许迁移表。
 - 增加 `TransitionInstanceCommand`、Controller 事务、实例 snapshot/head CAS、审计与 typed idempotency replay。
@@ -151,8 +151,8 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 - [x] 非健康 REST 路由不再信任 `X-Actor-ID`，actor 来自认证后的 Principal。
 - [x] 未配置认证、无凭据、错误凭据和角色不足分别返回稳定 503/401/403，且不泄露 Token。
-- [ ] 生命周期全部允许迁移和关键非法迁移有纯策略测试。
-- [ ] 状态变更具有 revision CAS、幂等、审计、失败原子性和并发单胜证据。
+- [x] 生命周期全部允许迁移和关键非法迁移有纯策略测试。
+- [x] 状态变更具有 revision CAS、幂等、审计、失败原子性和并发单胜证据。
 - [ ] SDK 覆盖全部公开 OpenAPI operation，并完整保留业务错误信息。
 - [ ] 五个 Factory Tool adapter 只做 DTO/Command 转换，不复制业务策略。
 - [ ] REST、SDK、Tool adapter 使用相同幂等命令时返回精确相同对象且不重复审计。
@@ -195,11 +195,12 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 9. 阶段报告
 
-当前状态：M3.1 已完成本地实现和质量门禁，尚未提交、推送或取得远程 CI 证据；M3.2 尚未开始。M3.1 将 M2 的不可信 `X-Actor-ID` 替换为静态 Bearer Token 生成的 `Principal`，对读取、写入和审计查询执行最小角色授权。该能力只面向单机 Alpha，不构成生产级身份系统。
+当前状态：M3.1 已完成本地提交，M3.2 已完成代码、设计说明和完整本地质量门禁、尚待提交；两个工作包均尚未推送或取得远程 CI 证据。M3.1 将 M2 的不可信 `X-Actor-ID` 替换为静态 Bearer Token 生成的 `Principal`；M3.2 增加确定性生命周期迁移及 Runtime 数据契约，但不执行 Agent、模型或工具。
 
 - M2 封存提交：`da4b408 docs: close M2 milestone`。
 - M2 封存远程证据：GitHub Actions [`CI #17`](https://github.com/1471436961/agent-factory/actions/runs/29930708726) 通过。
 - M3 规划确认时间：2026-07-23。
+- M3.1 本地提交：`5af129b feat: establish M3.1 identity boundary`。
 - M3.1 代码边界：新增 `Principal`、角色/权限矩阵、`Authenticator` Protocol、静态/未配置认证适配器和 FastAPI 权限依赖；未新增数据库 migration。
 - M3.1 信任边界：健康检查公开；未配置 Token 时 live 为 200，ready 与业务路由为 503；写命令 actor 只来自 `Principal.subject`；客户端提交 `X-Actor-ID` 会被拒绝。
 - M3.1 契约证据：覆盖未配置认证、缺失/错误凭据、错误 scheme、四角色矩阵、审计主体、OpenAPI security requirement、Token 脱敏和双 app 上下文隔离。
@@ -207,4 +208,13 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - M3.1 覆盖率：domain 96%、application 93%、全项目 94%，均为 branch coverage。
 - M3.1 静态门禁：Ruff format/check 通过，mypy strict 通过 93 个 source/test 文件。
 - M3.1 构建门禁：sdist 与 wheel 构建通过，wheel 包含新增 security 与 authentication 模块。
-- 未完成能力：生命周期、SDK、Tool adapter、Runtime 和 Gradio 仍是后续工作包，不能描述为已有实现。
+- M3.2 代码边界：新增纯 `LifecyclePolicy`、transition command/Controller/REST action、`instance.transitioned` 审计和 `RuntimeContextRef`、`ResolvedRuntimeKnowledge`、`RunRequest`、`RunResult`、`RuntimeAdapter` 契约；未新增数据库 migration。
+- M3.2 状态所有权：通用 transition 不得进入 `DEGRADED`，该状态只由 M2 降级证据链产生；`COMPLETED` 与 `TERMINATED` 均为终态。
+- M3.2 事务证据：真实 SQLite 测试覆盖 typed idempotency、revision CAS、双 Container 并发单胜、审计失败整体回滚和进程重建后的状态恢复与精确重放。
+- M3.2 REST 证据：覆盖认证、授权、非法/伪造输入脱敏、OpenAPI security、幂等重放、重启恢复、显式 Spec 导出及通用迁移不能伪造降级。
+- M3.2 运行边界：transition 只记录治理状态，不证明外部 Runtime 已真实启动或停止；本工作包只定义 Runtime 契约，不实现执行器、租约、heartbeat 或 checkpoint。
+- M3.2 本地测试：`265 passed`，相较 M3.1 基线增加 72 个测试，M1/M2/M3.1 回归继续通过。
+- M3.2 覆盖率：domain 96%、application 94%、全项目 94%，均为 branch coverage。
+- M3.2 静态门禁：Ruff format/check 通过，mypy strict 通过 99 个 source/test 文件。
+- M3.2 构建门禁：sdist 与 wheel 构建通过；wheel 已核对包含 `application/runtime.py`、`domain/services/lifecycle.py` 和 001-005 全部 migration。
+- 未完成能力：SDK、Tool adapter、Runtime 执行器和 Gradio 仍是后续工作包，不能描述为已有实现。

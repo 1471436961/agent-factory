@@ -12,7 +12,7 @@ from agent_factory.domain.common import (
     SemVer,
     Slug,
 )
-from agent_factory.domain.enums import ReviewDecision
+from agent_factory.domain.enums import InstanceStatus, ReviewDecision
 from agent_factory.domain.evaluation import EvaluationSubmission, EvaluationSuiteDraft
 from agent_factory.domain.models import AgentDefinition, DomainKnowledgeDraft
 from agent_factory.domain.references import SkillTreeRef
@@ -87,6 +87,16 @@ class BindKnowledgeCommand(FrozenModel):
         if len(keys) != len(value):
             raise ValueError("selections contains duplicate knowledge references")
         return value
+
+
+class TransitionInstanceCommand(FrozenModel):
+    instance_id: UUID
+    expected_revision: PositiveInt
+    target_status: InstanceStatus
+    reason: str = Field(min_length=1, max_length=1_000)
+    retry: bool = False
+    actor: Actor
+    idempotency_key: OptionalIdempotencyKey = None
 
 
 class RegisterEvaluationSuiteCommand(FrozenModel):

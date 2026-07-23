@@ -10,6 +10,7 @@ from agent_factory.application.commands import (
     EvaluateInstanceCommand,
     PromoteAgentCommand,
     RecordTaskOutcomeCommand,
+    TransitionInstanceCommand,
 )
 from agent_factory.domain.evaluation import EvaluationReport
 from agent_factory.domain.models import AgentInstance, AgentSpec
@@ -20,6 +21,7 @@ from agent_factory.interfaces.api.contracts import (
     ExportSpecRequest,
     PromoteAgentRequest,
     RecordTaskOutcomeRequest,
+    TransitionInstanceRequest,
 )
 from agent_factory.interfaces.api.dependencies import (
     ControllerDep,
@@ -104,6 +106,29 @@ async def record_task_outcome(
         },
     )
     return await controller.record_task_outcome(command)
+
+
+@router.post(
+    "/{instance_id}/transitions",
+    response_model=AgentInstance,
+)
+async def transition_instance(
+    instance_id: UUID,
+    body: TransitionInstanceRequest,
+    controller: ControllerDep,
+    principal: FactoryWritePrincipalDep,
+    idempotency_key: IdempotencyHeader = None,
+) -> AgentInstance:
+    command = validate_command(
+        TransitionInstanceCommand,
+        {
+            "instance_id": instance_id,
+            **body.model_dump(mode="python"),
+            "actor": principal.subject,
+            "idempotency_key": idempotency_key,
+        },
+    )
+    return await controller.transition_instance(command)
 
 
 @router.post(

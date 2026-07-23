@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M3，M3.1 已完成本地实现与质量门禁，待提交和远程 CI；M3.2 尚未开始
+**当前阶段**：Alpha / M3，M3.1 已完成本地提交；M3.2 已通过完整本地质量门禁、尚待提交；二者均待推送与远程 CI
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -501,11 +501,7 @@ from typing import Protocol, Self
 
 
 class RuntimeAdapter(Protocol):
-    name: str
-
-    async def run(
-        self, spec: "AgentSpec", request: "RunRequest"
-    ) -> "RunResult": ...
+    async def run(self, request: "RunRequest") -> "RunResult": ...
 
 
 class EvaluationEngine(Protocol):
@@ -2561,16 +2557,16 @@ CREATE TABLE tool_call_records (
 
 | 当前状态 | 允许目标 | 前置条件 |
 | --- | --- | --- |
-| `CREATED` | `RUNNING`, `TERMINATED` | RUNNING 前必须可成功导出 AgentSpec |
-| `RUNNING` | `WAITING`, `COMPLETED`, `FAILED`, `DEGRADED`, `TERMINATED` | 状态原因必填 |
-| `WAITING` | `RUNNING`, `FAILED`, `TERMINATED` | 恢复时重新校验 revision |
-| `FAILED` | `RUNNING`, `TERMINATED` | RUNNING 需要显式 retry 标记 |
-| `DEGRADED` | `RUNNING`, `WAITING`, `FAILED`, `TERMINATED` | 配置已完成回退 |
-| `COMPLETED` | `TERMINATED` | 不允许重新运行 |
+| `CREATED` | `RUNNING`, `TERMINATED` | 进入 RUNNING 前验证当前快照可构建 AgentSpec |
+| `RUNNING` | `WAITING`, `COMPLETED`, `FAILED`, `TERMINATED` | 无附加条件 |
+| `WAITING` | `RUNNING`, `FAILED`, `TERMINATED` | 进入 RUNNING 前重新验证当前快照 |
+| `FAILED` | `RUNNING`, `TERMINATED` | `FAILED -> RUNNING` 必须显式 `retry=true` |
+| `DEGRADED` | `RUNNING`, `TERMINATED` | DEGRADED 只能由 M2 降级引擎产生 |
+| `COMPLETED` | 无 | 终态 |
 | `TERMINATED` | 无 | 终态 |
 
 ```python
-ALLOWED_TRANSITIONS: dict[InstanceStatus, frozenset[InstanceStatus]] = {
+ALLOWED_TRANSITIONS: Mapping[InstanceStatus, frozenset[InstanceStatus]] = MappingProxyType({
     InstanceStatus.CREATED: frozenset({
         InstanceStatus.RUNNING,
         InstanceStatus.TERMINATED,
@@ -2579,7 +2575,6 @@ ALLOWED_TRANSITIONS: dict[InstanceStatus, frozenset[InstanceStatus]] = {
         InstanceStatus.WAITING,
         InstanceStatus.COMPLETED,
         InstanceStatus.FAILED,
-        InstanceStatus.DEGRADED,
         InstanceStatus.TERMINATED,
     }),
     InstanceStatus.WAITING: frozenset({
@@ -2593,50 +2588,59 @@ ALLOWED_TRANSITIONS: dict[InstanceStatus, frozenset[InstanceStatus]] = {
     }),
     InstanceStatus.DEGRADED: frozenset({
         InstanceStatus.RUNNING,
-        InstanceStatus.WAITING,
-        InstanceStatus.FAILED,
         InstanceStatus.TERMINATED,
     }),
-    InstanceStatus.COMPLETED: frozenset({
-        InstanceStatus.TERMINATED,
-    }),
+    InstanceStatus.COMPLETED: frozenset(),
     InstanceStatus.TERMINATED: frozenset(),
-}
+})
 
 
 class LifecyclePolicy:
     def transition(
         self,
         instance: AgentInstance,
-        target: InstanceStatus,
+        target_status: InstanceStatus,
         *,
         reason: str,
-        can_export_spec: bool,
         retry: bool,
         now: datetime,
     ) -> AgentInstance:
-        if target not in ALLOWED_TRANSITIONS[instance.status]:
+        details = {
+            "instance_id": str(instance.instance_id),
+            "from_status": instance.status.value,
+            "to_status": target_status.value,
+        }
+        normalized_reason = reason.strip()
+        if not normalized_reason or len(normalized_reason) > 1_000:
             raise InvalidStateTransitionError(
-                details={
-                    "from": instance.status,
-                    "to": target,
-                }
+                details={**details, "reason": "invalid-reason"}
             )
-        if target is InstanceStatus.RUNNING and not can_export_spec:
-            raise InstanceNotReadyError(
-                details={"instance_id": str(instance.instance_id)}
+        if target_status is InstanceStatus.DEGRADED:
+            raise InvalidStateTransitionError(
+                details={**details, "reason": "degraded-status-is-policy-owned"}
             )
-        if (
+        if target_status not in ALLOWED_TRANSITIONS[instance.status]:
+            raise InvalidStateTransitionError(
+                details={**details, "reason": "transition-not-allowed"}
+            )
+
+        is_failed_retry = (
             instance.status is InstanceStatus.FAILED
-            and target is InstanceStatus.RUNNING
-            and not retry
-        ):
-            raise RetryFlagRequiredError()
-        if not reason.strip():
-            raise StateTransitionReasonRequiredError()
-        return instance.model_copy(
-            update={
-                "status": target,
+            and target_status is InstanceStatus.RUNNING
+        )
+        if is_failed_retry and not retry:
+            raise InvalidStateTransitionError(
+                details={**details, "reason": "retry-required"}
+            )
+        if retry and not is_failed_retry:
+            raise InvalidStateTransitionError(
+                details={**details, "reason": "unexpected-retry-flag"}
+            )
+
+        return AgentInstance.model_validate(
+            {
+                **instance.model_dump(mode="python"),
+                "status": target_status,
                 "revision": instance.revision + 1,
                 "updated_at": now,
             }
@@ -2656,79 +2660,94 @@ class TransitionInstanceCommand(FrozenModel):
     idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
 ```
 
-`FAILED -> RUNNING` 时 `retry` 必须为 true。`TERMINATED` 不做物理删除；实例及审计记录继续可查。
+所有迁移要求 1-1000 字符的非空 `reason`。`retry=true` 只允许用于 `FAILED -> RUNNING`；其他迁移携带该标记也会被拒绝。通用 transition 不能把目标设为 `DEGRADED`，避免绕过 M2 的失败窗口与回退证据链。`COMPLETED` 和 `TERMINATED` 都是终态，终止不会物理删除实例或审计记录。
+
+Controller 的写事务固定执行以下顺序：
+
+```text
+typed idempotency replay
+  -> load current instance
+  -> expected_revision check
+  -> LifecyclePolicy.transition()
+  -> target RUNNING readiness check
+  -> save_snapshot(expected_revision=current.revision)
+  -> append instance.transitioned audit
+  -> store typed idempotency response
+  -> commit
+```
+
+进入 `RUNNING` 的 readiness 会重新校验知识 binding、解析工具并在内存中构建候选 `AgentSpec`；它不持久化规格，也不追加 `spec.exported`。状态变化会产生新 revision，因此 Runtime 消费前必须对新 revision 显式调用 spec export。现有 `instance_snapshots`、`instance_heads`、`audit_events` 和 `idempotency_records` 已覆盖持久化需求，M3.2 不新增 migration。
 
 ### 9.3 上下文边界
 
-工厂只保存与生产治理有关的上下文，不保存完整对话记忆：
+M3.2 只定义 Runtime 的传输无关数据契约，不执行 Agent、模型或工具：
 
 ```python
 class RuntimeContextRef(FrozenModel):
     instance_id: UUID
-    instance_revision: int = Field(ge=1)
+    instance_revision: PositiveInt
+    agent_spec_checksum: Sha256
     runtime_name: Slug
-    external_thread_id: str | None = Field(default=None, max_length=256)
-    knowledge_namespaces: tuple[str, ...] = ()
-    created_at: datetime
+    external_thread_id: str | None = Field(default=None, min_length=1, max_length=256)
+    knowledge_namespaces: tuple[Slug, ...] = ()
+    created_at: AwareDatetime
+
+
+class ResolvedRuntimeKnowledge(FrozenModel):
+    slot_name: Slug
+    knowledge_id: Slug
+    version: SemVer
+    checksum: Sha256
+    injection_mode: InjectionMode
+    mime_type: str = Field(min_length=1, max_length=128)
+    content: str | JsonObject
 
 
 class RunRequest(FrozenModel):
     task_id: UUID
+    spec: AgentSpec
     input: str = Field(min_length=1, max_length=64_000)
+    knowledge: tuple[ResolvedRuntimeKnowledge, ...] = ()
     context_ref: RuntimeContextRef | None = None
-    metadata: dict[str, str] = Field(default_factory=dict)
+    metadata: JsonObject = Field(default_factory=FrozenJsonObject)
 
 
 class RunResult(FrozenModel):
     task_id: UUID
-    status: Literal["completed", "failed"]
-    content: str
+    instance_id: UUID
+    instance_revision: PositiveInt
+    agent_spec_checksum: Sha256
+    status: RuntimeRunStatus
+    content: str = Field(default="", max_length=128_000)
     structured_output: JsonObject | None = None
-    tool_calls: tuple[ToolCallRecord, ...] = ()
-    model_name: str
+    tool_call_ids: tuple[UUID, ...] = ()
+    runtime_name: Slug
+    model_name: str | None = Field(default=None, min_length=1, max_length=128)
     prompt_tokens: int | None = Field(default=None, ge=0)
     completion_tokens: int | None = Field(default=None, ge=0)
-    completed_at: datetime
+    error_code: str | None = None
+    started_at: AwareDatetime
+    completed_at: AwareDatetime
+
+
+class RuntimeAdapter(Protocol):
+    async def run(self, request: RunRequest) -> RunResult: ...
 ```
 
-对话历史、长期记忆与 checkpoint 由运行时持有。审计中只记录 `external_thread_id` 的散列，避免把用户内容复制进工厂数据库。
+`ResolvedRuntimeKnowledge` 必须通过正文 checksum 校验，并与 `AgentSpec.knowledge` 精确一一对应。可选 context 的 instance、revision 和 Spec checksum 必须与 request spec 相同。`RunResult` 的来源字段保持可追溯；failed 必须给出稳定 `error_code`，completed 不得给出错误码，完成时间不得早于开始时间。M3.2 只保存未来工具调用记录的 ID，不提前定义 M3.5 的完整 `ToolCallRecord`。
 
 ### 9.4 并发规则
 
 - 所有实例写命令必须携带 `expected_revision`。
-- 同一 revision 上的两个并发写入只有一个能更新 `instance_heads`。
+- 同一 revision 上的两个并发写入只有一个能更新 `instance_heads`；数据库事务和 head CAS 是正确性保证。
 - API 返回 `409 REVISION_CONFLICT` 时包含 `expected_revision` 和 `current_revision`。
-- 进程内 `asyncio.Lock` 只用于降低重复工作，不作为正确性保证。
+- 幂等第一次查询用于减少重复工作，最终写事务中的复查负责并发正确性。
+- snapshot、审计和幂等记录位于同一工作单元；任一步失败都会整体回滚。
 - 评估执行可在事务外进行；报告一经创建保持不可变，即使实例 head 随后变化也不写回 `stale` 字段。晋升时把报告的 instance revision、AgentSpec checksum 和 SkillTreeRef 与当前快照比较，动态判定并拒绝 stale 报告。
 
 ### 9.5 事件钩子
 
-```python
-class DomainEventHandler(Protocol):
-    async def on_create(self, event: "InstanceCreated") -> None: ...
-    async def before_action(self, event: "BeforeAction") -> None: ...
-    async def after_action(self, event: "AfterAction") -> None: ...
-    async def on_promote(self, event: "SkillPromoted") -> None: ...
-    async def on_degrade(self, event: "SkillDegraded") -> None: ...
-    async def on_knowledge_update(
-        self, event: "KnowledgeUpdated"
-    ) -> None: ...
-```
-
-写事务将领域事件写入 `outbox_events`，提交后由 dispatcher 调用 hook。hook 失败不回滚已提交业务数据，最多指数退避重试 3 次，之后进入 dead-letter 状态并触发指标 `agent_factory_outbox_dead_total`。
-
-```sql
-CREATE TABLE outbox_events (
-    event_id TEXT PRIMARY KEY,
-    event_type TEXT NOT NULL,
-    payload_json TEXT NOT NULL,
-    status TEXT NOT NULL,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    next_attempt_at TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    processed_at TEXT
-);
-```
+**当前 Alpha / M3.2 不实现事件 hook、outbox、dispatcher 或 dead-letter。** 业务变更只在同一事务中追加不可变审计事件。只有后续出现必须可靠投递到外部系统的需求时，才单独设计 forward-only migration、投递租约、重试和消费幂等；不得把尚未实现的 outbox 描述为当前保证。
 
 
 ---
@@ -2808,6 +2827,13 @@ class RecordTaskOutcomeRequest(FrozenModel):
     skill_node_id: Slug
     passed: bool
     evaluation_report_id: UUID
+
+
+class TransitionInstanceRequest(FrozenModel):
+    expected_revision: PositiveInt
+    target_status: InstanceStatus
+    reason: str = Field(min_length=1, max_length=1_000)
+    retry: bool = False
 ```
 
 所有请求模型 `extra="forbid"`。客户端提交未知字段时返回 422，避免拼写错误被静默忽略。`BindKnowledgeRequest` 和 `PromoteAgentRequest` 还拒绝完全重复的知识引用；知识槽、版本范围和 cardinality 等业务规则仍由 application policy 校验。M2 DTO 与路由已在 M2.6 装配，OpenAPI contract test 固定每个路径允许的方法集合。
@@ -3142,7 +3168,7 @@ async def register_knowledge(
 
 ### 10.4 评估、晋升与状态路由
 
-以下 M2 最小 REST 契约已在 M2.6 实现并装配。M2.3 提供 Suite/Tree 注册查询、评估和复核 application service，M2.4 提供显式晋升，M2.5 提供观察与确定性降级；M2.6 只增加 DTO、路由映射和 HTTP 契约测试，没有把业务规则复制到接口层：
+以下 M2 治理 REST 契约已在 M2.6 实现，M3.2 在同一实例 router 增加 lifecycle transition action。接口层只增加 DTO、路由映射和 HTTP 契约，不复制评估、晋升、降级或状态策略：
 
 | Method | Path | Request | Response |
 | --- | --- | --- | --- |
@@ -3154,6 +3180,7 @@ async def register_knowledge(
 | POST | `/evaluation-reports/{id}/reviews` | `ReviewEvaluationRequest` | `EvaluationReview` |
 | POST | `/instances/{id}/promotions` | `PromoteAgentRequest` | `AgentInstance` |
 | POST | `/instances/{id}/task-outcomes` | `RecordTaskOutcomeRequest` | `DegradationCheckResult` |
+| POST | `/instances/{id}/transitions` | `TransitionInstanceRequest` | `AgentInstance` |
 
 代表性路由必须只做 DTO 到 application command 的转换：
 
@@ -3208,9 +3235,32 @@ async def promote_agent(
         },
     )
     return await controller.promote_agent(command)
+
+
+@instance_router.post(
+    "/{instance_id}/transitions",
+    response_model=AgentInstance,
+)
+async def transition_instance(
+    instance_id: UUID,
+    body: TransitionInstanceRequest,
+    controller: ControllerDep,
+    principal: FactoryWritePrincipalDep,
+    idempotency_key: IdempotencyHeader = None,
+) -> AgentInstance:
+    command = validate_command(
+        TransitionInstanceCommand,
+        {
+            "instance_id": instance_id,
+            **body.model_dump(mode="python"),
+            "actor": principal.subject,
+            "idempotency_key": idempotency_key,
+        },
+    )
+    return await controller.transition_instance(command)
 ```
 
-URL 中的 `instance_id` 由 router 写入 command，body 不重复接受该字段，避免两个来源不一致。评估输入是调用方提交的 evidence；API 不能接受 `decision`、`soft_score` 或 rule result 等服务端派生字段。
+URL 中的 `instance_id` 由 router 写入 command，body 不重复接受该字段，避免两个来源不一致。评估输入是调用方提交的 evidence；API 不能接受 `decision`、`soft_score` 或 rule result 等服务端派生字段。transition actor 只来自可信 `Principal`，客户端不能通过 body 或 header 自报；通用 transition 也不能产生 M2 专属的 `DEGRADED` 状态。
 
 ### 10.5 异常模型与稳定错误码
 
@@ -3545,6 +3595,7 @@ M3.1 通过 `AuditReadPrincipalDep` 要求 `audit:read` 权限；当前角色矩
 | `instance.cloned` | `instance_id`, `revision`, `prototype_id`, `prototype_version` |
 | `knowledge.bound` | `slot_name`, `knowledge_id`, `version`, `checksum`, `replaced` |
 | `spec.exported` | `instance_id`, `revision`, `spec_checksum`, `runtime_target` |
+| `instance.transitioned` | `from_status`, `to_status`, `from_revision`, `to_revision`, `reason`, `retry` |
 | `evaluation.completed` | `report_id`, `suite_id`, `decision`, `hard_rules_passed`, `soft_score` |
 | `skill.promoted` | `from_revision`, `to_revision`, `node_id`, `report_id` |
 | `task-outcome.recorded` | `task_id`, `node_id`, `passed`, `report_id`, `sample_count`, `trailing_failures`, `failure_rate`, `threshold_reached` |
@@ -4215,8 +4266,8 @@ pytest -q tests/unit
 
 ### 14.5 M3 规格
 
-- M3.1 已建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权，并通过本地质量门禁；它不是完整生产身份系统，提交与远程 CI 证据仍待完成。
-- M3.2 实现实例生命周期 transition、revision CAS、幂等、审计与 Runtime 契约。
+- M3.1 已建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权，并完成本地提交；它不是完整生产身份系统，推送与远程 CI 证据仍待完成。
+- M3.2 已实现实例生命周期 transition、revision CAS、typed idempotency、审计与 Runtime 数据契约，并通过完整本地门禁；提交、推送与远程 CI 仍待完成。
 - SDK 覆盖所有公开 REST 路由。
 - Tool adapter 只做 DTO 转换，生成的 input schema 与 REST 请求模型共享。
 - Gradio 只承担演示，不导入 domain 或 repository。
@@ -4311,7 +4362,7 @@ agent-factory/
 │   │   ├── 002_persistence_contracts.sql
 │   │   ├── 003_skill_governance.sql
 │   │   ├── 004_instance_configuration_checksum.sql
-│   │   └── 005_outbox.sql
+│   │   └── 005_task_outcome_integrity.sql
 │   ├── interfaces/
 │   └── settings.py
 ├── tests/
