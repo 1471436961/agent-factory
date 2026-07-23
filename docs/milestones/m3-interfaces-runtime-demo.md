@@ -95,7 +95,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 增加 401/403 统一错误 envelope、OpenAPI security scheme 和认证上下文隔离测试。
 - 更新 M1/M2 REST 测试，证明业务行为不因身份来源变化而回退。
 
-### M3.2 生命周期与 Runtime 契约（本地门禁已通过，待提交与远程 CI）
+### M3.2 生命周期与 Runtime 契约（本地提交完成，待推送与远程 CI）
 
 - 实现纯 `LifecyclePolicy` 和完整允许迁移表。
 - 增加 `TransitionInstanceCommand`、Controller 事务、实例 snapshot/head CAS、审计与 typed idempotency replay。
@@ -103,7 +103,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 增加 REST transition action，并固定非法迁移、空 reason、revision 冲突和终态行为。
 - 定义 `RuntimeContextRef`、`RunRequest`、`RunResult`、`ResolvedRuntimeKnowledge` 与 `RuntimeAdapter` Protocol；本工作包不调用模型。
 
-### M3.3 Python SDK
+### M3.3 Python SDK（本地门禁已通过，待提交与远程 CI）
 
 - 实现异步 `AgentFactoryClient`、显式 close 和 async context manager。
 - 覆盖健康检查、原型、知识、实例、AgentSpec、技能树、评估、复核、晋升、观察结果、生命周期与审计全部公开 operation。
@@ -153,7 +153,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - [x] 未配置认证、无凭据、错误凭据和角色不足分别返回稳定 503/401/403，且不泄露 Token。
 - [x] 生命周期全部允许迁移和关键非法迁移有纯策略测试。
 - [x] 状态变更具有 revision CAS、幂等、审计、失败原子性和并发单胜证据。
-- [ ] SDK 覆盖全部公开 OpenAPI operation，并完整保留业务错误信息。
+- [x] SDK 覆盖全部公开 OpenAPI operation，并完整保留业务错误信息。
 - [ ] 五个 Factory Tool adapter 只做 DTO/Command 转换，不复制业务策略。
 - [ ] REST、SDK、Tool adapter 使用相同幂等命令时返回精确相同对象且不重复审计。
 - [ ] ToolExecutor 拒绝未授权、版本不匹配和非法输入，超时与失败均有脱敏记录。
@@ -195,7 +195,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 9. 阶段报告
 
-当前状态：M3.1 已完成本地提交，M3.2 已完成代码、设计说明和完整本地质量门禁、尚待提交；两个工作包均尚未推送或取得远程 CI 证据。M3.1 将 M2 的不可信 `X-Actor-ID` 替换为静态 Bearer Token 生成的 `Principal`；M3.2 增加确定性生命周期迁移及 Runtime 数据契约，但不执行 Agent、模型或工具。
+当前状态：M3.1、M3.2 已完成本地提交；M3.3 已完成代码、设计说明和完整本地质量门禁、尚待提交；M3 工作包均尚未推送或取得远程 CI 证据。M3.3 通过异步 HTTP Client 覆盖全部公开 REST operation，不直接调用 Controller，也不增加新的服务端业务能力。
 
 - M2 封存提交：`da4b408 docs: close M2 milestone`。
 - M2 封存远程证据：GitHub Actions [`CI #17`](https://github.com/1471436961/agent-factory/actions/runs/29930708726) 通过。
@@ -217,4 +217,13 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - M3.2 覆盖率：domain 96%、application 94%、全项目 94%，均为 branch coverage。
 - M3.2 静态门禁：Ruff format/check 通过，mypy strict 通过 99 个 source/test 文件。
 - M3.2 构建门禁：sdist 与 wheel 构建通过；wheel 已核对包含 `application/runtime.py`、`domain/services/lifecycle.py` 和 001-005 全部 migration。
-- 未完成能力：SDK、Tool adapter、Runtime 执行器和 Gradio 仍是后续工作包，不能描述为已有实现。
+- M3.2 本地提交：`1d9fc94 feat: add M3.2 lifecycle and runtime contracts`。
+- M3.3 代码边界：新增公开 `agent_factory.sdk` 包、不可变 20-operation manifest、异步 `AgentFactoryClient` 和 API/Transport/Protocol/Closed 四类稳定异常；未新增数据库 migration。
+- M3.3 传输语义：SDK 始终走 HTTP，复用 REST request model，统一 Bearer、timeout、correlation、幂等和分页；不发送 `X-Actor-ID`，不自动重试，不保存共享的 last-response 状态。
+- M3.3 契约证据：manifest 与真实 OpenAPI 的 20 个 method/path 精确相等；ASGITransport + FastAPI lifespan + 文件 SQLite 完成全部 operation，并验证自定义 prefix、重复 query key、精确幂等重放和业务错误保真。
+- M3.3 安全证据：非标准响应不复制正文，Transport 异常不复制底层文本，Token 不进入 Client repr 或 SDK 异常；2xx 非 JSON/错误 Schema 和 correlation 冲突均作为协议错误拒绝。
+- M3.3 本地测试：`287 passed`，相较 M3.2 基线增加 22 个测试，M1-M3.2 回归继续通过。
+- M3.3 覆盖率：domain 96%、application 94%、SDK 93%、全项目 94%，均为 branch coverage。
+- M3.3 静态门禁：Ruff format/check 通过，mypy strict 通过 106 个 source/test 文件。
+- M3.3 构建门禁：sdist 与 wheel 构建通过；wheel 已核对包含四个 `agent_factory/sdk` 模块和 001-005 全部 migration。
+- 未完成能力：Tool adapter、Runtime 执行器和 Gradio 仍是后续工作包，不能描述为已有实现。

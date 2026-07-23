@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M3，M3.1 已完成本地提交；M3.2 已通过完整本地质量门禁、尚待提交；二者均待推送与远程 CI
+**当前阶段**：Alpha / M3，M3.1、M3.2 已完成本地提交；M3.3 异步 Python SDK 已通过完整本地质量门禁、尚待提交；M3 工作包均待推送与远程 CI
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -3386,45 +3386,66 @@ application.include_router(
 
 ### 10.8 Python SDK
 
-**M2 封存基线未实现。** M3.3 SDK 必须复用 REST DTO，并使用 M3.1 建立的可信 Principal；不得把旧 `X-Actor-ID` 包装成认证能力。目标方法保持业务语义：
+M3.3 已实现公开异步包 `agent_factory.sdk`。Client 只消费 HTTP，不导入 Controller 或 Repository；Request model 从 REST contracts 原样重导出，调用方不能提交 actor：
 
 ```python
 class AgentFactoryClient:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        api_prefix: str = "/api/v1",
+        timeout: float | httpx.Timeout = 10.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None: ...
+
     async def register_prototype(
         self,
         request: RegisterPrototypeRequest,
         *,
         idempotency_key: str | None = None,
+        correlation_id: UUID | None = None,
     ) -> AgentPrototype: ...
 
-    async def clone_agent(
-        self,
-        prototype_id: str,
-        version: str,
-        request: CloneAgentRequest,
-        *,
-        idempotency_key: str | None = None,
-    ) -> AgentInstance: ...
-
-    async def bind_knowledge(
+    async def transition_instance(
         self,
         instance_id: UUID,
-        request: BindKnowledgeRequest,
+        request: TransitionInstanceRequest,
         *,
         idempotency_key: str | None = None,
+        correlation_id: UUID | None = None,
     ) -> AgentInstance: ...
 
-    async def export_spec(
-        self,
-        instance_id: UUID,
-        request: ExportSpecRequest,
-    ) -> AgentSpec: ...
-
-    async def close(self) -> None:
-        await self._client.aclose()
+    async def __aenter__(self) -> Self: ...
+    async def __aexit__(self, ...) -> None: ...
+    async def close(self) -> None: ...
 ```
 
-`export_spec` 在 SDK 内部必须调用 `POST /instances/{id}/spec-exports`。SDK 收到非 2xx 响应时解析 `ErrorResponse` 并抛出 `AgentFactoryApiError(code, status_code, details, correlation_id)`，不得只调用 `raise_for_status()` 丢失业务错误码。
+不可变 `SDK_OPERATIONS` 固定 20 个公开 method/path，并与真实 OpenAPI 做集合相等测试。它覆盖 health、Prototype、Knowledge、Instance、AgentSpec、EvaluationSuite、SkillTree、EvaluationReport/Review、Promotion、TaskOutcome、Lifecycle 和 Audit。完整方法签名与路径表见 [Python SDK 设计说明](design/python-sdk.md)。
+
+Client 始终创建并拥有内部 `httpx.AsyncClient`，transport 仅用于 ASGI 测试或替换传输；`close()` 可重复，关闭后请求抛出 `AgentFactoryClientClosedError`。每次请求生成或接受独立 correlation ID；写操作显式接受 idempotency key；不发送 `X-Actor-ID`，也不自动重试。
+
+```python
+class AgentFactoryApiError(AgentFactorySdkError):
+    status_code: int
+    code: str
+    message: str
+    details: FrozenJsonObject
+    correlation_id: UUID
+
+
+class AgentFactoryTransportError(AgentFactorySdkError):
+    correlation_id: UUID
+    cause_type: str
+
+
+class AgentFactoryProtocolError(AgentFactorySdkError):
+    status_code: int
+    correlation_id: UUID
+```
+
+标准非 2xx 响应解析 `ErrorResponse` 并保留业务错误；非标准错误转换为固定 `SDK_HTTP_ERROR`，不得复制正文。成功响应必须验证 correlation header 并通过声明的 Pydantic response model；2xx 非 JSON、Schema 漂移或 correlation 不一致都拒绝为 `AgentFactoryProtocolError`。
 
 ### 10.9 面向 Agent 的工具映射
 
@@ -4267,8 +4288,8 @@ pytest -q tests/unit
 ### 14.5 M3 规格
 
 - M3.1 已建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权，并完成本地提交；它不是完整生产身份系统，推送与远程 CI 证据仍待完成。
-- M3.2 已实现实例生命周期 transition、revision CAS、typed idempotency、审计与 Runtime 数据契约，并通过完整本地门禁；提交、推送与远程 CI 仍待完成。
-- SDK 覆盖所有公开 REST 路由。
+- M3.2 已实现实例生命周期 transition、revision CAS、typed idempotency、审计与 Runtime 数据契约，并完成本地提交；推送与远程 CI 仍待完成。
+- M3.3 SDK 已覆盖全部 20 个公开 REST operation，通过完整本地门禁；提交、推送与远程 CI 仍待完成。
 - Tool adapter 只做 DTO 转换，生成的 input schema 与 REST 请求模型共享。
 - Gradio 只承担演示，不导入 domain 或 repository。
 - Gradio 调用 SDK 完成生产操作；运行任务时调用默认离线的 `DemoRuntimeAdapter`。
@@ -4364,6 +4385,7 @@ agent-factory/
 │   │   ├── 004_instance_configuration_checksum.sql
 │   │   └── 005_task_outcome_integrity.sql
 │   ├── interfaces/
+│   ├── sdk/
 │   └── settings.py
 ├── tests/
 │   ├── unit/

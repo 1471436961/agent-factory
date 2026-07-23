@@ -2,9 +2,9 @@
 
 ## 1. 目标与边界
 
-M1.4 将 `FactoryController` 的核心生产链暴露为 FastAPI 接口；M2.6 在同一边界上增加评估套件、技能树、评估、人工复核、晋升和观察结果路由；M3.1 增加静态 Bearer 认证、可信 `Principal` 与最小角色授权；M3.2 增加实例状态迁移 action。接口层只负责传输契约、身份边界、请求上下文、DTO 转换和异常映射；原型状态、知识槽、工具权限、评估、晋升、降级、生命周期、幂等与 revision 规则仍由 application/domain 层执行。
+M1.4 将 `FactoryController` 的核心生产链暴露为 FastAPI 接口；M2.6 在同一边界上增加评估套件、技能树、评估、人工复核、晋升和观察结果路由；M3.1 增加静态 Bearer 认证、可信 `Principal` 与最小角色授权；M3.2 增加实例状态迁移 action；M3.3 增加只消费公开 HTTP 契约的异步 Python SDK。接口层只负责传输契约、身份边界、请求上下文、DTO 转换和异常映射；原型状态、知识槽、工具权限、评估、晋升、降级、生命周期、幂等与 revision 规则仍由 application/domain 层执行。
 
-M3.1 认证适配器只支持一个配置驱动的本地 Alpha 身份，不实现多用户目录、Token 轮换、撤销、第三方身份联合或公网防护。M3.2 transition 只记录工厂治理状态，不代表 Runtime 已真实启动或停止。Python SDK、Tool adapter 和 Agent 任务执行仍未实现；评估路由只接收外部提交的 case result，不负责执行 Agent。当前服务仍不得直接暴露到不可信网络。
+M3.1 认证适配器只支持一个配置驱动的本地 Alpha 身份，不实现多用户目录、Token 轮换、撤销、第三方身份联合或公网防护。M3.2 transition 只记录工厂治理状态，不代表 Runtime 已真实启动或停止。M3.3 SDK 覆盖全部 20 个公开 operation，但不增加服务端能力。Tool adapter 和 Agent 任务执行仍未实现；评估路由只接收外部提交的 case result，不负责执行 Agent。当前服务仍不得直接暴露到不可信网络。
 
 ## 2. 模块边界
 
@@ -31,6 +31,7 @@ HTTP request
 | `main.py` | app factory、lifespan、中间件、异常 handler 与 router 装配 |
 | `application/security.py` | `Principal`、稳定角色/权限、认证端口与授权策略 |
 | `infrastructure/authentication.py` | 静态 Bearer Token 和未配置认证适配器 |
+| `sdk/*` | HTTP operation manifest、异步 Client、响应校验和脱敏 SDK 异常 |
 
 ## 3. 公共 HTTP 契约
 
@@ -298,5 +299,7 @@ async def evaluate_instance(
 - M2 未知字段和 review comment/evidence 不进入 422 错误体；缺失 Suite 返回稳定 `EVALUATION_SUITE_NOT_FOUND`。
 - 生命周期测试覆盖全部允许/拒绝组合、`FAILED -> RUNNING` 的 retry 语义、终态、通用迁移不能进入 `DEGRADED`、RUNNING readiness、revision 冲突与 typed idempotency。
 - 真实 SQLite 和 HTTP 测试覆盖双 Container 并发单胜、审计失败回滚、关闭并重建 app 后恢复状态与重放响应，以及非法 reason/actor/instance ID 不进入错误响应。
+- M3.3 operation manifest 与真实 OpenAPI 的 20 个 method/path 精确相等；ASGITransport 通过 SDK 完成健康检查、生产、知识、Spec、生命周期、评估、复核、晋升、观察和审计全部 operation。
+- SDK 契约测试覆盖自定义 API prefix、重复 query key、typed idempotency、correlation 隔离、标准业务错误保真、非标准响应脱敏、协议漂移、关闭语义和无自动重试。
 
-当前限制：静态 Token 只映射到单一配置 Principal，不支持多用户、轮换、撤销、过期、速率限制或第三方身份；评估 evidence 由调用方提供且不可信；生命周期状态不与外部 Runtime 租约或 heartbeat 对账；请求体采用有界缓冲；SQLite 仍为单进程 Alpha 后端。TLS、反向代理和完整凭据生命周期也不属于当前实现。这些限制必须在部署说明中保留，不能将当前 REST 契约描述为可直接公网部署的生产服务。
+当前限制：静态 Token 只映射到单一配置 Principal，不支持多用户、轮换、撤销、过期、速率限制或第三方身份；SDK 与 Server 要求兼容版本且不自动重试；评估 evidence 由调用方提供且不可信；生命周期状态不与外部 Runtime 租约或 heartbeat 对账；请求体采用有界缓冲；SQLite 仍为单进程 Alpha 后端。TLS、反向代理和完整凭据生命周期也不属于当前实现。这些限制必须在部署说明中保留，不能将当前 REST/SDK 契约描述为可直接公网部署的生产服务。

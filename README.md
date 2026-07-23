@@ -2,14 +2,14 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M3 进行中**。M1 核心生产链与 M2 技能治理已经项目 owner 验收并封存；M3.1 身份与授权基础已完成本地提交，M3.2 生命周期与 Runtime 契约已通过完整本地质量门禁、尚待提交，二者均待推送与远程 CI。
+当前仓库处于 **Alpha / M3 进行中**。M1 核心生产链与 M2 技能治理已经项目 owner 验收并封存；M3.1 身份与授权基础、M3.2 生命周期与 Runtime 契约已完成本地提交；M3.3 异步 Python SDK 已通过完整本地质量门禁、尚待提交；M3 工作包均待推送与远程 CI。
 
 ## 核心边界
 
 - 工厂控制器是确定性代码系统，不依赖 LLM 做内部治理决策。
 - 工厂输出运行时无关的 `AgentSpec`，不替代 LangGraph、AutoGen 等运行时。
 - 知识绑定保证版本和槽位关系可验证，不保证模型一定正确使用知识。
-- 当前可运行基线仍不接入真实 LLM，也不运行 Agent 任务；评估输入仍由外部提交。M3.1 已提供静态 Bearer Token 和最小角色授权，M3.2 已提供可审计的实例状态迁移和 Runtime 数据契约，但它们不等于生产身份系统或 Runtime 执行器；Gradio、Python SDK、Tool adapter 与 Runtime 实现仍未完成。多 Agent 协作和分布式基础设施不在 M3 范围。
+- 当前可运行基线仍不接入真实 LLM，也不运行 Agent 任务；评估输入仍由外部提交。M3.1 已提供静态 Bearer Token 和最小角色授权，M3.2 已提供可审计的实例状态迁移和 Runtime 数据契约，M3.3 已提供覆盖全部公开 REST operation 的异步 Python SDK；这些能力仍不等于生产身份系统或 Runtime 执行器，Gradio、Tool adapter 与 Runtime 实现尚未完成。多 Agent 协作和分布式基础设施不在 M3 范围。
 
 ## 本地开发
 
@@ -31,6 +31,23 @@ AGENT_FACTORY_AUTH_ROLES=["admin"]
 
 默认服务地址为 `http://127.0.0.1:8000`，健康检查端点为 `/health/live` 和 `/health/ready`。未配置 Token 时，live 保持 200，但 ready 和业务路由按 fail-closed 规则返回 503。
 
+## Python SDK
+
+SDK 复用 REST DTO，通过异步 HTTP 调用服务，不直接访问 Controller 或数据库：
+
+```python
+from agent_factory.sdk import AgentFactoryClient
+
+
+async with AgentFactoryClient(
+    base_url="http://127.0.0.1:8000",
+    token="replace-with-at-least-32-random-characters",
+) as client:
+    prototypes = await client.list_prototypes(page=1, page_size=20)
+```
+
+写操作可显式传入 `idempotency_key` 和 `correlation_id`。SDK 不自动重试；网络结果不确定时，应使用同一幂等键由调用方决定是否重试。
+
 ## 文档
 
 - [架构设计](docs/architecture.md)
@@ -47,6 +64,7 @@ AGENT_FACTORY_AUTH_ROLES=["admin"]
 - [Authentication 设计说明](docs/design/authentication.md)
 - [M2 技能治理设计说明](docs/design/skill-governance.md)
 - [生命周期与 Runtime 契约设计说明](docs/design/lifecycle-runtime-contracts.md)
+- [Python SDK 设计说明](docs/design/python-sdk.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)
 
