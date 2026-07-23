@@ -103,7 +103,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 增加 REST transition action，并固定非法迁移、空 reason、revision 冲突和终态行为。
 - 定义 `RuntimeContextRef`、`RunRequest`、`RunResult`、`ResolvedRuntimeKnowledge` 与 `RuntimeAdapter` Protocol；本工作包不调用模型。
 
-### M3.3 Python SDK（本地门禁已通过，待提交与远程 CI）
+### M3.3 Python SDK（本地提交完成，待推送与远程 CI）
 
 - 实现异步 `AgentFactoryClient`、显式 close 和 async context manager。
 - 覆盖健康检查、原型、知识、实例、AgentSpec、技能树、评估、复核、晋升、观察结果、生命周期与审计全部公开 operation。
@@ -111,7 +111,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 非 2xx 响应解析为 `AgentFactoryApiError`，保留业务 code、status、details 和 correlation ID；非标准响应安全降级。
 - 使用 ASGITransport 与真实 FastAPI app 进行 SDK 契约测试；通过 operation manifest 与 OpenAPI 比对防止方法遗漏。
 
-### M3.4 Factory Tool adapter
+### M3.4 Factory Tool adapter（本地门禁已通过，待提交与远程 CI）
 
 - 为五个已确认工具定义严格 Pydantic 输入/输出模型并导出 JSON Schema。
 - Tool 调用上下文携带由宿主认证的 `Principal` 和 correlation ID；工具输入不得提交 actor。
@@ -154,8 +154,8 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - [x] 生命周期全部允许迁移和关键非法迁移有纯策略测试。
 - [x] 状态变更具有 revision CAS、幂等、审计、失败原子性和并发单胜证据。
 - [x] SDK 覆盖全部公开 OpenAPI operation，并完整保留业务错误信息。
-- [ ] 五个 Factory Tool adapter 只做 DTO/Command 转换，不复制业务策略。
-- [ ] REST、SDK、Tool adapter 使用相同幂等命令时返回精确相同对象且不重复审计。
+- [x] 五个 Factory Tool adapter 只做 DTO/Command 转换，不复制业务策略。
+- [x] REST、SDK、Tool adapter 使用相同幂等命令时返回精确相同对象且不重复审计。
 - [ ] ToolExecutor 拒绝未授权、版本不匹配和非法输入，超时与失败均有脱敏记录。
 - [ ] Demo Runtime 校验 AgentSpec、revision 和知识 checksum，默认运行不访问网络。
 - [ ] Gradio 不导入 domain/Repository，并能完成固定 Writer 主链。
@@ -195,7 +195,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 9. 阶段报告
 
-当前状态：M3.1、M3.2 已完成本地提交；M3.3 已完成代码、设计说明和完整本地质量门禁、尚待提交；M3 工作包均尚未推送或取得远程 CI 证据。M3.3 通过异步 HTTP Client 覆盖全部公开 REST operation，不直接调用 Controller，也不增加新的服务端业务能力。
+当前状态：M3.1-M3.3 已完成本地提交；M3.4 已完成代码、设计说明和完整本地质量门禁、尚待提交；M3 工作包均尚未推送或取得远程 CI 证据。M3.4 提供五项 provider-neutral Factory Tool，通过可信宿主上下文复用现有 Controller，不实现 MCP Server 或 Agent 业务工具执行器。
 
 - M2 封存提交：`da4b408 docs: close M2 milestone`。
 - M2 封存远程证据：GitHub Actions [`CI #17`](https://github.com/1471436961/agent-factory/actions/runs/29930708726) 通过。
@@ -226,4 +226,13 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - M3.3 覆盖率：domain 96%、application 94%、SDK 93%、全项目 94%，均为 branch coverage。
 - M3.3 静态门禁：Ruff format/check 通过，mypy strict 通过 106 个 source/test 文件。
 - M3.3 构建门禁：sdist 与 wheel 构建通过；wheel 已核对包含四个 `agent_factory/sdk` 模块和 001-005 全部 migration。
-- 未完成能力：Tool adapter、Runtime 执行器和 Gradio 仍是后续工作包，不能描述为已有实现。
+- M3.3 本地提交：`fa5326b feat: add M3.3 async Python SDK`。
+- M3.4 代码边界：新增 `agent_factory.interfaces.factory_tools` 包与 Container 装配；五个工具只依赖 Controller、`AuthorizationPolicy` 和 `CorrelationContext`，未新增数据库 migration、MCP Server 或 provider 方言。
+- M3.4 信任边界：`Principal`、request/correlation ID 和幂等键只存在于宿主提供的 `FactoryToolCallContext`；模型可见 Schema 不含 actor、Principal 或上下文字段，调用鉴权先于详细参数校验。
+- M3.4 契约证据：输入/输出 JSON Schema 由 Pydantic 模型生成；统一结果 envelope 覆盖未知工具、输入错误、领域错误、输出漂移和意外异常，非法参数、异常文本与 traceback 不进入结果。
+- M3.4 集成证据：真实 SQLite 完成列表、克隆、知识绑定、晋升和审计五项操作；REST、SDK、Factory Tool 使用同一幂等命令返回精确相同 `AgentInstance`，`instance.cloned` 审计仅产生一次。
+- M3.4 本地测试：`303 passed`，相较 M3.3 基线增加 16 个测试，M1-M3.3 回归继续通过。
+- M3.4 覆盖率：domain 96%、application 94%、Factory Tool 100%、全项目 94%，均为 branch coverage。
+- M3.4 静态门禁：Ruff format/check 通过，mypy strict 通过 112 个 source/test 文件。
+- M3.4 构建门禁：sdist 与 wheel 构建通过；wheel 已核对包含三个 `agent_factory/interfaces/factory_tools` 模块。
+- 未完成能力：Runtime 执行器和 Gradio 仍是后续工作包，不能描述为已有实现。

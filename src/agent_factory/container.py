@@ -40,6 +40,7 @@ from agent_factory.infrastructure.system import (
     UUID4Generator,
 )
 from agent_factory.infrastructure.tool_catalog import default_tool_catalog
+from agent_factory.interfaces.factory_tools import FactoryToolAdapter
 from agent_factory.settings import Settings
 
 
@@ -57,6 +58,7 @@ class Container:
     uow_factory: UnitOfWorkFactory
     tool_catalog: ToolCatalog
     controller: FactoryController
+    factory_tools: FactoryToolAdapter
     _ready: bool = field(default=False, init=False)
 
     @property
@@ -120,6 +122,11 @@ def build_container(settings: Settings) -> Container:
         audit_factory=AuditEventFactory(id_generator),
         max_inline_knowledge_bytes=settings.max_inline_knowledge_bytes,
     )
+    factory_tools = FactoryToolAdapter(
+        controller=controller,
+        authorization_policy=authorization_policy,
+        correlation_context=correlation_context,
+    )
     return Container(
         settings=settings,
         clock=clock,
@@ -131,4 +138,5 @@ def build_container(settings: Settings) -> Container:
         uow_factory=uow_factory,
         tool_catalog=tool_catalog,
         controller=controller,
+        factory_tools=factory_tools,
     )

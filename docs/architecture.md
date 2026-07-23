@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M3，M3.1、M3.2 已完成本地提交；M3.3 异步 Python SDK 已通过完整本地质量门禁、尚待提交；M3 工作包均待推送与远程 CI
+**当前阶段**：Alpha / M3，M3.1-M3.3 已完成本地提交；M3.4 Factory Tool adapter 已通过完整本地质量门禁、尚待提交；M3 工作包均待推送与远程 CI
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -3449,46 +3449,43 @@ class AgentFactoryProtocolError(AgentFactorySdkError):
 
 ### 10.9 面向 Agent 的工具映射
 
-**M2 封存基线未实现。** M3.4 工具适配器与 REST 路由共享 request model 和 `FactoryController`，工具层只做参数/返回值转换：
+M3.4 已实现 provider-neutral 的 `FactoryToolAdapter`。它复用现有 request/query 校验与 `FactoryController`，工具层只做授权、参数/命令转换、上下文传播、输出验证和错误封装：
 
 ```python
-class CloneAgentToolInput(FrozenModel):
+class FactoryToolCallContext(FrozenModel):
     request_id: UUID
-    prototype_id: Slug
-    version: SemVer
-    runtime_target: Slug | None = None
+    correlation_id: UUID
+    principal: Principal
+    idempotency_key: OptionalIdempotencyKey = None
 
 
-class CloneAgentTool:
-    name = "clone_agent"
-    description = "Clone a published Agent Factory prototype."
-    input_model = CloneAgentToolInput
-    output_model = AgentInstance
+class FactoryToolDefinition(FrozenModel):
+    name: ToolName
+    description: str
+    input_schema: JsonObject
+    output_schema: JsonObject
+    required_permission: FactoryPermission
 
-    def __init__(
+
+class FactoryToolAdapter:
+    def definitions(
         self,
-        controller: FactoryController,
         principal: Principal,
-    ) -> None:
-        self.controller = controller
-        self.principal = principal
+    ) -> tuple[FactoryToolDefinition, ...]: ...
 
-    async def __call__(
+    async def invoke(
         self,
-        payload: CloneAgentToolInput,
-    ) -> AgentInstance:
-        return await self.controller.clone_agent(
-            CloneAgentCommand(
-                prototype_id=payload.prototype_id,
-                prototype_version=payload.version,
-                runtime_target=payload.runtime_target,
-                actor=self.principal.subject,
-                idempotency_key=str(payload.request_id),
-            )
-        )
+        tool_name: str,
+        arguments: Mapping[str, object],
+        context: FactoryToolCallContext,
+    ) -> FactoryToolResult: ...
 ```
 
-`list_prototypes`、`clone_agent`、`bind_knowledge`、`apply_promotion`、`query_audit_log` 只做 DTO 转换，不复制业务校验。实现时工具调用者必须拥有与 REST API 相同的可信认证主体和权限；M1 的 `X-Actor-ID` 不能满足该要求。
+`list_prototypes`、`clone_agent`、`bind_knowledge`、`apply_promotion`、`query_audit_log` 使用静态注册表和统一调用管线，不复制业务校验。`Principal`、request/correlation ID 和幂等键由已认证宿主通过 `FactoryToolCallContext` 注入，模型可见 JSON Schema 不包含 actor、认证或上下文字段。
+
+适配器在 Pydantic 参数校验前执行权限检查，调用期间通过 `CorrelationContext` 设置关联 ID，并在 `finally` 中用 token 恢复原值。写工具优先使用宿主显式幂等键，否则生成 `tool:{tool_name}:{request_id}`；由此同一命令可跨 REST、SDK 和 Tool 精确重放。错误结果使用稳定 envelope，不回显原始输入、异常文本或 traceback。
+
+Factory Tool 是“上层 Agent 调用工厂”的入口，不是“生产出的 Agent 执行业务工具”的执行器。后者的 `ToolExecutor`、超时、工具调用记录和沙箱属于 M3.5；M3.4 不实现 MCP Server。
 
 
 ---
@@ -4289,8 +4286,8 @@ pytest -q tests/unit
 
 - M3.1 已建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权，并完成本地提交；它不是完整生产身份系统，推送与远程 CI 证据仍待完成。
 - M3.2 已实现实例生命周期 transition、revision CAS、typed idempotency、审计与 Runtime 数据契约，并完成本地提交；推送与远程 CI 仍待完成。
-- M3.3 SDK 已覆盖全部 20 个公开 REST operation，通过完整本地门禁；提交、推送与远程 CI 仍待完成。
-- Tool adapter 只做 DTO 转换，生成的 input schema 与 REST 请求模型共享。
+- M3.3 SDK 已覆盖全部 20 个公开 REST operation，通过完整本地门禁并完成本地提交；推送与远程 CI 仍待完成。
+- M3.4 Factory Tool adapter 已实现五项工具、可信宿主上下文、权限过滤、Pydantic Schema、稳定结果 envelope 和跨 REST/SDK/Tool 精确幂等重放；已通过完整本地门禁，提交、推送与远程 CI 仍待完成。
 - Gradio 只承担演示，不导入 domain 或 repository。
 - Gradio 调用 SDK 完成生产操作；运行任务时调用默认离线的 `DemoRuntimeAdapter`。
 - 可选 OpenAI adapter 使用官方 SDK，但真实模型调用不进入默认测试或 M3 退出门禁。
