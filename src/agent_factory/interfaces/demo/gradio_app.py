@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from agent_factory.interfaces.demo.contracts import (
     DemoActionResult,
@@ -13,6 +13,13 @@ from agent_factory.interfaces.demo.workflow import DemoWorkflow
 
 if TYPE_CHECKING:
     import gradio as gr
+
+
+class _ClickableButton(Protocol):
+    """Typed view of Gradio's runtime-attached event registration method."""
+
+    def click(self, **kwargs: Any) -> Any: ...
+
 
 DEMO_CSS = """
 .gradio-container {
@@ -233,7 +240,7 @@ def create_demo_app(workflow: DemoWorkflow) -> gr.Blocks:
                 ),
             )
 
-        initialize_button.click(
+        cast("_ClickableButton", initialize_button).click(
             fn=initialize,
             inputs=state,
             outputs=outputs,
@@ -242,7 +249,7 @@ def create_demo_app(workflow: DemoWorkflow) -> gr.Blocks:
             concurrency_limit=1,
             concurrency_id="m3.6-fixed-demo",
         )
-        run_button.click(
+        cast("_ClickableButton", run_button).click(
             fn=run,
             inputs=state,
             outputs=outputs,
@@ -251,7 +258,7 @@ def create_demo_app(workflow: DemoWorkflow) -> gr.Blocks:
             concurrency_limit=1,
             concurrency_id="m3.6-fixed-demo",
         )
-        promote_button.click(
+        cast("_ClickableButton", promote_button).click(
             fn=promote,
             inputs=state,
             outputs=outputs,
