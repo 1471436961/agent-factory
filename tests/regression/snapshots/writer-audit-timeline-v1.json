@@ -1,0 +1,106 @@
+[
+  {
+    "actor": "snapshot-owner",
+    "causation": null,
+    "correlation": "$writer-production-chain",
+    "entity_id": "technical-writer",
+    "entity_revision": null,
+    "entity_type": "prototype",
+    "event_type": "prototype.registered",
+    "payload": {
+      "checksum": "69849e35f38103b492a5efd416365dda78ef86281e9d29c2b1b6ce73e135d899",
+      "skill_tree": {
+        "checksum": "c67e18bc0ac1a48bc3cf8f4cf611a04aa81271095b7a988cdf6b704eadb7674e",
+        "tree_id": "writer-skills",
+        "version": "1.0.0"
+      },
+      "status": "published",
+      "version": "1.0.0"
+    },
+    "sequence": 1
+  },
+  {
+    "actor": "snapshot-owner",
+    "causation": null,
+    "correlation": "$writer-production-chain",
+    "entity_id": "technical-writer",
+    "entity_revision": null,
+    "entity_type": "prototype",
+    "event_type": "prototype.published",
+    "payload": {
+      "status": "published",
+      "version": "1.0.0"
+    },
+    "sequence": 2
+  },
+  {
+    "actor": "snapshot-owner",
+    "causation": null,
+    "correlation": "$writer-production-chain",
+    "entity_id": "agent-factory-docs",
+    "entity_revision": null,
+    "entity_type": "knowledge",
+    "event_type": "knowledge.registered",
+    "payload": {
+      "checksum": "dbfad44661f1c2c9974603b2a6dcbf49dc7365914613f636061818a83de118a4",
+      "kind": "document",
+      "source": "inline",
+      "version": "1.0.0"
+    },
+    "sequence": 3
+  },
+  {
+    "actor": "snapshot-owner",
+    "causation": null,
+    "correlation": "$writer-production-chain",
+    "entity_id": "$writer-instance",
+    "entity_revision": 1,
+    "entity_type": "instance",
+    "event_type": "instance.cloned",
+    "payload": {
+      "prototype_checksum": "69849e35f38103b492a5efd416365dda78ef86281e9d29c2b1b6ce73e135d899",
+      "prototype_id": "technical-writer",
+      "prototype_version": "1.0.0",
+      "runtime_target": "demo-runtime",
+      "skill_tree": {
+        "checksum": "c67e18bc0ac1a48bc3cf8f4cf611a04aa81271095b7a988cdf6b704eadb7674e",
+        "tree_id": "writer-skills",
+        "version": "1.0.0"
+      }
+    },
+    "sequence": 4
+  },
+  {
+    "actor": "snapshot-owner",
+    "causation": null,
+    "correlation": "$writer-production-chain",
+    "entity_id": "$writer-instance",
+    "entity_revision": 2,
+    "entity_type": "instance",
+    "event_type": "knowledge.bound",
+    "payload": {
+      "injection_mode": "inline",
+      "knowledge_checksum": "dbfad44661f1c2c9974603b2a6dcbf49dc7365914613f636061818a83de118a4",
+      "knowledge_id": "agent-factory-docs",
+      "knowledge_version": "1.0.0",
+      "replaced": false,
+      "slot_name": "product-docs"
+    },
+    "sequence": 5
+  },
+  {
+    "actor": "snapshot-owner",
+    "causation": null,
+    "correlation": "$writer-production-chain",
+    "entity_id": "$writer-instance",
+    "entity_revision": 2,
+    "entity_type": "instance",
+    "event_type": "spec.exported",
+    "payload": {
+      "runtime_target": "demo-runtime",
+      "schema_version": "1.1",
+      "spec_checksum": "eadf3c11b4f2d34235921bef74b90e77ea8090b5a65339d6aa4b46f1c44e4c3b"
+    },
+    "sequence": 6
+  }
+]

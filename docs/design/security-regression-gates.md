@@ -46,11 +46,11 @@ M4 不迁移已有测试来制造目录数量。`tests/security` 与 `tests/regr
 
 ### 4.1 OpenAPI
 
-`docs/generated/openapi-v1.json` 使用规范 JSON 编码：UTF-8、键排序、两空格缩进、文件末尾换行。生成器从 `create_app().openapi()` 获取 Schema，不启动网络，不读取真实 Token。
+`docs/generated/openapi-v1.json` 使用规范 JSON 编码：UTF-8、键排序、两空格缩进、文件末尾换行。`python -m scripts.contract_snapshots --write` 显式更新，`--check` 只读校验并在缺失或字节漂移时返回非零退出码。生成器从 `interfaces.api.app.create_app()` 获取 Schema，传入不含凭据的确定性 Settings，不启动 lifespan、网络、migration 或数据库 I/O。ASGI 全局对象仍由 `interfaces.api.main` 创建，运行入口保持不变。
 
-回归测试比较内存 Schema 与快照解析后的对象，同时单独验证：
+回归测试比较规范化后的精确字节，同时单独验证：
 
-- SDK manifest 与 OpenAPI method/path 集合相等；
+- SDK manifest 与 OpenAPI method/path/authenticated 映射双向相等；
 - 健康检查没有 Bearer security requirement；
 - 其他公开 operation 均声明 Bearer security；
 - ErrorResponse 与 correlation Header 仍属于公开契约。
@@ -63,12 +63,14 @@ M4 不迁移已有测试来制造目录数量。`tests/security` 与 `tests/regr
 
 ### 4.2 稳定语义投影
 
-AgentSpec 和审计快照不得简单删除所有动态字段后比较“相似 JSON”。投影必须显式列出保留字段：
+AgentSpec 和审计快照不得简单删除所有动态字段后比较“相似 JSON”。M4.2 提交 `tests/regression/snapshots/writer-agent-spec-v1.json` 与 `writer-audit-timeline-v1.json`，投影必须显式列出保留字段：
 
 - AgentSpec：schema version、revision、prototype/knowledge/tree checksum、active nodes、工具 name/version/permission、output schema 与 spec checksum。
 - Audit：event type、entity type、entity revision、actor、correlation 关系和稳定 payload keys；时间与事件 UUID 使用固定测试端口或显式占位。
 
-规范化函数本身需要单元测试。生成两次必须字节一致，任何字段删除都需要评审其是否削弱可追溯性证据。
+固定 Writer Spec 由当前 Pydantic 模型、checksum 算法、Demo 定义和默认 `ToolRegistry` 纯构造；六事件审计时间线由 `AuditEventFactory` 生成。投影明确排除实例 UUID、生成时间、system prompt 和 metadata，审计实体与 correlation 使用关系占位符，但保留来源 checksum、revision、工具 Schema、权限和 allowlisted payload。知识正文与 Prompt 不进入快照。
+
+规范化函数本身需要单元测试。生成两次必须字节一致；测试还独立断言 Spec 顶层字段集合、每类审计 payload key 以及敏感正文缺失，避免生成器与 golden 文件共同漂移。任何字段删除都需要评审其是否削弱可追溯性证据。
 
 ## 5. API 与认证安全
 

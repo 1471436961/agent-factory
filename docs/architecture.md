@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M4.1 已进入，M3 已完成并封存
+**当前阶段**：Alpha / M4.2 已实现，M4.3 待进入
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -3936,10 +3936,8 @@ async def test_only_one_write_wins_for_same_revision(
 ### 12.7 API 与错误契约测试
 
 ```python
-import json
-from pathlib import Path
-
 from httpx import ASGITransport, AsyncClient
+from scripts.contract_snapshots import PROJECT_ROOT, build_snapshot_documents
 
 
 @pytest.mark.asyncio
@@ -3965,17 +3963,13 @@ async def test_missing_knowledge_returns_stable_error(
     assert "Traceback" not in response.text
 
 
-def test_openapi_contract(app) -> None:
-    schema = app.openapi()
-    expected = json.loads(
-        Path("docs/generated/openapi-v1.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert schema == expected
+def test_committed_snapshots_exactly_match_current_contracts() -> None:
+    expected = build_snapshot_documents()
+    for relative_path, content in expected.items():
+        assert (PROJECT_ROOT / relative_path).read_bytes() == content
 ```
 
-OpenAPI 快照发生变化时，PR 必须说明属于 PATCH、MINOR 还是 MAJOR 契约变更。
+M4.2 已生成 `docs/generated/openapi-v1.json`、固定 Writer AgentSpec 与六事件审计时间线。生成器使用确定性 Settings、固定 UUID/时间和当前领域 checksum 算法；`--check` 只读，`--write` 显式更新。OpenAPI 或语义快照发生变化时，PR 必须说明属于 PATCH、MINOR 还是 MAJOR 契约变更。
 
 ### 12.8 安全测试清单
 
@@ -4327,7 +4321,7 @@ M3 的完整工作包、退出证据和安全边界以 [M3 阶段文档](milesto
 - [ ] 所有写操作有幂等和审计测试。
 - [ ] 所有实例写操作有 revision 冲突测试。
 - [ ] 所有公开模型可生成 JSON Schema。
-- [ ] OpenAPI 快照已提交。
+- [ ] OpenAPI 快照已纳入版本控制，并由远程 CI 精确检查。
 - [ ] 默认测试不依赖网络或模型供应商。
 - [ ] Demo 从注册原型到晋升完整跑通。
 - [ ] 实验原始数据和分析代码可复算。

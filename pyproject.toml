@@ -47,24 +47,25 @@ packages = ["src/agent_factory"]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers --basetemp=.tmp/pytest -p no:cacheprovider"
 asyncio_mode = "strict"
+pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-src = ["src", "tests"]
+src = ["src", "tests", "scripts"]
 extend-exclude = [".agents", ".codex"]
 
 [tool.ruff.lint]
 select = ["ASYNC", "B", "E", "F", "I", "RUF", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["agent_factory"]
+known-first-party = ["agent_factory", "scripts"]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 
 [tool.coverage.run]
 branch = true

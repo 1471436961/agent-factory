@@ -34,17 +34,17 @@ jobs:
         run: uv sync --locked --extra dev --extra test --extra llm --extra demo
 
       - name: Check formatting
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src tests scripts
 
       - name: Lint
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests scripts
 
       - name: Type check
         shell: bash
         run: |
           mkdir -p .tmp
           set +e
-          uv run mypy src tests 2>&1 | tee .tmp/mypy.log
+          uv run mypy src tests scripts 2>&1 | tee .tmp/mypy.log
           status=${PIPESTATUS[0]}
           if (( status != 0 )); then
             while IFS= read -r line; do
@@ -52,6 +52,9 @@ jobs:
             done < .tmp/mypy.log
           fi
           exit "$status"
+
+      - name: Verify reviewed contract snapshots
+        run: uv run python -m scripts.contract_snapshots --check
 
       - name: Test and collect branch coverage
         run: uv run pytest -q --cov --cov-report=term-missing
@@ -102,6 +105,7 @@ jobs:
             'agent_factory/infrastructure/runtime/model.py',
             'agent_factory/infrastructure/runtime/openai_gateway.py',
             'agent_factory/infrastructure/runtime/registry.py',
+            'agent_factory/interfaces/api/app.py',
             'agent_factory/interfaces/api/contracts.py',
             'agent_factory/interfaces/api/errors.py',
             'agent_factory/interfaces/api/main.py',

@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M4.1 已完成，M4.2 待项目 owner 确认后进入。
+- 状态：进行中；M4.1-M4.2 已完成，M4.3 待项目 owner 确认后进入。
 - 开始时间：2026-07-24。
 - 进入依据：M3 已由项目 owner 验收并封存，退出候选提交 `d2edef7` 的 GitHub Actions CI #20 通过。
 - 规划依据：项目 owner 于 2026-07-24 确认 M4 的范围、工作包、风险、备选方案与退出标准。
@@ -128,7 +128,7 @@ M4 不增加 Agent 生产或技能治理能力，而是验证 M1-M3 已实现能
 
 ## 6. 验收标准
 
-- [ ] OpenAPI 与稳定语义快照可重复生成并由 CI 检查。
+- [x] OpenAPI 与稳定语义快照可重复生成并由 CI 检查。
 - [ ] 当前认证、授权、请求和错误攻击面有集中安全回归测试。
 - [ ] 测试 Secret、Prompt、知识正文和工具参数不进入响应、日志或审计。
 - [ ] 全部写操作具备幂等/审计/事务证据矩阵。
@@ -163,6 +163,42 @@ M4 不增加 Agent 生产或技能治理能力，而是验证 M1-M3 已实现能
 - 受限沙箱内两次测试分别使用默认 `.tmp/pytest` 和新目录 `.tmp/pytest-m4-baseline-20260724`，均因沙箱拒绝 Pytest 清理 basetemp 而产生 setup 级 `PermissionError`；其中第一次仍有 255 项测试通过。经批准在沙箱外使用新的 E 盘 basetemp 重跑后，351 项全部通过，因此该现象归类为执行环境权限限制，不是产品测试失败。
 - 沙箱内构建和 extras 安装因无法连接 PyPI 失败；经批准联网后，依赖和 cache 仍写入 E 盘并成功完成。M4.5 将把上述手工制品步骤固化为可重复脚本和真实独立进程 smoke。
 
-## 8. 阶段结论
+## 8. M4.2 契约快照证据
 
-M4.1 已冻结阶段范围、风险边界、退出标准和起始基线，项目级、阶段级与设计级文档已统一。M4.2 尚未进入；后续工作包必须逐项完成设计、实现、测试和项目 owner 评审。M4.1 完成不等于 M4 已通过安全或发布验收。
+M4.2 于 2026-07-24 完成以下交付：
+
+- `docs/generated/openapi-v1.json`：冻结 19 个 path、20 个 operation、全部请求/响应 Schema 和安全声明。
+- `tests/regression/snapshots/writer-agent-spec-v1.json`：冻结 revision 2、AgentSpec 1.1、Prototype/Knowledge/SkillTree checksum、`document-search@1.0.0` Schema 与 `read-only` 权限、输出 Schema 和 Spec checksum。
+- `tests/regression/snapshots/writer-audit-timeline-v1.json`：冻结注册、发布、知识注册、克隆、绑定和 Spec 导出六事件顺序及 allowlisted payload；事件 UUID、时间和实例 UUID 不进入投影。
+- `scripts.contract_snapshots`：提供显式 `--write` 与只读 `--check`；使用规范 UTF-8 JSON 和同目录原子替换，缺失或字节漂移返回非零退出码。
+- `interfaces.api.app.create_app`：从 ASGI 全局入口中拆出无副作用工厂，生成 OpenAPI 时传入无凭据的确定性 Settings，不启动 lifespan、migration、数据库或网络。
+- SDK operation manifest 契约从 method/path 集合比较加强为 method/path/authenticated 双向映射比较。
+- Ruff、mypy strict 与 GitHub Actions 已纳入 `scripts`；CI 在测试前执行 `python -m scripts.contract_snapshots --check`，且 wheel 资源清单包含新的应用工厂模块。
+
+当前快照哈希：
+
+| 快照 | SHA-256 |
+| --- | --- |
+| OpenAPI v1 | `801fe9977ec213336828acad0227c552415df1e3644f2b6e4aacc70b64e08af1` |
+| Writer AgentSpec v1 | `a430dec2f6e0304604683f2469e51961850b5a4d4580781f357daa44b30a7c42` |
+| Writer Audit Timeline v1 | `de953ecdf8af0f11f81f33f7d65ccf1f31c3c68432deef721af2a83eca1b5cc6` |
+
+这三份文件是首次建立的 `v1` 基线，不分类为对既有公开快照的 PATCH/MINOR/MAJOR 变更。后续任何 `--write` 结果必须在提交说明中标注影响级别，CI 不允许自动接受差异。
+
+本地门禁结果：
+
+| 门禁 | 结果 |
+| --- | --- |
+| 快照检查 | 三份文件通过 `--check`，连续生成字节一致 |
+| M4.2 定向测试 | 7 项通过，其中新增 5 项回归测试 |
+| Ruff format/check | 141 个文件通过 |
+| mypy strict | 141 个 source file 无问题 |
+| 全量 pytest | 356 项通过，67.08 秒 |
+| Domain/Application/全项目 branch coverage | 96% / 94% / 92%，通过 90% / 85% / 80% 门槛 |
+| sdist/wheel | `agent_factory-1.0.0a1` 构建成功；`app.py` 已包含，仓库 `scripts` 未进入 wheel |
+
+远程 GitHub Actions 需要在 M4.2 提交并推送后运行，因此当前只记录 CI 配置已接入，不把本地结果表述为远程 CI 通过。
+
+## 9. 阶段结论
+
+M4.1 已冻结阶段范围、风险边界、退出标准和起始基线；M4.2 已建立公共契约与稳定语义回归快照。M4.3 尚未进入；后续工作包必须逐项完成设计、实现、测试和项目 owner 评审。M4.2 完成不等于 M4 已通过安全或发布验收。

@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M4.1 已进入**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M3 退出候选提交 `d2edef7` 的 GitHub Actions CI #20 已通过。M4 聚焦当前 Alpha 的安全、回归与发布门禁，不包含公网生产部署能力。
+当前仓库处于 **Alpha / M4.2 已完成**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M4.1 已冻结范围和起始基线，M4.2 已建立 OpenAPI 与 Writer 稳定语义快照。M4 聚焦当前 Alpha 的安全、回归与发布门禁，不包含公网生产部署能力。
 
 ## 核心边界
 
@@ -50,6 +50,20 @@ AGENT_FACTORY_AUTH_ROLES=["admin"]
 ```
 
 默认服务地址为 `http://127.0.0.1:8000`，健康检查端点为 `/health/live` 和 `/health/ready`。未配置 Token 时，live 保持 200，但 ready 和业务路由按 fail-closed 规则返回 503。
+
+## 契约快照
+
+M4.2 将 OpenAPI、固定 Writer AgentSpec 和审计时间线作为显式评审的 JSON 快照。日常检查不会修改文件：
+
+```bash
+uv run python -m scripts.contract_snapshots --check
+```
+
+只有确认契约变化并在提交说明中标注 PATCH、MINOR 或 MAJOR 影响后，才执行：
+
+```bash
+uv run python -m scripts.contract_snapshots --write
+```
 
 ## Python SDK
 

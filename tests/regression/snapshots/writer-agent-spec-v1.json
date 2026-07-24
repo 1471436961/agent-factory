@@ -1,0 +1,140 @@
+{
+  "active_skill_nodes": [],
+  "agent_type": "technical-writer",
+  "knowledge": [
+    {
+      "checksum": "dbfad44661f1c2c9974603b2a6dcbf49dc7365914613f636061818a83de118a4",
+      "injection_mode": "inline",
+      "knowledge_id": "agent-factory-docs",
+      "slot_name": "product-docs",
+      "version": "1.0.0"
+    }
+  ],
+  "output_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "body": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": {
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "title",
+      "body"
+    ],
+    "type": "object"
+  },
+  "prototype": {
+    "checksum": "69849e35f38103b492a5efd416365dda78ef86281e9d29c2b1b6ce73e135d899",
+    "prototype_id": "technical-writer",
+    "version": "1.0.0"
+  },
+  "revision": 2,
+  "role": "Technical Writer",
+  "runtime_target": "demo-runtime",
+  "schema_version": "1.1",
+  "skill_tree": {
+    "checksum": "c67e18bc0ac1a48bc3cf8f4cf611a04aa81271095b7a988cdf6b704eadb7674e",
+    "tree_id": "writer-skills",
+    "version": "1.0.0"
+  },
+  "spec_checksum": "eadf3c11b4f2d34235921bef74b90e77ea8090b5a65339d6aa4b46f1c44e4c3b",
+  "tools": [
+    {
+      "description": "Search explicitly supplied inline Agent knowledge.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 5,
+            "maximum": 20,
+            "minimum": 1,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "DocumentSearchInput",
+        "type": "object"
+      },
+      "name": "document-search",
+      "output_schema": {
+        "$defs": {
+          "DocumentSearchHit": {
+            "additionalProperties": false,
+            "properties": {
+              "content": {
+                "maxLength": 2000,
+                "title": "Content",
+                "type": "string"
+              },
+              "knowledge_id": {
+                "maxLength": 64,
+                "minLength": 1,
+                "title": "Knowledge Id",
+                "type": "string"
+              },
+              "score": {
+                "maximum": 1,
+                "minimum": 0,
+                "title": "Score",
+                "type": "number"
+              },
+              "slot_name": {
+                "maxLength": 64,
+                "minLength": 1,
+                "title": "Slot Name",
+                "type": "string"
+              },
+              "version": {
+                "maxLength": 64,
+                "minLength": 1,
+                "title": "Version",
+                "type": "string"
+              }
+            },
+            "required": [
+              "slot_name",
+              "knowledge_id",
+              "version",
+              "content",
+              "score"
+            ],
+            "title": "DocumentSearchHit",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "results": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/DocumentSearchHit"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "title": "DocumentSearchOutput",
+        "type": "object"
+      },
+      "permission_tags": [
+        "read-only"
+      ],
+      "version": "1.0.0"
+    }
+  ]
+}

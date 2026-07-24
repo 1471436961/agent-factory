@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前状态：M4.1 已于 2026-07-24 经项目 owner 确认后进入，阶段范围与退出标准见 [`docs/milestones/m4-quality-security.md`](../milestones/m4-quality-security.md)，工程门禁设计见 [`docs/design/security-regression-gates.md`](../design/security-regression-gates.md)。M3 接口、运行时与演示已于 2026-07-24 验收结束，退出候选提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 已通过。M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
+当前状态：M4.1-M4.2 已于 2026-07-24 完成本地实现与门禁，M4.3 待项目 owner 确认后进入。M4.2 已建立 OpenAPI、固定 Writer AgentSpec 与审计时间线快照，并将确定性 `--check` 纳入 CI；远程证据待本工作包提交和推送后记录。阶段范围与证据见 [`docs/milestones/m4-quality-security.md`](../milestones/m4-quality-security.md)，工程门禁设计见 [`docs/design/security-regression-gates.md`](../design/security-regression-gates.md)。M3 接口、运行时与演示已于 2026-07-24 验收结束，退出候选提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 已通过。M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 

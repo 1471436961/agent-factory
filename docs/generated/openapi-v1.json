@@ -1,0 +1,3798 @@
+{
+  "components": {
+    "schemas": {
+      "AgentDefinition": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_type": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "capabilities": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "title": "Capabilities",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "knowledge_slots": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeSlot"
+            },
+            "title": "Knowledge Slots",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "title": "Output Schema",
+            "type": "object"
+          },
+          "role": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "system_prompt": {
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "tools": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "agent_type",
+          "role",
+          "system_prompt"
+        ],
+        "title": "AgentDefinition",
+        "type": "object"
+      },
+      "AgentInstance": {
+        "additionalProperties": false,
+        "properties": {
+          "active_skill_nodes": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Active Skill Nodes",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/AgentDefinition"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Created By",
+            "type": "string"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "knowledge_bindings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeBinding"
+            },
+            "title": "Knowledge Bindings",
+            "type": "array"
+          },
+          "prototype": {
+            "$ref": "#/components/schemas/PrototypeRef"
+          },
+          "revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "runtime_target": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 3,
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Target"
+          },
+          "skill_tree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkillTreeRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/InstanceStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance_id",
+          "prototype",
+          "revision",
+          "status",
+          "configuration",
+          "created_at",
+          "updated_at",
+          "created_by"
+        ],
+        "title": "AgentInstance",
+        "type": "object"
+      },
+      "AgentPrototype": {
+        "additionalProperties": false,
+        "properties": {
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Created By",
+            "type": "string"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/AgentDefinition"
+          },
+          "deprecation_reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deprecation Reason"
+          },
+          "prototype_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Prototype Id",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "skill_tree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkillTreeRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/PrototypeStatus",
+            "default": "draft"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prototype_id",
+          "version",
+          "definition",
+          "checksum",
+          "created_at",
+          "created_by"
+        ],
+        "title": "AgentPrototype",
+        "type": "object"
+      },
+      "AgentSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "active_skill_nodes": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Active Skill Nodes",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "agent_type": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Agent Type",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "knowledge": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRef"
+            },
+            "title": "Knowledge",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "title": "Output Schema",
+            "type": "object"
+          },
+          "prototype": {
+            "$ref": "#/components/schemas/PrototypeRef"
+          },
+          "revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "role": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "runtime_target": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 3,
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Target"
+          },
+          "schema_version": {
+            "default": "1.0",
+            "enum": [
+              "1.0",
+              "1.1"
+            ],
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "skill_tree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkillTreeRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "spec_checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Spec Checksum",
+            "type": "string"
+          },
+          "system_prompt": {
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedToolSpec"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "instance_id",
+          "revision",
+          "prototype",
+          "agent_type",
+          "role",
+          "system_prompt",
+          "tools",
+          "knowledge",
+          "output_schema",
+          "generated_at",
+          "spec_checksum"
+        ],
+        "title": "AgentSpec",
+        "type": "object"
+      },
+      "AuditEntityType": {
+        "enum": [
+          "prototype",
+          "instance",
+          "knowledge",
+          "skill",
+          "tool-call",
+          "evaluation"
+        ],
+        "title": "AuditEntityType",
+        "type": "string"
+      },
+      "AuditEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causation Id"
+          },
+          "correlation_id": {
+            "format": "uuid",
+            "title": "Correlation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "entity_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Revision"
+          },
+          "entity_type": {
+            "$ref": "#/components/schemas/AuditEntityType"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "$ref": "#/components/schemas/AuditEventType"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "entity_type",
+          "entity_id",
+          "actor",
+          "correlation_id",
+          "payload",
+          "created_at"
+        ],
+        "title": "AuditEvent",
+        "type": "object"
+      },
+      "AuditEventType": {
+        "enum": [
+          "prototype.registered",
+          "prototype.published",
+          "prototype.deprecated",
+          "knowledge.registered",
+          "instance.cloned",
+          "knowledge.bound",
+          "spec.exported",
+          "instance.transitioned",
+          "evaluation-suite.registered",
+          "skill-tree.registered",
+          "evaluation.completed",
+          "evaluation.reviewed",
+          "skill.promoted",
+          "task-outcome.recorded",
+          "skill.degraded",
+          "tool.called"
+        ],
+        "title": "AuditEventType",
+        "type": "string"
+      },
+      "BindKnowledgeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "replace_existing": {
+            "default": false,
+            "title": "Replace Existing",
+            "type": "boolean"
+          },
+          "selections": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeSelection"
+            },
+            "minItems": 1,
+            "title": "Selections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "selections"
+        ],
+        "title": "BindKnowledgeRequest",
+        "type": "object"
+      },
+      "Capability": {
+        "enum": [
+          "can-code",
+          "can-write"
+        ],
+        "title": "Capability",
+        "type": "string"
+      },
+      "CaseResultRef": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_uri": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Uri"
+          },
+          "case_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "checksum"
+        ],
+        "title": "CaseResultRef",
+        "type": "object"
+      },
+      "CloneAgentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "runtime_target": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 3,
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Target"
+          }
+        },
+        "title": "CloneAgentRequest",
+        "type": "object"
+      },
+      "DegradationCheckResult": {
+        "additionalProperties": false,
+        "properties": {
+          "checked_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Checked Revision",
+            "type": "integer"
+          },
+          "degraded": {
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "removed_binding_slots": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Removed Binding Slots",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "removed_nodes": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Removed Nodes",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "resulting_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Resulting Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instance_id",
+          "checked_revision",
+          "degraded",
+          "resulting_revision"
+        ],
+        "title": "DegradationCheckResult",
+        "type": "object"
+      },
+      "DeprecatePrototypeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "DeprecatePrototypeRequest",
+        "type": "object"
+      },
+      "DomainKnowledge": {
+        "additionalProperties": false,
+        "properties": {
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Created By",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/KnowledgeKind"
+          },
+          "knowledge_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Knowledge Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "default": "text/plain",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source_uri": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Uri"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_id",
+          "version",
+          "name",
+          "kind",
+          "checksum",
+          "created_at",
+          "created_by"
+        ],
+        "title": "DomainKnowledge",
+        "type": "object"
+      },
+      "EvaluateInstanceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "case_results": {
+            "items": {
+              "$ref": "#/components/schemas/SubmittedCaseResult"
+            },
+            "minItems": 1,
+            "title": "Case Results",
+            "type": "array"
+          },
+          "expected_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "runtime_model": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Runtime Model",
+            "type": "string"
+          },
+          "suite": {
+            "$ref": "#/components/schemas/EvaluationSuiteRef"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "suite",
+          "runtime_model",
+          "case_results"
+        ],
+        "title": "EvaluateInstanceRequest",
+        "type": "object"
+      },
+      "EvaluationCase": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "input": {
+            "maxLength": 64000,
+            "minLength": 1,
+            "title": "Input",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "case_id",
+          "input"
+        ],
+        "title": "EvaluationCase",
+        "type": "object"
+      },
+      "EvaluationDecision": {
+        "enum": [
+          "pass",
+          "fail",
+          "review-required"
+        ],
+        "title": "EvaluationDecision",
+        "type": "string"
+      },
+      "EvaluationReport": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_spec_checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Agent Spec Checksum",
+            "type": "string"
+          },
+          "case_results": {
+            "items": {
+              "$ref": "#/components/schemas/CaseResultRef"
+            },
+            "minItems": 1,
+            "title": "Case Results",
+            "type": "array"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/EvaluationDecision"
+          },
+          "hard_rules_passed": {
+            "title": "Hard Rules Passed",
+            "type": "boolean"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "instance_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Instance Revision",
+            "type": "integer"
+          },
+          "judge_signals": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/JudgeSignal"
+            },
+            "title": "Judge Signals",
+            "type": "array"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "rule_results": {
+            "items": {
+              "$ref": "#/components/schemas/RuleResult"
+            },
+            "minItems": 1,
+            "title": "Rule Results",
+            "type": "array"
+          },
+          "runtime_model": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Runtime Model",
+            "type": "string"
+          },
+          "skill_tree": {
+            "$ref": "#/components/schemas/SkillTreeRef"
+          },
+          "soft_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Soft Score",
+            "type": "number"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "suite": {
+            "$ref": "#/components/schemas/EvaluationSuiteRef"
+          }
+        },
+        "required": [
+          "case_results",
+          "rule_results",
+          "hard_rules_passed",
+          "soft_score",
+          "decision",
+          "report_id",
+          "instance_id",
+          "instance_revision",
+          "agent_spec_checksum",
+          "skill_tree",
+          "suite",
+          "runtime_model",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "EvaluationReport",
+        "type": "object"
+      },
+      "EvaluationReview": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ReviewDecision"
+          },
+          "report_id": {
+            "format": "uuid",
+            "title": "Report Id",
+            "type": "string"
+          },
+          "review_id": {
+            "format": "uuid",
+            "title": "Review Id",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "format": "date-time",
+            "title": "Reviewed At",
+            "type": "string"
+          },
+          "reviewer": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Reviewer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_id",
+          "report_id",
+          "reviewer",
+          "decision",
+          "reviewed_at"
+        ],
+        "title": "EvaluationReview",
+        "type": "object"
+      },
+      "EvaluationRule": {
+        "additionalProperties": false,
+        "properties": {
+          "hard": {
+            "default": true,
+            "title": "Hard",
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RuleKind"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "rule_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "weight": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 100.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rule_id",
+          "kind",
+          "parameters"
+        ],
+        "title": "EvaluationRule",
+        "type": "object"
+      },
+      "EvaluationSuite": {
+        "additionalProperties": false,
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCase"
+            },
+            "minItems": 1,
+            "title": "Cases",
+            "type": "array"
+          },
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Created By",
+            "type": "string"
+          },
+          "minimum_soft_score": {
+            "default": 0.8,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Minimum Soft Score",
+            "type": "number"
+          },
+          "require_manual_review": {
+            "default": false,
+            "title": "Require Manual Review",
+            "type": "boolean"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRule"
+            },
+            "minItems": 1,
+            "title": "Rules",
+            "type": "array"
+          },
+          "suite_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Suite Id",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suite_id",
+          "version",
+          "rules",
+          "cases",
+          "checksum",
+          "created_at",
+          "created_by"
+        ],
+        "title": "EvaluationSuite",
+        "type": "object"
+      },
+      "EvaluationSuiteRef": {
+        "additionalProperties": false,
+        "description": "Immutable identity of a registered evaluation-suite version.",
+        "properties": {
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "suite_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Suite Id",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suite_id",
+          "version",
+          "checksum"
+        ],
+        "title": "EvaluationSuiteRef",
+        "type": "object"
+      },
+      "ExportSpecRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          }
+        },
+        "title": "ExportSpecRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "pattern": "^ok$",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "InjectionMode": {
+        "enum": [
+          "inline",
+          "retrieval"
+        ],
+        "title": "InjectionMode",
+        "type": "string"
+      },
+      "InstanceStatus": {
+        "enum": [
+          "created",
+          "running",
+          "waiting",
+          "completed",
+          "failed",
+          "degraded",
+          "terminated"
+        ],
+        "title": "InstanceStatus",
+        "type": "string"
+      },
+      "JudgeSignal": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "model": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 4000,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "rubric_version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Rubric Version",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "rubric_version",
+          "score",
+          "confidence",
+          "rationale"
+        ],
+        "title": "JudgeSignal",
+        "type": "object"
+      },
+      "KnowledgeBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "bound_at": {
+            "format": "date-time",
+            "title": "Bound At",
+            "type": "string"
+          },
+          "bound_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Bound By",
+            "type": "string"
+          },
+          "injection_mode": {
+            "$ref": "#/components/schemas/InjectionMode"
+          },
+          "knowledge_checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Knowledge Checksum",
+            "type": "string"
+          },
+          "knowledge_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Knowledge Id",
+            "type": "string"
+          },
+          "knowledge_version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Knowledge Version",
+            "type": "string"
+          },
+          "slot_name": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Slot Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_name",
+          "knowledge_id",
+          "knowledge_version",
+          "knowledge_checksum",
+          "injection_mode",
+          "bound_at",
+          "bound_by"
+        ],
+        "title": "KnowledgeBinding",
+        "type": "object"
+      },
+      "KnowledgeKind": {
+        "enum": [
+          "document",
+          "policy",
+          "dataset",
+          "glossary"
+        ],
+        "title": "KnowledgeKind",
+        "type": "string"
+      },
+      "KnowledgeRef": {
+        "additionalProperties": false,
+        "properties": {
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "injection_mode": {
+            "$ref": "#/components/schemas/InjectionMode"
+          },
+          "knowledge_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Knowledge Id",
+            "type": "string"
+          },
+          "slot_name": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Slot Name",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_name",
+          "knowledge_id",
+          "version",
+          "checksum",
+          "injection_mode"
+        ],
+        "title": "KnowledgeRef",
+        "type": "object"
+      },
+      "KnowledgeSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "knowledge_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Knowledge Id",
+            "type": "string"
+          },
+          "slot_name": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Slot Name",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_name",
+          "knowledge_id",
+          "version"
+        ],
+        "title": "KnowledgeSelection",
+        "type": "object"
+      },
+      "KnowledgeSlot": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeKind"
+            },
+            "minItems": 1,
+            "title": "Accepted Kinds",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "injection_mode": {
+            "$ref": "#/components/schemas/InjectionMode"
+          },
+          "max_items": {
+            "default": 1,
+            "maximum": 32.0,
+            "minimum": 1.0,
+            "title": "Max Items",
+            "type": "integer"
+          },
+          "max_version_exclusive": {
+            "anyOf": [
+              {
+                "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Version Exclusive"
+          },
+          "min_version": {
+            "default": "0.0.0",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Min Version",
+            "type": "string"
+          },
+          "multiple": {
+            "default": false,
+            "title": "Multiple",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "accepted_kinds",
+          "injection_mode"
+        ],
+        "title": "KnowledgeSlot",
+        "type": "object"
+      },
+      "ObservationPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "consecutive_failures": {
+            "default": 3,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
+          "failure_rate_threshold": {
+            "default": 0.5,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Failure Rate Threshold",
+            "type": "number"
+          },
+          "minimum_samples": {
+            "default": 5,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Minimum Samples",
+            "type": "integer"
+          },
+          "window_size": {
+            "default": 10,
+            "maximum": 100.0,
+            "minimum": 3.0,
+            "title": "Window Size",
+            "type": "integer"
+          }
+        },
+        "title": "ObservationPolicy",
+        "type": "object"
+      },
+      "Page_AgentPrototype_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AgentPrototype"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "Page[AgentPrototype]",
+        "type": "object"
+      },
+      "Page_AuditEvent_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "Page[AuditEvent]",
+        "type": "object"
+      },
+      "PromoteAgentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "evaluation_report_id": {
+            "format": "uuid",
+            "title": "Evaluation Report Id",
+            "type": "string"
+          },
+          "evaluation_review_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Review Id"
+          },
+          "expected_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "knowledge_selections": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeSelection"
+            },
+            "title": "Knowledge Selections",
+            "type": "array"
+          },
+          "target_node_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Target Node Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "target_node_id",
+          "evaluation_report_id"
+        ],
+        "title": "PromoteAgentRequest",
+        "type": "object"
+      },
+      "PrototypeRef": {
+        "additionalProperties": false,
+        "properties": {
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "prototype_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Prototype Id",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prototype_id",
+          "version",
+          "checksum"
+        ],
+        "title": "PrototypeRef",
+        "type": "object"
+      },
+      "PrototypeStatus": {
+        "enum": [
+          "draft",
+          "published",
+          "deprecated"
+        ],
+        "title": "PrototypeStatus",
+        "type": "string"
+      },
+      "RecordTaskOutcomeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "evaluation_report_id": {
+            "format": "uuid",
+            "title": "Evaluation Report Id",
+            "type": "string"
+          },
+          "expected_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "skill_node_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Skill Node Id",
+            "type": "string"
+          },
+          "task_id": {
+            "format": "uuid",
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "task_id",
+          "skill_node_id",
+          "passed",
+          "evaluation_report_id"
+        ],
+        "title": "RecordTaskOutcomeRequest",
+        "type": "object"
+      },
+      "RegisterEvaluationSuiteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCase"
+            },
+            "minItems": 1,
+            "title": "Cases",
+            "type": "array"
+          },
+          "minimum_soft_score": {
+            "default": 0.8,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Minimum Soft Score",
+            "type": "number"
+          },
+          "require_manual_review": {
+            "default": false,
+            "title": "Require Manual Review",
+            "type": "boolean"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRule"
+            },
+            "minItems": 1,
+            "title": "Rules",
+            "type": "array"
+          },
+          "suite_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Suite Id",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suite_id",
+          "version",
+          "rules",
+          "cases"
+        ],
+        "title": "RegisterEvaluationSuiteRequest",
+        "type": "object"
+      },
+      "RegisterKnowledgeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/KnowledgeKind"
+          },
+          "knowledge_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Knowledge Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "default": "text/plain",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source_uri": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Uri"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_id",
+          "version",
+          "name",
+          "kind",
+          "checksum"
+        ],
+        "title": "RegisterKnowledgeRequest",
+        "type": "object"
+      },
+      "RegisterPrototypeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/AgentDefinition"
+          },
+          "prototype_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Prototype Id",
+            "type": "string"
+          },
+          "publish": {
+            "default": false,
+            "title": "Publish",
+            "type": "boolean"
+          },
+          "skill_tree": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkillTreeRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prototype_id",
+          "version",
+          "definition"
+        ],
+        "title": "RegisterPrototypeRequest",
+        "type": "object"
+      },
+      "RegisterSkillTreeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/SkillNode"
+            },
+            "minItems": 1,
+            "title": "Nodes",
+            "type": "array"
+          },
+          "tree_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Tree Id",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tree_id",
+          "version",
+          "nodes"
+        ],
+        "title": "RegisterSkillTreeRequest",
+        "type": "object"
+      },
+      "ResolvedToolSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "input_schema": {
+            "additionalProperties": true,
+            "title": "Input Schema",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "title": "Output Schema",
+            "type": "object"
+          },
+          "permission_tags": {
+            "items": {
+              "$ref": "#/components/schemas/ToolPermission"
+            },
+            "title": "Permission Tags",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "description",
+          "input_schema",
+          "output_schema",
+          "permission_tags"
+        ],
+        "title": "ResolvedToolSpec",
+        "type": "object"
+      },
+      "ReviewDecision": {
+        "enum": [
+          "approved",
+          "rejected"
+        ],
+        "title": "ReviewDecision",
+        "type": "string"
+      },
+      "ReviewEvaluationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ReviewDecision"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "ReviewEvaluationRequest",
+        "type": "object"
+      },
+      "RuleKind": {
+        "enum": [
+          "json-schema",
+          "required-terms",
+          "forbidden-terms",
+          "regex",
+          "max-length",
+          "tool-called"
+        ],
+        "title": "RuleKind",
+        "type": "string"
+      },
+      "RuleResult": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "title": "Evidence",
+            "type": "object"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "rule_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rule_id",
+          "case_id",
+          "passed",
+          "score"
+        ],
+        "title": "RuleResult",
+        "type": "object"
+      },
+      "SkillNode": {
+        "additionalProperties": false,
+        "properties": {
+          "added_knowledge_slots": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeSlot"
+            },
+            "title": "Added Knowledge Slots",
+            "type": "array"
+          },
+          "display_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "evaluation_suite": {
+            "$ref": "#/components/schemas/EvaluationSuiteRef"
+          },
+          "granted_tools": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Granted Tools",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "node_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "observation_policy": {
+            "$ref": "#/components/schemas/ObservationPolicy"
+          },
+          "output_schema_override": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Schema Override"
+          },
+          "parents": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Parents",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "prompt_appendix": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Prompt Appendix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "display_name",
+          "evaluation_suite"
+        ],
+        "title": "SkillNode",
+        "type": "object"
+      },
+      "SkillTree": {
+        "additionalProperties": false,
+        "properties": {
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Created By",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/SkillNode"
+            },
+            "minItems": 1,
+            "title": "Nodes",
+            "type": "array"
+          },
+          "tree_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Tree Id",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tree_id",
+          "version",
+          "nodes",
+          "checksum",
+          "created_at",
+          "created_by"
+        ],
+        "title": "SkillTree",
+        "type": "object"
+      },
+      "SkillTreeRef": {
+        "additionalProperties": false,
+        "description": "Immutable identity of a registered skill-tree version.",
+        "properties": {
+          "checksum": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "tree_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Tree Id",
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tree_id",
+          "version",
+          "checksum"
+        ],
+        "title": "SkillTreeRef",
+        "type": "object"
+      },
+      "SubmittedCaseResult": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_uri": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Uri"
+          },
+          "called_tools": {
+            "default": [],
+            "items": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "title": "Called Tools",
+            "type": "array"
+          },
+          "case_id": {
+            "maxLength": 64,
+            "minLength": 3,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "output_text": {
+            "maxLength": 64000,
+            "title": "Output Text",
+            "type": "string"
+          },
+          "structured_output": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structured Output"
+          }
+        },
+        "required": [
+          "case_id",
+          "output_text"
+        ],
+        "title": "SubmittedCaseResult",
+        "type": "object"
+      },
+      "ToolPermission": {
+        "enum": [
+          "read-only",
+          "network",
+          "filesystem",
+          "write-external"
+        ],
+        "title": "ToolPermission",
+        "type": "string"
+      },
+      "TransitionInstanceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "retry": {
+            "default": false,
+            "title": "Retry",
+            "type": "boolean"
+          },
+          "target_status": {
+            "$ref": "#/components/schemas/InstanceStatus"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "target_status",
+          "reason"
+        ],
+        "title": "TransitionInstanceRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "description": "Alpha static bearer credential configured by the server operator.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Agent Factory",
+    "version": "1.0.0a1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/audit-events": {
+      "get": {
+        "operationId": "query_audit_api_v1_audit_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AuditEntityType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/AuditEventType"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "created_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AuditEvent_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Query Audit",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/v1/evaluation-reports/{report_id}/reviews": {
+      "post": {
+        "operationId": "review_evaluation_api_v1_evaluation_reports__report_id__reviews_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Report Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewEvaluationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Review Evaluation",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
+    "/api/v1/evaluation-suites": {
+      "post": {
+        "operationId": "register_evaluation_suite_api_v1_evaluation_suites_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterEvaluationSuiteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSuite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Register Evaluation Suite",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
+    "/api/v1/evaluation-suites/{suite_id}/versions/{version}": {
+      "get": {
+        "operationId": "get_evaluation_suite_api_v1_evaluation_suites__suite_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suite_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "title": "Suite Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSuite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Evaluation Suite",
+        "tags": [
+          "evaluations"
+        ]
+      }
+    },
+    "/api/v1/instances/{instance_id}/evaluations": {
+      "post": {
+        "operationId": "evaluate_instance_api_v1_instances__instance_id__evaluations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateInstanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Evaluate Instance",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/api/v1/instances/{instance_id}/knowledge-bindings": {
+      "post": {
+        "operationId": "bind_knowledge_api_v1_instances__instance_id__knowledge_bindings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindKnowledgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentInstance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Bind Knowledge",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/api/v1/instances/{instance_id}/promotions": {
+      "post": {
+        "operationId": "promote_agent_api_v1_instances__instance_id__promotions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentInstance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Promote Agent",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/api/v1/instances/{instance_id}/spec-exports": {
+      "post": {
+        "operationId": "export_spec_api_v1_instances__instance_id__spec_exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportSpecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSpec"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Export Spec",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/api/v1/instances/{instance_id}/task-outcomes": {
+      "post": {
+        "operationId": "record_task_outcome_api_v1_instances__instance_id__task_outcomes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordTaskOutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DegradationCheckResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Record Task Outcome",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/api/v1/instances/{instance_id}/transitions": {
+      "post": {
+        "operationId": "transition_instance_api_v1_instances__instance_id__transitions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionInstanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentInstance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Transition Instance",
+        "tags": [
+          "instances"
+        ]
+      }
+    },
+    "/api/v1/knowledge": {
+      "post": {
+        "operationId": "register_knowledge_api_v1_knowledge_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterKnowledgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainKnowledge"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Register Knowledge",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/prototypes": {
+      "get": {
+        "operationId": "list_prototypes_api_v1_prototypes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PrototypeStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 3,
+                  "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AgentPrototype_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Prototypes",
+        "tags": [
+          "prototypes"
+        ]
+      },
+      "post": {
+        "operationId": "register_prototype_api_v1_prototypes_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPrototypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPrototype"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Register Prototype",
+        "tags": [
+          "prototypes"
+        ]
+      }
+    },
+    "/api/v1/prototypes/{prototype_id}/versions/{version}/deprecate": {
+      "post": {
+        "operationId": "deprecate_prototype_api_v1_prototypes__prototype_id__versions__version__deprecate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prototype_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "title": "Prototype Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeprecatePrototypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPrototype"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Deprecate Prototype",
+        "tags": [
+          "prototypes"
+        ]
+      }
+    },
+    "/api/v1/prototypes/{prototype_id}/versions/{version}/instances": {
+      "post": {
+        "operationId": "clone_agent_api_v1_prototypes__prototype_id__versions__version__instances_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prototype_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "title": "Prototype Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloneAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentInstance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Clone Agent",
+        "tags": [
+          "prototypes"
+        ]
+      }
+    },
+    "/api/v1/prototypes/{prototype_id}/versions/{version}/publish": {
+      "post": {
+        "operationId": "publish_prototype_api_v1_prototypes__prototype_id__versions__version__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prototype_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "title": "Prototype Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentPrototype"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Publish Prototype",
+        "tags": [
+          "prototypes"
+        ]
+      }
+    },
+    "/api/v1/skill-trees": {
+      "post": {
+        "operationId": "register_skill_tree_api_v1_skill_trees_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 8,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterSkillTreeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillTree"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Register Skill Tree",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/v1/skill-trees/{tree_id}/versions/{version}": {
+      "get": {
+        "operationId": "get_skill_tree_api_v1_skill_trees__tree_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tree_id",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 3,
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "title": "Tree Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillTree"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Skill Tree",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "readiness_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "description": "Not ready"
+          }
+        },
+        "summary": "Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}
