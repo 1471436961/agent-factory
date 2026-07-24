@@ -516,3 +516,195 @@
    - 易混点：`ASGITransport` 测试不是纯 Router 单元测试，也不等于真实网络部署测试；HTTP 200 不等于幂等重放成功，必须比较首次响应和副作用数量；统一 DTO 不等于业务规则应写在 DTO；`X-Actor-ID` 出现在 Review 中不代表 reviewer 经过认证。
    - 验证边界：M2.6 证明本地单机条件下完整治理链可经 HTTP 重放、重启恢复并保持稳定错误、幂等和审计契约，不证明外部 evidence、runtime model 或 reviewer 可信，也不证明 API 可安全暴露公网、支持多进程或具备 SDK/Tool adapter。
    - 后续应用：M3 SDK 和 Tool adapter 只负责把各自输入转换为相同 application Command，继续复用 `FactoryController`；认证接入后由服务端 Principal 替代自报 actor；增加公共查询端点前先确认真实调用需求、权限模型和分页/脱敏契约。
+
+1. **M3 用可信多入口和受限 Runtime 连接生产治理与实际执行**
+
+   - 日期：2026-07-24
+   - 里程碑：M3 全局
+   - 主题：控制面、执行面、REST/SDK/Factory Tool 同构，以及 Factory Tool 与业务工具执行边界。
+   - 上下文：理解 M1/M2 已有生产和技能治理闭环之后，M3 为什么既要增加可信调用入口，也要证明标准化 AgentSpec 能被受约束的 Runtime 消费；同时区分“上层 Agent 操作工厂”和“工厂产出的 Agent 执行业务工具”。
+   - 证据：`tests/integration/test_factory_tool_adapter.py::test_rest_sdk_and_factory_tool_replay_the_exact_clone_result` 使用相同 Principal、命令语义和幂等键，证明 REST 首次执行后 SDK 与 Factory Tool adapter 精确重放同一个实例且不增加审计；`tests/integration/test_tool_execution.py::test_offline_demo_runtime_completes_with_one_audited_tool_call` 证明离线 Runtime 消费 AgentSpec 和已校验知识，并只经 ToolExecutor 调用已授权只读工具；`tests/integration/test_m3_exit_candidate.py::test_m3_public_workflow_survives_two_process_rebuilds` 从空库完成固定 Demo 主链并在两次应用重建后恢复 revision 5 AgentSpec、晋升重放和审计。项目 owner 在讲解问答中确认 Factory Tool adapter 的调用者是上层 Agent，而 ToolExecutor 服务于工厂产出的 Agent；进一步理解 SDK 走 HTTP 与 Factory Tool 直调 Controller 是为了验证不同接口边界。
+   - 结论：
+     - M3 包含两个相互连接但职责不同的平面。控制面通过 REST、Python SDK 和 Factory Tool adapter 操作 `FactoryController`，最终写入 SQLite 与 Audit；执行面由 Runtime Adapter 消费 AgentSpec 和精确知识来源，经 ToolExecutor 执行受限工具并返回 RunResult。
+     - 三个控制面入口共享同一个 Controller，但路径刻意不同：SDK 真实经过 HTTP，用于验证 URL、Header、认证、DTO、错误 envelope、timeout 和 correlation ID；Factory Tool adapter 在可信宿主进程内把严格输入转换为 application Command 并直接调用 Controller，用于证明非 HTTP 入口不需要复制业务策略。
+     - “入口同构”不能只比较删除动态字段后的近似 JSON。相同 Principal、业务参数和幂等键必须重放服务端首次生成的完整对象，包括 ID、时间和 checksum，同时审计数量不增加，才能证明入口共享同一业务事实和副作用边界。
+     - Factory Tool adapter 与 ToolExecutor 不是同一种工具层。前者由上层 Agent 调用，用于列出原型、克隆、绑定知识、晋升和查审计；后者由 Runtime 调用，用于执行生产出的 AgentSpec 已授权的 `document-search` 等业务工具。两者的调用者、权限模型、数据模型和审计语义不能混用。
+     - AgentSpec 是生产层交付物，不等于实例已经运行。Runtime 必须重新核对 instance/revision、Spec、知识 checksum 和上下文；工具请求还要经过授权、版本、定义、输入、超时和输出校验，不能因为工具名出现在模型输出中就直接执行。
+   - 流程图：
+
+     ```text
+                            控制面
+     调用方 ── Principal ──┬─ REST
+                           ├─ Python SDK ─────► FactoryController ─► SQLite/Audit
+                           └─ Factory Tool
+
+                            执行面
+     AgentSpec + 精确知识 ─► RuntimeAdapter ─► ToolExecutor ─► RunResult
+                                                  │
+                                                  └─ 仅执行 Spec 授权的固定工具
+     ```
+
+   - 易混点：SDK 是 HTTP 客户端而不是 Controller 的 Python facade；Factory Tool 是“操作工厂”的接口，不是产出 Agent 的业务工具；Runtime 状态迁移不证明外部执行器已经启动；默认离线 Runtime 可重复不代表真实模型输出确定。
+   - 验证边界：M3 证明本地单机条件下的多入口语义、受限执行、工具安全、重启恢复和发布制品可重复，不证明静态 Token 可用于公网、真实 LLM 可靠、Agent 语义质量已保证、任意工具可安全执行或系统支持分布式运行。
+   - 后续应用：新增接口适配器时继续只转换现有 Command/Query，并用跨入口精确幂等重放证明同构；新增 Runtime 或工具时继续以 AgentSpec、revision、来源 checksum、固定 Registry 和脱敏审计作为执行前置条件。
+
+1. **M3.1 用单一身份真相源建立认证与授权边界**
+
+   - 日期：2026-07-24
+   - 里程碑：M3.1
+   - 主题：Principal、Authenticator Protocol、角色权限矩阵、fail-closed 和可信审计 actor。
+   - 上下文：理解为什么 M2 的 `X-Actor-ID` 只能作为可伪造标签，以及 M3.1 如何让 REST 和后续 Factory Tool adapter 共享传输无关的可信身份与授权语义。
+   - 证据：`tests/contract/test_api_authentication.py` 分别验证未配置认证返回 503、缺失或错误凭据返回稳定 401 且 Token 不进入响应/日志、`X-Actor-ID` 被拒绝、角色矩阵保护读写和审计路由、审计 actor 只来自认证主体、全部非健康 OpenAPI operation 声明 Bearer security，以及独立 app 不共享认证配置；`tests/unit/test_authentication.py` 验证静态 Token 精确匹配、UnavailableAuthenticator fail-closed 和对象 repr 不暴露 Token；`tests/unit/application/test_security.py` 验证角色权限合并与稳定拒绝。项目 owner 在讲解问答中进一步确认服务端未配置认证与客户端凭据错误属于不同责任边界，并理解合法 Token 不能使第二个 `X-Actor-ID` 真相源变得可信。
+   - 结论：
+     - 认证回答“你是谁”：`Authenticator.authenticate()` 把不透明 Bearer credential 转换为不可变 `Principal(subject, roles)`；授权回答“你能做什么”：`AuthorizationPolicy` 把角色映射为 `factory:read`、`factory:write` 和 `audit:read` 权限。两者分离后，未来可以替换认证适配器而不改 Controller 或权限策略。
+     - `Principal` 必须由可信接口边界产生，Router 构造写 Command 时只使用 `principal.subject` 作为 actor。继续接受客户端正文或 `X-Actor-ID` 会形成两个身份真相源，使调用方能够伪造审计主体，并让 Command、权限、幂等和追踪语义产生冲突。
+     - Alpha 静态适配器启动时只保留配置 Token 的 SHA-256 digest，请求时计算候选 digest 并用 `hmac.compare_digest()` 比较，同时通过 `SecretStr`、`repr=False` 和固定错误消息降低凭据泄漏。这里不是用户密码存储方案，成立前提是服务端 Token 具有足够随机性。
+     - 认证未配置时使用 `UnavailableAuthenticator`，服务对业务请求 fail-closed。503 `AUTHENTICATION_NOT_CONFIGURED` 表示服务端认证能力未就绪；401 `AUTHENTICATION_REQUIRED/FAILED` 表示服务已具备认证能力但当前请求没有有效身份；403 `AUTHORIZATION_DENIED` 表示身份有效但权限不足。
+     - FastAPI 的 `HTTPBearer(auto_error=False)` 只负责解析 Authorization Header，错误由项目依赖显式生成，从而保持统一 envelope、`WWW-Authenticate: Bearer` 和 correlation ID。健康检查保持公开，业务路由再分别依赖 read、write 或 audit permission。
+     - 当前 viewer/operator/auditor/admin 是固定 Alpha 角色矩阵，不包含用户目录、Token 轮换、撤销、过期、委托操作或租户隔离。需要代用户操作时应设计同时记录实际主体与被代理主体的显式 delegation，而不是恢复可任意填写的 actor Header。
+   - 易混点：通过认证不等于拥有所有权限；401 与 403 的区别不是错误文本不同，而是身份是否已确认；SHA-256 digest 加常量时间比较不等于适合保存低强度密码；审计中有 actor 字段不等于 actor 来源可信。
+   - 验证边界：M3.1 证明本地 Alpha 静态凭据、角色授权、错误语义和审计主体来源受约束，不证明凭据生命周期安全、抗暴力破解、支持多用户或服务可暴露到不可信网络。
+   - 后续应用：后续接口统一传递 Principal，不允许模型或客户端提交 actor；引入 OIDC/JWT 时实现新的 Authenticator 并保持现有 Principal/Permission 边界，另行设计过期、轮换、撤销、issuer/audience 校验和租户隔离。
+
+1. **M3.2 用受审计生命周期和不可变 Runtime 契约建立执行边界**
+
+   - 日期：2026-07-24
+   - 里程碑：M3.2
+   - 主题：生命周期状态机、不可变 revision、CAS 并发控制、运行前就绪检查，以及 Runtime 执行权与工厂治理权分离。
+   - 上下文：理解 Agent 实例的治理状态如何通过显式命令可靠变化，以及工厂为什么只把带精确来源的不可变 RunRequest 交给 Runtime，而不允许 Runtime 直接修改实例或持久化治理事实。
+   - 证据：`tests/unit/domain/test_lifecycle.py` 覆盖完整状态转换矩阵、FAILED 重试标志、转换原因和禁止普通转换进入 DEGRADED；`tests/integration/test_lifecycle_controller.py` 覆盖转换幂等与审计、进入 RUNNING 后重新导出 AgentSpec、readiness 失败无副作用、stale revision、同 revision 并发单胜、审计失败整体回滚和重启后幂等重放；`tests/unit/application/test_runtime.py` 覆盖精确知识来源、知识内容 checksum、Runtime context revision、namespace 唯一性和 RunResult 终态一致性。项目 owner 在问答中确认 readiness 只证明配置可运行，状态转换后必须为新 revision 显式导出 AgentSpec；同时理解 Runtime 不拥有状态写入权，不能绕过 revision、审计、幂等和权限边界。
+   - 结论：
+     - `LifecyclePolicy` 是无 I/O 的纯领域策略：接收旧 AgentInstance、目标状态、原因、retry 和时间，按固定转换矩阵返回 `revision + 1` 的新快照，不覆盖旧 revision。`COMPLETED` 与 `TERMINATED` 是终态，`FAILED -> RUNNING` 必须显式声明 retry。
+     - `DEGRADED` 不能由普通生命周期命令进入，因为它代表 M2 降级策略基于观察证据生成的治理结果；开放普通转换会允许调用方绕过阈值、配置回退和降级审计。
+     - `TransitionInstanceCommand.expected_revision` 与 Repository 的 compare-and-swap 共同防止丢失更新。两个请求同时基于同一 head 转换时，最多一个能保存新 revision；另一个以 revision conflict 失败，不能生成竞争的同号快照。
+     - 新 snapshot、`instance.transitioned` 审计事件和幂等结果在同一 UoW 中提交。审计失败会回滚状态变化；原幂等键在进程重启后仍返回首次结果且不重复追加审计，证明重放事实来自持久化层。
+     - 进入 `RUNNING` 前的 readiness 会重新解析原型、知识绑定、工具权限、技能配置和候选 AgentSpec，但不持久化 Spec。它回答“当前配置能否运行”，不代表外部执行器已经启动，也不产生一次隐式 Spec 导出。
+     - 生命周期转换会产生新 revision，因此转换前的 AgentSpec 立即成为旧 revision 交付物。调用方必须为新 revision 显式导出 AgentSpec，再构造 RunRequest；否则会发生当前实例为 revision 3、Runtime 却执行 revision 2 配置的来源错位。
+     - `RunRequest` 要求 AgentSpec、解析后的知识集合和可选 RuntimeContextRef 在 instance ID、revision、Spec checksum、知识 ID/version/checksum/injection mode 上精确一致。缺失、多余、重复或内容被修改的知识都在进入适配器前被拒绝。
+     - `RunResult` 绑定 task、instance revision 和 AgentSpec checksum，并约束完成时间、工具调用 ID 和终态错误语义：FAILED 必须有稳定 error code，COMPLETED 不得携带失败码。结果因此可以追溯到实际消费的不可变输入，但不自动等同于 Agent 语义质量正确。
+     - `RuntimeAdapter.run()` 只执行已验证请求并返回 RunResult，不拥有工厂 Repository，也不自动把实例改为 RUNNING、WAITING、COMPLETED 或 FAILED。状态目标取决于上层业务编排，必须继续通过 Controller 的显式命令、CAS、审计和幂等边界完成。
+   - 易混点：readiness 成功不等于 Runtime 已运行；实例状态为 RUNNING 不等于存在对应外部进程；RunResult 为 COMPLETED 不意味着实例必须直接进入 COMPLETED；AgentSpec 不可变不代表跨 revision 可复用；Runtime 返回来源字段不等于外部模型或执行环境本身可信。
+   - 验证边界：M3.2 证明本地单机条件下生命周期规则、revision 并发控制、事务审计、重启重放和 Runtime DTO 来源一致性可重复，不证明外部执行器实际存活、真实 LLM 输出可靠、远程 Runtime 身份可信或分布式状态协调正确。
+   - 后续应用：上层运行编排保持“显式转换状态 -> 导出当前 revision AgentSpec -> 解析精确知识 -> 调用 Runtime -> 根据结果显式转换状态”的顺序；新增 Runtime Adapter 时只实现执行协议，不直接访问工厂数据库或复制生命周期策略。
+
+1. **M3.3 用异步 HTTP SDK 固化远程客户端契约**
+
+   - 日期：2026-07-24
+   - 里程碑：M3.3
+   - 主题：HTTP 客户端边界、REST DTO 复用、operation manifest、correlation、显式幂等重试和脱敏异常。
+   - 上下文：理解为什么 Python SDK 即使与服务端位于同一代码仓库，也必须通过 HTTP 使用公开 FastAPI 契约，而不是直接调用 `FactoryController`；同时理解网络结果不确定时为什么不能由 SDK 擅自重试写操作。
+   - 证据：`tests/contract/test_sdk_operation_manifest.py` 验证不可变 manifest 的 20 个 method/path 与真实 OpenAPI 精确相等，并验证 SDK 重导出的 request model 与 REST 使用同一类型对象；`tests/integration/test_python_sdk.py` 使用 ASGITransport、真实 FastAPI lifespan 和文件型 SQLite 经 SDK 执行全部公开 operation，覆盖自定义 API prefix、重复查询参数、精确幂等重放和业务错误保真；`tests/unit/sdk/test_client.py` 覆盖 Client 生命周期、Header/DTO、标准与非标准错误、成功响应协议漂移、correlation 冲突、Transport 错误不重试、并发请求隔离和非法配置。项目 owner 在问答中确认 SDK 走 HTTP 是为了真实覆盖 URL、认证、DTO、状态码、correlation、幂等 Header 和 FastAPI 错误 envelope，并理解结果未知时不应由 SDK 替调用方做有副作用的重试决定。
+   - 结论：
+     - `AgentFactoryClient` 是公开异步 HTTP 客户端，不是 Controller 的 Python facade。它通过 HTTP 验证远程进程实际可见的 URL、认证、序列化、状态码、Header 和错误契约，也使客户端未来可以与服务端部署在不同进程或机器上。
+     - SDK 直接重导出 `interfaces.api.contracts` 中的 Pydantic request model，因此 SDK 与 REST 共享同一个结构真相源，而不是维护字段相似的第二套 DTO。请求统一使用 `model_dump(mode="json")`，响应必须由声明的 Pydantic model 执行 `model_validate()` 后才能返回。
+     - 不可变 `SDK_OPERATIONS` 为每个公开方法固定 HTTP method、路径模板、认证要求和 API prefix 范围。契约测试要求 manifest 与 OpenAPI operation 集合双向相等，从而同时发现 REST 新增但 SDK 遗漏、SDK 残留已删除接口以及 method/path 漂移。
+     - Client 自己创建并拥有 `httpx.AsyncClient`，支持异步上下文管理器和幂等 `close()`；关闭后调用稳定抛出 `AgentFactoryClientClosedError`。只允许注入 Transport，避免外部共享 Client 的所有权和关闭责任不清。
+     - 每次请求单独生成或接收 correlation ID，并验证响应 Header 与请求值一致；标准错误还要验证错误 body 中的 correlation。Client 不保存 `last_response` 或 `last_correlation_id`，所以同一 event loop 中并发调用不会因共享可变状态串扰。
+     - 认证 operation 才发送内部 Bearer Token，健康检查不发送；SDK 永不发送 `X-Actor-ID`，服务端 actor 继续只来自认证 Principal。可选 `Idempotency-Key` 和 correlation 都是本次调用的局部输入，SDK 不暗中改写。
+     - M3.3 不自动重试。网络超时可能发生在服务端提交之后、客户端收到响应之前，SDK无法判断事务是否已经生效；若生成新幂等键重试，服务端会把请求当成新命令，可能重复产生实例、状态变化和审计。调用方应根据业务决定是否使用原幂等键显式重试，以重放首次持久化结果。
+     - `AgentFactoryApiError` 保留标准业务错误的 status、code、message、details 和 correlation；`AgentFactoryTransportError` 只保留安全的底层异常类型；`AgentFactoryProtocolError` 表示响应 JSON、Schema 或 correlation 违反声明；`AgentFactoryClientClosedError` 表示生命周期误用。非标准 HTML/空错误响应统一为 `SDK_HTTP_ERROR`，不复制原始正文、Header、Token、请求体或 traceback。
+     - `base_url` 只允许带 host 的 HTTP/HTTPS origin 与可选路径，不允许 userinfo、query 或 fragment；API prefix 必须是规范绝对路径，路径变量逐段 URL encode。`follow_redirects=False` 避免携带 Authorization 的请求被自动转发到边界不明的地址。
+     - M3.3 没有新增 migration 或服务端业务能力。它为已有 20 个 REST operation 增加类型化客户端和契约证据，但不实现同步 API、流式响应、大文件上传、自动分页或协议版本协商。
+   - 易混点：SDK 与服务端共享 Python package 不等于应绕过 HTTP；共享 DTO 不等于业务规则写在 DTO 中；HTTP 超时不等于服务端未执行；不自动重试不等于不支持恢复；manifest 与 OpenAPI 相等只能防止接口清单漂移，不能单独证明业务断言充分。
+   - 验证边界：M3.3 证明当前 SDK 与 FastAPI 在本地 ASGI 链路中的公开操作、类型、错误、correlation 和幂等语义一致，不覆盖 DNS、TLS、反向代理、真实网络中断或跨版本兼容，也不证明 API 已可安全暴露公网。
+   - 后续应用：SDK 调用方为有副作用操作预先生成并持久保存幂等键，网络结果不确定时复用原键；新增或修改 REST operation 时同步更新 manifest、公开方法和 OpenAPI 集合测试；未来若引入同步或生成式 SDK，应继续保持同一 DTO、错误脱敏和显式重试边界。
+
+1. **M3.4 用可信宿主上下文和统一适配管线开放工厂工具**
+
+   - 日期：2026-07-24
+   - 里程碑：M3.4
+   - 主题：Factory Tool 契约、可信上下文、双重鉴权、Pydantic Schema、Command 映射、上下文恢复和跨入口幂等重放。
+   - 上下文：理解上层 Agent 如何通过结构化工具操作工厂，同时防止模型伪造身份和审计来源、绕过权限或复制业务规则；并区分“操作工厂”的 Factory Tool 与“生产出的 Agent 执行业务工具”的 ToolExecutor。
+   - 证据：`tests/unit/interfaces/factory_tools/test_factory_tool_contracts.py` 验证五项工具定义、Pydantic Schema、模型可见字段边界、权限过滤和结果 envelope 不变量；`tests/unit/interfaces/factory_tools/test_adapter.py` 验证 Command/Query 映射、鉴权顺序、默认与显式幂等键、输入/输出/意外错误脱敏、嵌套 correlation 恢复和任务取消传播；`tests/integration/test_factory_tool_adapter.py` 使用真实 SQLite 和 Controller 完成列表、克隆、知识绑定、晋升及审计查询，并证明 REST、SDK、Factory Tool 使用同一显式幂等键时精确返回同一个 AgentInstance 且克隆审计只产生一次。项目 owner 在问答中确认工具发现不能替代调用时鉴权，且鉴权先于参数校验可以减少未授权信息探测；进一步理解默认幂等键保障单一工具请求重试，显式键支持宿主控制和跨入口重放。
+   - 结论：
+     - M3.4 只开放 `list_prototypes`、`clone_agent`、`bind_knowledge`、`apply_promotion` 和 `query_audit_log` 五项现有工厂能力。Adapter 负责发现、鉴权、参数校验、上下文传播、Command/Query 转换和结果封装，业务规则、事务、revision、审计与持久化继续由 `FactoryController` 负责。
+     - 模型生成的 `arguments` 是不可信输入；`FactoryToolCallContext(request_id, correlation_id, principal, idempotency_key)` 由完成认证的宿主注入。Principal、actor、request ID、correlation ID 和幂等键不得进入模型可见 input schema，否则 Agent 可以伪造身份、审计来源或重试边界。
+     - 写命令的 actor 只取 `context.principal.subject`。Adapter 不接受 Bearer Token，也不从参数解析 actor；这延续 M3.1 的单一身份真相源，使权限主体、命令主体和审计主体保持一致。
+     - 工具输入和输出 JSON Schema 直接由 Pydantic 模型生成。写工具输入继承现有 REST request model，并只补充原本位于 URL path 的资源 ID；审计工具刻意排除 actor 过滤字段，避免模型通过工厂工具查询指定主体的审计活动。
+     - `definitions(principal)` 按权限过滤并排序工具，用于减少无关能力和改善调用体验，但不是安全边界。调用方可以跳过发现直接调用 `invoke()`，所以 Adapter 必须根据可信 Principal 再次鉴权。
+     - `invoke()` 固定执行“解析工具 -> 鉴权 -> 参数校验 -> 设置 correlation -> 调 Controller -> 输出校验 -> 恢复 correlation”。鉴权位于详细参数校验之前，使未授权调用方不能通过不同校验错误探测受保护工具的字段和约束。
+     - Adapter 只把已验证模型映射为现有 Command/Query。例如 clone 的原型状态、promotion evidence、知识槽、工具权限和 expected revision 均不在 Adapter 重判；直接复用 Controller 避免 REST、SDK 和 Factory Tool 形成三套治理真相。
+     - 写工具默认使用 `tool:{tool_name}:{request_id}` 作为幂等键：request ID 使同一宿主请求重试可重放，tool name 区分不同工具。宿主显式键优先，可与 REST/SDK 共享同一键，从而跨入口精确重放服务端首次生成的完整对象而不重复副作用。
+     - 调用 Controller 前通过 `CorrelationContext.set()` 写入宿主 correlation，并在 `finally` 中用返回的 Token `reset()`，因此正常返回、业务错误、意外异常和任务取消都不会污染外层上下文。`asyncio.CancelledError` 保持向上传播，不伪装成普通工具失败。
+     - `FactoryToolResult` 强制成功时只有 output、失败时只有 error。输入错误只保留 location/message/type；未知工具、业务错误、输出 Schema 漂移和意外异常使用稳定 code，均不回显原始参数、异常文本、traceback 或敏感上下文。
+     - Factory Tool adapter 运行于可信宿主进程并直接调用 Controller，不经过 HTTP；这与用于验证远程协议的 SDK 路径不同。它不实现 MCP Server、供应商 function-calling 方言、网络监听、业务 ToolExecutor 或独立 ToolCallRecord。
+   - 易混点：工具未出现在 definitions 中不等于无法被直接调用；输入通过 Pydantic 校验不等于已有权限；Factory Tool 的 `apply_promotion` 不重新实现晋升策略；默认幂等键与显式跨入口键服务于不同重放范围；Controller 记录业务审计不等于已记录每次工具调用尝试。
+   - 验证边界：M3.4 证明可信同进程宿主条件下五项工厂工具的 Schema、权限、上下文、错误和 Controller 复用可重复，并证明三种入口可以精确重放同一业务事实；不证明模型供应商工具方言兼容、远程工具主机可信、MCP 网络安全或产出 Agent 的业务工具执行安全。
+   - 后续应用：宿主先认证并创建可信 FactoryToolCallContext，再把模型 arguments 交给 Adapter；新增工厂工具时复用同一鉴权、校验、上下文、输出和错误管线，并优先映射现有 application service；需要 provider 或 MCP 支持时只增加外层方言转换，不把供应商字段传入 Controller。
+
+1. **M3.5 用不可变授权链和固定注册表实现受限 Runtime 工具执行**
+
+   - 日期：2026-07-24
+   - 里程碑：M3.5
+   - 主题：ToolCatalog/ToolRegistry 分工、ToolExecutor 验证链、调用记录与审计、只读工具、离线 Runtime 和可选模型 Gateway。
+   - 上下文：理解生产出的 AgentSpec 如何在不信任模型工具请求的前提下进入实际执行，以及为什么当前闭环只开放固定、只读、无文件和无网络副作用的 `document-search@1.0.0`，不能据此直接扩展到任意外部写工具或代码执行。
+   - 证据：`tests/unit/test_runtime_tool_registry.py` 验证 Catalog/Registry 从同一 ToolDefinition 派生、Schema 与 Pydantic model 精确对应及 document-search 的确定性边界；`tests/integration/test_tool_execution.py` 覆盖持久化 Spec、当前 RUNNING revision、请求身份、授权、版本、definition、输入输出、超时、handler 异常、重复 call ID、记录与审计事务、篡改检测、重启恢复、离线 Runtime 和 fake model loop；`tests/unit/application/test_model_gateway.py` 与 `tests/unit/test_openai_gateway.py` 验证 provider-neutral turn 契约、工具结果回放、并行调用拒绝、非法响应和 provider 异常归一化。项目 owner 在问答中确认 Catalog 与 Registry 职责不同但不能维护两套元数据，也理解 handler 是进程内代码资源而不应持久化；同时准确识别执行前 call ID 查询与执行后唯一写入之间的 check-then-act 窗口，使当前实现只适用于重复执行无外部副作用的只读工具。
+   - 结论：
+     - `ToolCatalog` 只向生产层提供可授权的 `ResolvedToolSpec`，用于原型校验和 AgentSpec 导出；`ToolRegistry` 供 Runtime 按 name/version 查找 Pydantic input/output model 与真实 async handler。二者职责不同，不能合并成让领域层持有可执行代码的对象。
+     - Container 先创建 Registry，再从同一 `ToolDefinition.resolved_spec()` 派生 Catalog。`RegisteredTool` 构造时比较 definition 中的输入输出 JSON Schema 与 Pydantic model 生成结果，防止生产时授权的契约和执行时净化的契约发生漂移。
+     - Registry 不持久化到数据库。handler 是随部署制品加载的进程内代码，数据库无法恢复函数实现；保存一份可变 definition 只会形成数据库元数据与实际代码两个真相源。固定 Registry 构造后不支持动态注册，符合 Alpha 的白名单边界。
+     - `ToolCallRequest` 必须携带 call/task ID、instance ID、revision、AgentSpec checksum、tool name/version 和 arguments；`ToolExecutionContext` 携带已导出 AgentSpec、精确匹配的已解析知识、actor 与 correlation。工具名只是请求，不能单独构成执行授权。
+     - `ToolExecutor` 依次证明 Spec 已持久化、call ID 未使用、实例 head 仍为该 revision 且状态为 RUNNING、request 身份匹配 Spec、工具出现在 Spec、请求和 Registry 版本一致、Registry definition 与 Spec 完整元数据一致，再用 Pydantic 净化 arguments。任何模型或 Runtime 都不能跳过该链直接调用 handler。
+     - 伪造或未持久化的 Spec 无法建立合法的记录外键，因此在确认 Spec 真实前的拒绝不写 ToolCallRecord；确认真实 Spec 后发生的授权、版本和输入拒绝记录为 `rejected`。handler/输出失败为 `failed`，超时为 `timed-out`，完整成功为 `succeeded`。
+     - handler 在 `asyncio.timeout()` 中执行，结果还要经过声明的 output model 校验。外部 `CancelledError` 保持向上传播；timeout 属于协作式取消，不能中断恶意或阻塞 event loop 的同步代码，因此它不是 shell、任意插件或不可信代码的隔离机制。
+     - `006_tool_call_records.sql` 用复合外键把调用绑定到 `agent_specs(instance_id, revision, checksum)`，并约束终态、result hash 与 error code 的组合。Repository 同时保存查询投影、规范 JSON 和 record checksum，读取时重新核对全部投影与模型摘要。
+     - ToolCallRecord 只保存 arguments/result hash、状态、错误码、耗时、actor、correlation 和 Spec 来源，不保存原始参数、结果正文、Prompt、知识内容或凭据；记录与 `tool.called` 审计事件在同一短 UoW 中提交，任一失败则整体回滚。
+     - 相同 call ID 已持久化时返回稳定冲突，不重放首次工具结果，因为系统只保存结果 hash。两个并发首次请求仍可能同时通过“未存在”检查并执行 handler，最终唯一约束只能阻止重复记录，不能撤销已发生的外部副作用。
+     - 当前 `document-search` 只遍历 ToolExecutionContext 中 checksum 已验证且与 AgentSpec 精确匹配的 inline 知识，采用有界词项重叠、稳定排序和固定输出长度，不访问文件、网络、全局知识库或向量数据库。它验证工程闭环，不代表语义检索质量。
+     - `OfflineDemoRuntimeAdapter` 即使没有工具调用也先验证持久化 Spec 与当前 RUNNING head；若已授权 document-search，则通过 ToolExecutor 执行一次检索，再生成固定 Writer 结构并按 AgentSpec output schema 本地校验。它返回 RunResult，但不修改实例状态、不持久化 RunResult、不访问网络。
+     - 可选 `ModelRuntimeAdapter` 只通过 provider-neutral ModelGateway 接收单个工具申请或最终结构化输出。Runtime 为模型申请补齐内部 call ID、当前 revision、Spec checksum 和授权版本后仍交给同一 ToolExecutor；模型名称、provider call ID、轮数和最终 Schema 都受本地约束。
+     - OpenAI gateway 位于 optional `llm` extra，默认 Container 不创建 client、不读取 API key、不联网；测试使用结构 fake。provider DTO 和异常不进入 application/domain，模型或 SDK 异常统一映射为稳定错误，不能把 provider 作为本地权限与 Schema 校验的替代品。
+   - 易混点：AgentSpec 列出工具不等于可以直接调用 handler；数据库中存在工具名称不等于能恢复执行代码；唯一 call ID 只能阻止重复记录，不能阻止执行阶段的并发副作用；result hash 不等于可恢复结果；`asyncio.timeout()` 不等于进程沙箱；离线输出确定不等于真实模型输出确定或质量合格。
+   - 验证边界：M3.5 证明本地单进程内固定、可信、输入有界的 async 只读 handler 可以经过 Spec/revision/Registry/Pydantic 授权链执行并留下脱敏可追溯记录；不证明外部写操作幂等、同步阻塞代码可取消、第三方插件可信、任意代码可隔离或真实 LLM 语义质量可靠。
+   - 后续应用：开放付款、发信、写文件等副作用工具前增加执行前 reservation、outbox 或外部幂等协议，并根据风险加入进程/容器隔离、文件工作区和网络 allowlist；新增 Runtime 或 provider 只负责协议映射，继续让 ToolExecutor 和本地 output schema 成为最终执行与结果校验边界。
+
+1. **M3.6 用固定可恢复工作流展示生产、执行与人工治理闭环**
+
+   - 日期：2026-07-24
+   - 里程碑：M3.6
+   - 主题：Gradio 依赖边界、三阶段 Demo 状态机、revision 证据、checkpoint/幂等恢复、人工复核和脱敏展示。
+   - 上下文：理解可视化 Demo 如何在不直接依赖 Controller、Repository 或 SQLite 的前提下，经公开 SDK 和 Runtime Adapter 串起固定 Writer 的生产、知识绑定、执行、评估、人工批准、晋升与审计；同时区分演示可重复性与通用 Agent 产品能力。
+   - 证据：`tests/contract/test_demo_import_boundaries.py` 用 AST 固定 Demo package 只能依赖 SDK、Runtime contract 和自身 DTO，不能导入 domain、Controller、Repository、SQLite 或 Container；`tests/unit/interfaces/demo/test_demo_contracts.py` 验证固定 fixture/checksum、不可变 session checkpoint 和 phase evidence 不变量；`tests/integration/test_gradio_demo_workflow.py` 从空文件型 SQLite 达到 revision 5，覆盖中途失败恢复、非法顺序和异常脱敏；`tests/integration/test_m3_exit_candidate.py` 进一步验证两次应用重建后的最终 Spec、幂等晋升重放和审计恢复。项目 owner 在问答中理解 revision 3 到 4 只改变生命周期状态，因此固定 Demo 可把 revision 3 输出作为 revision 4 当前治理快照的评估 evidence，但该结论不能推广到配置变化的任意 revision；同时理解 completed operations 保存客户端进度，稳定幂等键解决服务端已提交但客户端结果未知的窗口，二者不能互相替代。
+   - 结论：
+     - Gradio 不是新的业务入口。`DemoWorkflow` 的生产和治理操作必须通过 `AgentFactoryClient` 走 HTTP，任务执行必须通过注入的 `RuntimeAdapter`；最外层 `agent_factory.demo` 只负责装配 Container、SDK、Runtime 和页面，不实现业务规则。
+     - Demo 固定 Prototype、Knowledge、SkillTree、EvaluationSuite、promotion node、Runtime、工具、任务和输出要求，不提供任意 Prompt、知识、工具或模型参数输入。固定场景把失败原因限制在可验证的工程链路，避免演示退化为输入与模型波动不可归因的通用 Playground。
+     - `DemoSession` 是严格、不可变、可复制的 UI DTO，状态机为 `NEW -> READY_TO_RUN -> AWAITING_REVIEW -> PROMOTED`。模型不变量要求进入高级 phase 前已经保存对应 instance、revision、Spec、RunResult、report、review 和 active node 证据；按钮禁用只改善体验，Workflow 方法仍在服务端调用前检查合法 phase。
+     - 初始化阶段依次检查 readiness、注册 Suite、用真实 Suite checksum 注册 Tree、注册并发布 Prototype、注册 Knowledge、克隆 revision 1、验证未绑定知识时 Spec 导出以 `MISSING_KNOWLEDGE_BINDING` 失败、绑定到 revision 2、导出验证 Spec、迁移 RUNNING revision 3 并重新导出 Spec。
+     - 预期失败也是验收证据：只接受 `MISSING_KNOWLEDGE_BINDING` 证明知识槽约束实际由服务端执行；若未绑定即可导出或返回其他错误，Workflow 以稳定 Demo invariant 失败停止，不能把所有失败都误当成测试通过。
+     - 运行阶段用 revision 3 AgentSpec、固定 UUID5 task ID 和 checksum 已验证知识构造 RunRequest，经离线 Runtime 与 ToolExecutor 得到实际 RunResult；随后实例转为 WAITING revision 4、重新导出 revision 4 Spec，再提交真实 content、structured output 和 tool-call evidence，且只接受 `REVIEW_REQUIRED`。
+     - revision 3 到 revision 4 只由 `RUNNING -> WAITING` 生命周期转换产生，Prototype、Prompt、知识、工具、output schema 和 active nodes 不变，因此固定 Demo 可以使用 revision 3 的执行输出评估 revision 4 的当前治理快照。该前提不适用于晋升、降级、知识更新或其他配置变化；旧输出默认不能评价任意新 revision。
+     - 评估报告不会自动晋升。第三步必须由用户显式触发 APPROVED Review，再用当前 revision、report 和 review 晋升 `mid-writer`，得到 revision 5、保持 WAITING 且 active nodes 精确为目标节点；Evaluation、Review 与 Promotion 因而是三个独立审计事实。
+     - 每完成一个子操作，Workflow 立即产生新不可变 checkpoint，并把 operation 加入 `completed_operations`；恢复时据此跳过已完成步骤并保留 instance/report/review ID、Spec、RunResult 和来源 checksum。`gr.State` 只是当前浏览器会话控制状态，SQLite 中的快照、工具记录和审计才是持久事实。
+     - 每个写操作使用 `demo:{workflow_id}:{operation}` 稳定幂等键。若服务端已经提交但响应丢失或 checkpoint 尚未更新，重试原键会返回首次结果；completed operations 解决“客户端从哪里继续”，幂等键解决“服务端是否已执行未知”，只保留任一机制都会留下恢复缺口。
+     - 稳定幂等只覆盖 Controller 写命令。RunResult 本身不持久化，页面刷新不会恢复完整 session；若 Runtime 完成后进程在 checkpoint 前退出，固定只读运行仍可能重新执行。M3.6 不通过猜测数据库状态自动重建跨刷新工作流。
+     - 页面只显示来源 ID/version/checksum、RunResult 身份与有界摘要、工具调用数量及审计投影；完整知识、system prompt、原始 SDK response、审计 payload、Token、异常文本和 traceback 不进入页面。未知异常只记录 workflow ID 与异常类型并返回 `DEMO_INTERNAL_ERROR`。
+     - Gradio 通过 optional extra 惰性导入；未安装时核心 API、SDK 和 Runtime 仍可使用。Launcher 强制 API 为 loopback、页面绑定 `127.0.0.1`、关闭 share/error/monitoring 并启用 strict CORS；API 与 UI 两个本地进程共享文件 SQLite 只服务串行演示，不构成多用户调度或公网部署。
+   - 易混点：Gradio 能完成业务操作不等于它可以直接调用 Controller；按钮不可点击不等于后端无需 phase 校验；revision 数值相邻不等于配置必然等价；checkpoint 不等于服务端事务；幂等键不等于持久化完整 UI 会话或 RunResult；离线 Writer 结果稳定不等于内容质量已经验证。
+   - 验证边界：M3.6 证明固定 Writer 场景能在本地经真实 SDK/FastAPI、文件 SQLite、离线 Runtime 和人工按钮完成 revision 1 到 5 的可追溯闭环，并能从部分会话故障恢复；不证明页面刷新恢复、多用户并发、真实模型质量、远程 Runtime 调度、Gradio 公网安全或通用 Agent 配置能力。
+   - 后续应用：演示新增步骤时继续通过 SDK/Runtime 端口、为每项写操作分配稳定键并在成功后立刻 checkpoint；跨刷新恢复需设计持久化 workflow/run record，而不是扫描数据库猜测；若转为真实产品，应拆分身份、租户、任务队列、Runtime 租约与部署安全，不能直接扩展当前共享 SQLite 和静态 Token 页面。
+
+1. **M3.7 用重建恢复、发布制品和远程 CI 形成阶段退出证据**
+
+   - 日期：2026-07-24
+   - 里程碑：M3.7
+   - 主题：退出候选主链、跨 App 重建、AgentSpec 导出幂等、wheel 资源、optional extras 隔离安装和跨平台 CI。
+   - 上下文：理解业务测试通过后为什么仍需验证应用重建、实际 wheel 内容和干净环境安装，以及本地门禁与远程 Linux CI 分别能排除哪些假阳性；同时避免把同一 pytest 解释器中的 App 重建夸大为真正多进程或崩溃恢复。
+   - 证据：`tests/integration/test_m3_exit_candidate.py` 从空文件型 SQLite 经第一组 App/Container 完成固定 Demo 至 revision 5，在第二组重建中精确恢复 Suite、Tree、Prototype、Promotion 幂等响应、审计与 revision 5 AgentSpec，再经第三组重建证明相同 revision Spec 精确重放且不增加第二条 `spec.exported`；`.github/workflows/ci.yml` 固定 locked dependency sync、Ruff、mypy strict、pytest branch coverage、sdist/wheel、包资源清单和隔离 `[demo,llm]` extras 安装；M3.7 封存记录为 `351 passed`、domain/application/total branch coverage 96%/94%/92%，GitHub Actions CI #20 通过。项目 owner 在问答中理解源码测试验证工作区行为，而隔离 wheel 验证实际交付物，二者不能互替；并准确区分跨 App/Container 持久化恢复与真实 OS 多进程、强制崩溃恢复。
+   - 结论：
+     - M3.7 不增加新的生产、治理或 Runtime 功能，而是把 M3.1-M3.6 的契约组合成阶段退出候选。退出标准不仅要求主链成功，还要求既有 M1/M2 回归、静态检查、覆盖率、构建、资源打包、optional extras 和远程 CI 同时通过。
+     - 第一个 App 从空库完成固定 Writer 主链并得到 revision 5，同时保存 Suite、Tree、Prototype page、Promotion 幂等响应和完整审计作为比较基线。测试比较完整 Pydantic 对象和事件集合，而不是只断言 HTTP 200 或少数字段。
+     - 关闭第一个 App 后，第二个 App 使用相同 SQLite 但重新创建 Container、Repository 与 Controller；它必须精确读取旧治理对象、用原键重放同一个 Promotion 结果且不增加审计，并导出来源、知识、技能节点和工具均正确的 revision 5 AgentSpec。这排除了对象只存在于旧应用实例内存中的主要假阳性。
+     - 第二个 App 首次导出 revision 5 时只增加一条 `spec.exported`；第三个 App 再次导出必须返回完全相同 Spec 且审计集合不变。由此同时验证 AgentSpec 持久化恢复、同 revision 导出幂等和审计副作用单次发生。
+     - 该测试严格来说是在同一 pytest Python 进程内顺序创建三个 App，而不是启动三个独立 OS 进程。它会重建应用对象，但解释器、导入模块和潜在模块级全局状态仍存在；关闭也经过正常 lifespan，而不是在任意指令或事务中途强制终止。
+     - 因此该证据支持“跨 App/Container 重建后从 SQLite 恢复”，不支持“多进程并发协调、进程崩溃恢复、断电持久性、分布式锁、任务租约或真实网络故障已验证”。真正验证这些能力需独立进程、故障注入和并发测试环境。
+     - 源码测试运行的是工作区源码加开发/测试依赖，能深入验证业务规则、事务和异常，但本地 `src` 路径可能掩盖 wheel 遗漏模块、migration、metadata、entry point 或运行依赖。测试通过不等于用户安装的制品完整。
+     - wheel 隔离安装验证实际交付物，但 import/entrypoint smoke test 不能替代业务测试。两类证据分别回答“代码行为是否正确”和“发布给用户的制品是否完整”，必须同时保留。
+     - CI 构建 sdist/wheel 后直接检查归档资源清单，覆盖核心 domain/application、SDK、Factory Tool、Runtime、Demo、SQLite repository 和 001-006 migration，防止源码环境能读取资源而 wheel 安装后启动失败。
+     - 隔离安装先用 `uv export --locked --extra demo --extra llm --no-dev --no-emit-project` 从锁文件得到不含项目本体的依赖，再在新 venv 安装依赖，最后以 `--no-deps` 安装刚构建的 wheel。这样项目代码只能来自 wheel，不会被 editable checkout 或当前工作目录遮蔽。
+     - 安装后同时导入 `agent_factory.demo`、Gradio 和 OpenAI SDK，并检查 distribution metadata 中存在 `demo`/`llm` extras 与 `agent-factory-demo = agent_factory.demo:main` entry point；这比只执行 `import agent_factory` 更能覆盖可选发布面。
+     - CI 对 domain、application 和全项目 branch coverage 分别设置 90%、85% 和 80% 最低门槛。M3.7 记录的 351 tests 与 96%/94%/92% 是当时提交的封存快照，不是未来修改后的永久保证，后续提交仍需重新通过门禁。
+     - Ubuntu CI 暴露 Gradio 动态 `Button.click` 的跨平台 typing 差异。修复使用局部 `_ClickableButton` Protocol 和 `cast` 表达第三方动态边界，没有关闭全局 mypy strict 或忽略全部 `attr-defined`，使放宽范围局限在可解释接口。
+     - mypy 输出经 `tee` 写日志时必须读取 Bash `PIPESTATUS[0]` 并以该状态退出，否则 pipeline 可能返回 `tee` 的成功码而吞掉 mypy 失败。CI annotations 改善可读性，但不能改变真实命令退出状态。
+   - 易混点：本地测试通过不等于 wheel 完整；wheel 可导入不等于业务行为正确；重新创建 FastAPI app 不等于重启 Python 解释器；正常 lifespan 关闭不等于崩溃恢复；覆盖率达到门槛不等于断言充分；远程 CI 通过不等于公网部署安全。
+   - 验证边界：M3.7 证明固定 M3 主链、持久化幂等与审计在跨 App 重建后可恢复，当前 wheel 包含声明资源并能在锁定依赖的隔离 Linux 环境安装，质量门禁可由 GitHub Actions 重复执行；不证明多进程 SQLite 写入、强制崩溃恢复、真实网络部署、容器隔离、生产身份或真实 LLM 可靠。
+   - 后续应用：每个里程碑结束时同时保存行为回归、重启/故障证据、构建归档检查和隔离安装 smoke test；新增 package data、extra 或 console script 时扩展 wheel 验证；需要宣称多进程或崩溃恢复前，增加独立 OS 进程、kill/fault injection、数据库耐久性与竞争写入测试，不能沿用 App 重建结果推断。
