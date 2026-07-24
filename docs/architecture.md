@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M3，M3.1-M3.6 已完成本地提交；M3 工作包均待推送与远程 CI
+**当前阶段**：Alpha / M3 已完成并封存，M4 尚未进入
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4264,13 +4264,13 @@ pytest -q tests/unit
 
 ### 14.5 M3 规格
 
-- M3.1 已建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权，并完成本地提交；它不是完整生产身份系统，推送与远程 CI 证据仍待完成。
-- M3.2 已实现实例生命周期 transition、revision CAS、typed idempotency、审计与 Runtime 数据契约，并完成本地提交；推送与远程 CI 仍待完成。
-- M3.3 SDK 已覆盖全部 20 个公开 REST operation，通过完整本地门禁并完成本地提交；推送与远程 CI 仍待完成。
-- M3.4 Factory Tool adapter 已实现五项工具、可信宿主上下文、权限过滤、Pydantic Schema、稳定结果 envelope 和跨 REST/SDK/Tool 精确幂等重放，并完成本地提交；推送与远程 CI 仍待完成。
-- M3.5 已实现固定 Registry、`ToolExecutor`、脱敏 `ToolCallRecord`、`006_tool_call_records.sql`、离线 Demo Runtime、provider-neutral `ModelGateway` 和可选 OpenAI Responses adapter；`341 passed`，domain/application/全项目 branch coverage 为 96%/94%/94%，本地提交 `fbe5d7c` 已完成，推送与远程 CI 仍待完成。
+- M3.1 已建立 `Principal`、认证端口、Alpha 静态 Bearer Token 和最小角色授权；它仍不是完整生产身份系统。
+- M3.2 已实现实例生命周期 transition、revision CAS、typed idempotency、审计与 Runtime 数据契约。
+- M3.3 SDK 已覆盖全部 20 个公开 REST operation，并通过 operation manifest 与 OpenAPI 契约测试防止接口遗漏。
+- M3.4 Factory Tool adapter 已实现五项工具、可信宿主上下文、权限过滤、Pydantic Schema、稳定结果 envelope 和跨 REST/SDK/Tool 精确幂等重放。
+- M3.5 已实现固定 Registry、`ToolExecutor`、脱敏 `ToolCallRecord`、`006_tool_call_records.sql`、离线 Demo Runtime、provider-neutral `ModelGateway` 和可选 OpenAI Responses adapter；阶段测试为 `341 passed`，domain/application/全项目 branch coverage 为 96%/94%/94%，实现提交为 `fbe5d7c`。
 - M3.6 已实现固定 Writer fixtures、不可变 Demo DTO、可 checkpoint 的三步 `DemoWorkflow`、本地 Gradio Blocks 页面和独立 composition root；完整本地门禁为 `350 passed`，domain/application/全项目 branch coverage 为 96%/94%/92%，Ruff、mypy strict、sdist/wheel 均通过，本地提交 `63018ce` 已完成。
-- M3.7 已增加跨进程退出候选测试：从空文件 SQLite 完成固定 Demo 主链，连续两次重建应用后精确恢复晋升重放、revision 5 AgentSpec 与审计，并证明重复导出不产生第二个 `spec.exported`。完整本地门禁为 `351 passed`，domain/application/全项目 branch coverage 为 96%/94%/92%，Ruff、mypy strict（137 个文件）、sdist/wheel 及锁定依赖的隔离 `[demo,llm]` extras 安装均通过；提交、推送与远程 CI 仍待完成。
+- M3.7 已增加跨进程退出候选测试：从空文件 SQLite 完成固定 Demo 主链，连续两次重建应用后精确恢复晋升重放、revision 5 AgentSpec 与审计，并证明重复导出不产生第二个 `spec.exported`。完整本地门禁为 `351 passed`，domain/application/全项目 branch coverage 为 96%/94%/92%，Ruff、mypy strict（137 个文件）、sdist/wheel 及锁定依赖的隔离 `[demo,llm]` extras 安装均通过；退出候选提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 已通过。
 - Gradio 只承担演示，import-boundary test 禁止其直接导入 domain、Controller、Repository、SQLite 或 Container。
 - Gradio 调用 SDK 完成生产操作；运行任务时调用默认离线的 `OfflineDemoRuntimeAdapter`。评估后必须由用户显式批准 review，才可晋升 `mid-writer`。
 - 浏览器验收已覆盖桌面完整主链与 `390x844` 移动视口；移动端页面无整页横向溢出，三步操作按单列布局显示。

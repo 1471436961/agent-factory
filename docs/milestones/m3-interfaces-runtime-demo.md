@@ -2,11 +2,12 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中。
+- 状态：已完成。
 - 开始时间：2026-07-23。
+- 完成时间：2026-07-24。
 - 进入依据：M2 已由项目 owner 人工验收并封存；封存提交 `da4b408` 已推送，GitHub Actions CI #17 通过。
 - 规划依据：项目 owner 于 2026-07-23 确认本阶段目标、关键取舍、工作包、风险和验收标准后进入 M3。
-- 退出决策：本文第 6 节证据齐备后，由项目 owner 人工决定是否结束 M3 并进入 M4。
+- 退出决策：项目 owner 于 2026-07-24 确认结束 M3；退出候选提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 通过。结束 M3 不等于自动进入 M4。
 
 ## 2. 阶段目标
 
@@ -86,7 +87,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 5. 实施工作包
 
-### M3.1 身份与授权基础（本地提交完成，待推送与远程 CI）
+### M3.1 身份与授权基础（已完成）
 
 - 定义不可变 `Principal`、稳定角色和 `Authenticator` Protocol。
 - 实现配置驱动的静态 Bearer Token 适配器，使用常量时间比较，不把 Token 写入日志、异常、审计或 repr。
@@ -95,7 +96,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 增加 401/403 统一错误 envelope、OpenAPI security scheme 和认证上下文隔离测试。
 - 更新 M1/M2 REST 测试，证明业务行为不因身份来源变化而回退。
 
-### M3.2 生命周期与 Runtime 契约（本地提交完成，待推送与远程 CI）
+### M3.2 生命周期与 Runtime 契约（已完成）
 
 - 实现纯 `LifecyclePolicy` 和完整允许迁移表。
 - 增加 `TransitionInstanceCommand`、Controller 事务、实例 snapshot/head CAS、审计与 typed idempotency replay。
@@ -103,7 +104,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 增加 REST transition action，并固定非法迁移、空 reason、revision 冲突和终态行为。
 - 定义 `RuntimeContextRef`、`RunRequest`、`RunResult`、`ResolvedRuntimeKnowledge` 与 `RuntimeAdapter` Protocol；本工作包不调用模型。
 
-### M3.3 Python SDK（本地提交完成，待推送与远程 CI）
+### M3.3 Python SDK（已完成）
 
 - 实现异步 `AgentFactoryClient`、显式 close 和 async context manager。
 - 覆盖健康检查、原型、知识、实例、AgentSpec、技能树、评估、复核、晋升、观察结果、生命周期与审计全部公开 operation。
@@ -111,7 +112,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 非 2xx 响应解析为 `AgentFactoryApiError`，保留业务 code、status、details 和 correlation ID；非标准响应安全降级。
 - 使用 ASGITransport 与真实 FastAPI app 进行 SDK 契约测试；通过 operation manifest 与 OpenAPI 比对防止方法遗漏。
 
-### M3.4 Factory Tool adapter（本地提交完成，待推送与远程 CI）
+### M3.4 Factory Tool adapter（已完成）
 
 - 为五个已确认工具定义严格 Pydantic 输入/输出模型并导出 JSON Schema。
 - Tool 调用上下文携带由宿主认证的 `Principal` 和 correlation ID；工具输入不得提交 actor。
@@ -120,7 +121,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 使用与 REST/SDK 相同的命令和幂等 key 验证精确对象重放与审计不重复。
 - 不在 M3 实现 MCP server；MCP 仍是未来协议适配层。
 
-### M3.5 Runtime 与安全工具执行（本地提交完成，待推送与远程 CI）
+### M3.5 Runtime 与安全工具执行（已完成）
 
 - 定义 `ToolDefinition`、`RegisteredTool`、`ToolCallRequest`、`ToolCallRecord` 和 `ToolRegistry`。
 - `ToolExecutor` 核对 instance/revision、AgentSpec 授权、工具版本和 permission tags，再执行 Pydantic 输入净化、timeout 与输出校验。
@@ -129,7 +130,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 实现默认离线 Demo Runtime；可选 OpenAI adapter 通过可替换 gateway 使用官方 SDK，测试只使用 fake gateway。
 - 在代码前补充 Runtime/Tool design note，并根据最终持久化需求决定 forward-only migration，不预改既有 migration。
 
-### M3.6 Gradio 演示（本地提交完成，待推送与远程 CI）
+### M3.6 Gradio 演示（已完成）
 
 - Gradio 只依赖 SDK、Runtime 接口和演示 DTO，不导入 domain、Controller 或 Repository。
 - 固定 `technical-writer@1.0.0`、`agent-factory-docs@1.0.0`、`writer-skills@1.0.0` 与 `mid-writer-suite@1.0.0` 数据。
@@ -138,14 +139,14 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 页面只显示稳定错误码、message 和 correlation ID，不显示 Python traceback、Token、Prompt 或完整知识正文。
 - Demo 依赖保持 optional extra；未安装时核心 API、SDK 和测试仍可工作。
 
-### M3.7 同构与退出验收（本地退出候选通过，待提交、推送与远程 CI）
+### M3.7 同构与退出验收（已完成）
 
 - 新增统一退出候选集成测试：从空文件型 SQLite 经真实 FastAPI 与 HTTP SDK 完成固定 Demo 主链，随后连续两次重建应用。
 - 重建后精确恢复 Suite、Tree、Prototype、晋升幂等响应、revision 5 AgentSpec 与审计；重复导出同一 revision 不产生第二个 `spec.exported`。
 - 既有契约与集成测试继续证明 REST、SDK、Factory Tool adapter 对相同幂等命令返回精确相同对象，且只产生一次业务副作用和审计。
 - Runtime、工具与生命周期失败矩阵继续覆盖 checksum、授权、版本、输入输出、超时、异常、脱敏、状态迁移、并发 CAS、幂等与事务回滚。
 - Gradio 已完成桌面主链与固定移动 viewport 浏览器验收；真实模型模式不属于退出门禁。
-- 本地 Ruff、mypy strict、`351 passed`、branch coverage、sdist/wheel 和锁定依赖的隔离 `[demo,llm]` extras 安装均已通过；GitHub Actions 尚待推送后验证。
+- 本地 Ruff、mypy strict、`351 passed`、branch coverage、sdist/wheel 和锁定依赖的隔离 `[demo,llm]` extras 安装均已通过；退出候选 GitHub Actions CI #20 已通过。
 
 ## 6. 验收标准
 
@@ -163,7 +164,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - [x] M1/M2 全部回归测试继续通过。
 - [x] 默认测试和本地质量门禁不需要模型 API key 或互联网访问。
 - [x] domain、application 和全项目 branch coverage 分别不低于 90%、85% 和 80%。
-- [ ] Ruff、mypy strict、pytest、sdist/wheel、optional extras 与 M3 退出候选 GitHub Actions 全部通过。
+- [x] Ruff、mypy strict、pytest、sdist/wheel、optional extras 与 M3 退出候选 GitHub Actions 全部通过。
 
 ## 7. 验收证据矩阵
 
@@ -195,7 +196,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 9. 阶段报告
 
-当前状态：M3.1-M3.6 已完成本地提交；M3.7 退出候选已通过本地门禁，尚待提交。M3 工作包均尚未推送或取得远程 CI 证据，因此 M3 仍处于进行中。M3.6/M3.7 通过 SDK 与离线 Runtime 串联并验证固定 Writer 主链，不新增 REST operation、migration、真实模型默认路径或公网部署承诺。
+当前状态：M3.1-M3.7 已完成，退出候选已通过本地门禁与 GitHub Actions CI #20，项目 owner 于 2026-07-24 确认结束 M3。M3 通过 SDK 与离线 Runtime 串联并验证固定 Writer 主链，不新增真实模型默认路径或公网部署承诺；完整生产身份、进程隔离和部署安全仍属于后续阶段。
 
 - M2 封存提交：`da4b408 docs: close M2 milestone`。
 - M2 封存远程证据：GitHub Actions [`CI #17`](https://github.com/1471436961/agent-factory/actions/runs/29930708726) 通过。
@@ -256,4 +257,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - M3.7 跨进程证据：新增 `tests/integration/test_m3_exit_candidate.py`，从空库完成 Demo 至 revision 5，并在两次应用重建后验证治理对象、晋升重放、AgentSpec 和审计精确恢复；同一 revision 的 `spec.exported` 始终只有一条。
 - M3.7 完整本地门禁：`351 passed`；domain/application/全项目 branch coverage 为 96%/94%/92%；Ruff format/check、mypy strict（137 个文件）、sdist 与 wheel 均通过。
 - M3.7 制品证据：从 `uv.lock` 导出不含项目本体的 `[demo,llm]` 锁定依赖，在 E 盘隔离环境安装依赖后以 `--no-deps` 安装 wheel；`agent_factory.demo`、Gradio、OpenAI SDK、两个 extras 元数据和 `agent-factory-demo` 入口均验证通过。CI 已增加相同步骤。
-- 未完成证据：M3.7 尚待本地提交；M3 工作包尚未推送或取得远程 CI 证据，不能描述为已完成。
+- M3.7 本地提交：`282f0ec test: add M3.7 exit candidate verification`。
+- 远程纠错证据：首次 M3 远程 [`CI #18`](https://github.com/1471436961/agent-factory/actions/runs/30076506234) 在 Ubuntu mypy 暴露 Gradio 6.20 动态 `Button.click` 的跨平台 typing 差异；`60e6390` 增加保留退出码的 CI annotations，[`CI #19`](https://github.com/1471436961/agent-factory/actions/runs/30079204698) 精确定位三处 `attr-defined`；`d2edef7` 以局部 `_ClickableButton` Protocol 与 `cast` 修复，不关闭全局严格检查。
+- M3 退出证据：提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 于 2026-07-24 通过，覆盖 Ruff、mypy strict、`351 passed`、三档 branch coverage、sdist/wheel、制品资源及隔离 optional extras 安装。
+- 阶段结论：M3 已完成并封存；M4 尚未进入。
