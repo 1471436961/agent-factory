@@ -138,14 +138,14 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 页面只显示稳定错误码、message 和 correlation ID，不显示 Python traceback、Token、Prompt 或完整知识正文。
 - Demo 依赖保持 optional extra；未安装时核心 API、SDK 和测试仍可工作。
 
-### M3.7 同构与退出验收
+### M3.7 同构与退出验收（本地退出候选通过，待提交、推送与远程 CI）
 
-- 从空文件型 SQLite 通过公开入口完成固定生产与运行主链，关闭并重建应用后恢复状态与审计。
-- REST、SDK、Factory Tool adapter 对相同幂等命令返回精确相同对象，且只产生一次业务副作用和审计。
-- Runtime 与工具测试覆盖 checksum、未授权、版本不匹配、非法输入、超时、handler 异常、非法输出和脱敏。
-- 生命周期测试覆盖全部允许边、主要非法边、终态、重试、并发 CAS、幂等与事务回滚。
-- Gradio 使用固定 viewport 做基础截图检查；真实模型模式只做可选人工 smoke test。
-- Ruff、mypy strict、pytest、branch coverage、sdist/wheel、optional extras 安装与 GitHub Actions 全部通过。
+- 新增统一退出候选集成测试：从空文件型 SQLite 经真实 FastAPI 与 HTTP SDK 完成固定 Demo 主链，随后连续两次重建应用。
+- 重建后精确恢复 Suite、Tree、Prototype、晋升幂等响应、revision 5 AgentSpec 与审计；重复导出同一 revision 不产生第二个 `spec.exported`。
+- 既有契约与集成测试继续证明 REST、SDK、Factory Tool adapter 对相同幂等命令返回精确相同对象，且只产生一次业务副作用和审计。
+- Runtime、工具与生命周期失败矩阵继续覆盖 checksum、授权、版本、输入输出、超时、异常、脱敏、状态迁移、并发 CAS、幂等与事务回滚。
+- Gradio 已完成桌面主链与固定移动 viewport 浏览器验收；真实模型模式不属于退出门禁。
+- 本地 Ruff、mypy strict、`351 passed`、branch coverage、sdist/wheel 和锁定依赖的隔离 `[demo,llm]` extras 安装均已通过；GitHub Actions 尚待推送后验证。
 
 ## 6. 验收标准
 
@@ -195,7 +195,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 9. 阶段报告
 
-当前状态：M3.1-M3.6 已完成本地提交；M3 工作包均尚未推送或取得远程 CI 证据。M3.6 通过 SDK 与离线 Runtime 串联固定 Writer 主链，不新增 REST operation、migration、真实模型默认路径或公网部署承诺。
+当前状态：M3.1-M3.6 已完成本地提交；M3.7 退出候选已通过本地门禁，尚待提交。M3 工作包均尚未推送或取得远程 CI 证据，因此 M3 仍处于进行中。M3.6/M3.7 通过 SDK 与离线 Runtime 串联并验证固定 Writer 主链，不新增 REST operation、migration、真实模型默认路径或公网部署承诺。
 
 - M2 封存提交：`da4b408 docs: close M2 milestone`。
 - M2 封存远程证据：GitHub Actions [`CI #17`](https://github.com/1471436961/agent-factory/actions/runs/29930708726) 通过。
@@ -253,4 +253,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - M3.6 定向测试：`9 passed`，覆盖 import boundary、固定 fixture、DTO 不变性、Blocks 私有事件、完整主链、checkpoint 重试、非法阶段和未知 Runtime 异常脱敏。
 - M3.6 完整本地门禁：`350 passed`；domain/application/全项目 branch coverage 为 96%/94%/92%；Ruff format/check、mypy strict（136 个文件）、sdist 与 wheel 均通过，wheel 已核对包含 composition root 和全部 Demo 模块。
 - M3.6 浏览器验收：桌面端真实执行三步主链至 revision 5、`mid-writer`；`390x844` 移动视口中三步按钮单列显示，页面 `scrollWidth` 与 `clientWidth` 均为 375px，无整页横向溢出；浏览器控制台无错误，RunResult 未暴露完整知识正文。
-- 未完成能力：M3.7 跨入口退出验收仍是后续工作；M3 工作包尚未推送或取得远程 CI 证据，不能描述为已完成。
+- M3.7 跨进程证据：新增 `tests/integration/test_m3_exit_candidate.py`，从空库完成 Demo 至 revision 5，并在两次应用重建后验证治理对象、晋升重放、AgentSpec 和审计精确恢复；同一 revision 的 `spec.exported` 始终只有一条。
+- M3.7 完整本地门禁：`351 passed`；domain/application/全项目 branch coverage 为 96%/94%/92%；Ruff format/check、mypy strict（137 个文件）、sdist 与 wheel 均通过。
+- M3.7 制品证据：从 `uv.lock` 导出不含项目本体的 `[demo,llm]` 锁定依赖，在 E 盘隔离环境安装依赖后以 `--no-deps` 安装 wheel；`agent_factory.demo`、Gradio、OpenAI SDK、两个 extras 元数据和 `agent-factory-demo` 入口均验证通过。CI 已增加相同步骤。
+- 未完成证据：M3.7 尚待本地提交；M3 工作包尚未推送或取得远程 CI 证据，不能描述为已完成。

@@ -120,3 +120,14 @@ jobs:
             'agent_factory/infrastructure/sqlite/sql/006_tool_call_records.sql'
           };
           assert expected <= set(names)"
+
+      - name: Install wheel extras in an isolated environment
+        shell: bash
+        run: |
+          wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$wheel"
+          uv export --quiet --locked --extra demo --extra llm --no-dev --no-emit-project --output-file .tmp/wheel-smoke-requirements.txt
+          uv venv --python 3.11 .tmp/wheel-smoke
+          uv pip install --python .tmp/wheel-smoke/bin/python --requirement .tmp/wheel-smoke-requirements.txt
+          uv pip install --python .tmp/wheel-smoke/bin/python --no-deps "${wheel}[demo,llm]"
+          .tmp/wheel-smoke/bin/python -c "from importlib.metadata import distribution; import agent_factory.demo, gradio, openai; package = distribution('agent-factory'); extras = set(package.metadata.get_all('Provides-Extra') or ()); assert {'demo', 'llm'} <= extras; assert any(item.name == 'agent-factory-demo' and item.value == 'agent_factory.demo:main' for item in package.entry_points)"
