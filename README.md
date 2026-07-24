@@ -2,14 +2,14 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M3 已完成**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M3 退出候选提交 `d2edef7` 的 GitHub Actions CI #20 已通过。M4 尚未进入，当前安全能力仍不等同于生产公网部署能力。
+当前仓库处于 **Alpha / M4.1 已进入**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M3 退出候选提交 `d2edef7` 的 GitHub Actions CI #20 已通过。M4 聚焦当前 Alpha 的安全、回归与发布门禁，不包含公网生产部署能力。
 
 ## 核心边界
 
 - 工厂控制器是确定性代码系统，不依赖 LLM 做内部治理决策。
 - 工厂输出运行时无关的 `AgentSpec`，不替代 LangGraph、AutoGen 等运行时。
 - 知识绑定保证版本和槽位关系可验证，不保证模型一定正确使用知识。
-- 默认执行路径不接入真实 LLM：M3.5 已提供离线 `OfflineDemoRuntimeAdapter`、固定只读 `document-search`、受授权和版本约束的 `ToolExecutor`、脱敏调用记录及可选 OpenAI gateway。M3.6 的 Gradio 页面通过 SDK 完成生产与治理，通过离线 Runtime 执行固定 Writer 任务；它只绑定 loopback，不提供公网部署能力。真实模型不进入默认测试；当前 Runtime 没有租约、heartbeat、checkpoint、进程隔离或任意代码执行能力。多 Agent 协作和分布式基础设施不在 M3 范围。
+- 默认执行路径不接入真实 LLM：M3.5 已提供离线 `OfflineDemoRuntimeAdapter`、固定只读 `document-search`、受授权和版本约束的 `ToolExecutor`、脱敏调用记录及可选 OpenAI gateway。M3.6 的 Gradio 页面通过 SDK 完成生产与治理，通过离线 Runtime 执行固定 Writer 任务；它只绑定 loopback，不提供公网部署能力。真实模型不进入默认测试；当前 Runtime 没有租约、heartbeat、checkpoint、进程隔离或任意代码执行能力。多 Agent 协作和分布式基础设施不在当前 Alpha 范围。
 
 ## 本地开发
 
@@ -76,6 +76,7 @@ async with AgentFactoryClient(
 - [M1 里程碑](docs/milestones/m1-core-production-chain.md)
 - [M2 里程碑](docs/milestones/m2-skill-governance.md)
 - [M3 里程碑](docs/milestones/m3-interfaces-runtime-demo.md)
+- [M4 里程碑](docs/milestones/m4-quality-security.md)
 - [Migration Runner 设计说明](docs/design/migration-runner.md)
 - [Domain Contracts 设计说明](docs/design/domain-contracts.md)
 - [SQLite Persistence 设计说明](docs/design/sqlite-persistence.md)
@@ -88,6 +89,7 @@ async with AgentFactoryClient(
 - [Factory Tool Adapter 设计说明](docs/design/factory-tool-adapter.md)
 - [Runtime 与安全工具执行设计说明](docs/design/runtime-tool-execution.md)
 - [Gradio 演示设计说明](docs/design/gradio-demo.md)
+- [Alpha 安全、回归与发布门禁设计说明](docs/design/security-regression-gates.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)
 

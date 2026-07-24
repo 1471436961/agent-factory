@@ -14,7 +14,7 @@
 | M1 | 原型、知识、实例、AgentSpec、仓储与核心 REST | 注册、克隆、绑定、导出及重启重放测试 |
 | M2 | 技能 DAG、评估、晋升、降级与最小治理 REST | 决策、并发、回退及 HTTP 重启恢复测试 |
 | M3 | 身份边界、生命周期、SDK、Tool adapter、受限 Runtime 与 Demo | 三种入口精确重放同一结果；固定 Demo 完整跑通 |
-| M4 | 完整安全与回归门禁 | 安全测试、OpenAPI/回归快照和部署检查通过 |
+| M4 | Alpha 安全、回归与发布门禁 | 当前安全边界、OpenAPI/语义快照、事务故障和隔离制品检查通过 |
 | M5 | 对照实验与分析 | 原始数据、执行配置和统计结果可复算 |
 | M6 | 开源准备 | 新环境按文档在 30 分钟内跑通 Demo |
 
@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前状态：M3 接口、运行时与演示已于 2026-07-24 由项目 owner 验收结束，详见 [`docs/milestones/m3-interfaces-runtime-demo.md`](../milestones/m3-interfaces-runtime-demo.md)。退出候选提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 已通过；M4 尚未规划和进入。M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
+当前状态：M4.1 已于 2026-07-24 经项目 owner 确认后进入，阶段范围与退出标准见 [`docs/milestones/m4-quality-security.md`](../milestones/m4-quality-security.md)，工程门禁设计见 [`docs/design/security-regression-gates.md`](../design/security-regression-gates.md)。M3 接口、运行时与演示已于 2026-07-24 验收结束，退出候选提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 已通过。M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 

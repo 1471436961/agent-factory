@@ -174,3 +174,14 @@
    - 最终修正：M3.1 增加 `Principal`、认证端口、Alpha 静态 Bearer Token 与最小角色授权；M3.2 增加 `LifecyclePolicy`、transition Command、revision CAS、审计、幂等和 REST action；M3.3-M3.7 再依次实现 SDK、Factory Tool adapter、受限 Runtime、Gradio 与同构退出测试。静态 Token 只作为本地 Alpha 信任边界，完整认证与公网安全仍由 M4 验收。
    - 证据：`src/agent_factory/interfaces/api/dependencies.py` 当前从 `X-Actor-ID` 直接返回 actor；Controller 不存在 `transition_instance()`；`docs/architecture.md` 第 9.1-9.2 节已定义未实现的生命周期规格，第 10.9、11.2、14.6 节分别要求可信 Principal、审计授权和演示状态迁移。
    - 对后续路线的影响：M3 不从 UI 或 adapter 绕过身份、状态、幂等和审计边界；M3.1/M3.2 需先独立通过回归门禁。M4 负责安全加固而不是首次发现 actor 不可信；Engineer 可执行代码 Demo 在沙箱与工具权限单独验收前不进入 M3。
+
+1. **M4 从“完整认证与公网安全”修正为 Alpha 安全、回归与发布门禁**
+
+   - 日期：2026-07-24
+   - 里程碑：M4 规划与 M4.1 设计冻结
+   - 原判断：M3 规划纠偏曾表述“静态 Token 只作为本地 Alpha 信任边界，完整认证与公网安全仍由 M4 验收”，路线图也将 M4 概括为“完整安全与回归门禁”。
+   - 原判断的不足：当前单一静态 Bearer Token、单进程 SQLite、loopback Demo 和固定只读工具只能形成受限本地 Alpha 边界。公网生产安全还需要身份提供方、凭据生命周期、多用户/租户隔离、TLS 与代理信任、共享限流和告警、容量与高可用设计；这些不是增加回归测试即可完成的能力。
+   - 人工 review 结论：项目 owner 在审阅 M4 的范围、工作包、风险、备选方案和退出标准后，确认 M4 应以生产级工程要求验证当前 Alpha，而不宣称系统已具备公网生产部署能力。
+   - 最终修正：M4 拆分为基线冻结、公共契约与语义快照、API/Runtime 安全回归、事务并发故障注入、隔离发布制品检查和 CI 退出六个工作包。完整身份系统与公网部署能力进入后续单独的 Productionization 里程碑。
+   - 证据：[`docs/milestones/m4-quality-security.md`](docs/milestones/m4-quality-security.md)、[`docs/design/security-regression-gates.md`](docs/design/security-regression-gates.md)、[`docs/project/PROJECT_ROADMAP.md`](docs/project/PROJECT_ROADMAP.md)。
+   - 对后续路线的影响：M4 只能对当前存在的接口、只读工具和本地部署拓扑给出自动化证据；未来新增文件、网络、shell、外部写工具或公网入口时，必须先增加与其攻击面匹配的独立设计和阻断门禁。

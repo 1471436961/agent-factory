@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M3 已完成并封存，M4 尚未进入
+**当前阶段**：Alpha / M4.1 已进入，M3 已完成并封存
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)、[Gradio 演示设计说明](design/gradio-demo.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[M4 阶段文档](milestones/m4-quality-security.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)、[Gradio 演示设计说明](design/gradio-demo.md)、[Alpha 安全、回归与发布门禁设计说明](design/security-regression-gates.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -3979,13 +3979,13 @@ OpenAPI 快照发生变化时，PR 必须说明属于 PATCH、MINOR 还是 MAJOR
 
 ### 12.8 安全测试清单
 
-- 未在 `AgentSpec.tools` 中的工具返回 403，不调用 handler。
-- 输入附带未知字段返回 422。
-- 文件路径 `..`、绝对路径、符号链接逃逸均被拒绝。
-- 网络工具拒绝 `127.0.0.1`、`169.254.169.254`、RFC1918 地址和 DNS rebinding。
-- handler 超时后返回 `TOOL_TIMEOUT`，审计状态为 `timed-out`。
-- 日志捕获中不得出现测试 API key、Prompt 全文或知识正文。
+- 未配置认证时 fail-closed；缺失或错误凭据返回 401；权限不足返回 403，且均不进入 Controller 或工具 handler。
+- 请求体、Header 和 Pydantic DTO 边界拒绝超限、非法或未知字段，错误 envelope 不回显凭据和原始输入。
+- 默认 `ToolRegistry` 只包含固定只读 `document-search`；未授权、版本不符或非法参数均不调用 handler。
+- handler 超时后返回 `TOOL_TIMEOUT`，调用记录状态为 `timed-out`。
+- 日志与业务审计中不得出现测试 API key、Bearer Token、Prompt 全文、知识正文或工具参数/结果正文。
 - 同一 `Idempotency-Key` 重放只产生一个实例和一组审计事件。
+- 若未来注册文件工具，必须先通过路径规范化、绝对路径、`..`、符号链接和工作区逃逸门禁；若未来注册网络工具，必须先通过 loopback、link-local、RFC1918、IPv6、DNS rebinding 和重定向门禁。当前 M4 不宣称尚不存在的工具已经安全。
 
 ### 12.9 测试命令
 
@@ -4215,7 +4215,7 @@ class BuildSession(FrozenModel):
 | M1 核心生产链 | 原型、知识、实例、Spec、SQLite 仓储 | 注册→克隆→绑定→导出集成测试通过 |
 | M2 技能治理 | DAG、评估规则、晋升、观察期、降级 | 晋升/降级/并发冲突测试通过 |
 | M3 接口与 Demo | REST、SDK、Tool adapter、Gradio | 同一用例从三种入口得到同构对象 |
-| M4 质量保障 | 单元、集成、契约、安全测试 | CI 全绿，覆盖率达到第十二章门槛 |
+| M4 Alpha 安全、回归与发布门禁 | 公共快照、安全拒绝矩阵、事务故障、隔离制品与真实本地进程 smoke | CI 全绿，当前边界与发布证据达到第十二章门槛 |
 | M5 验证实验 | 240 次运行、分析脚本、结果报告 | 原始数据、执行计划、统计结果可复算 |
 | M6 开源准备 | README、许可证、贡献指南、版本说明 | 新环境按 README 30 分钟内跑通 Demo |
 
@@ -4314,7 +4314,10 @@ M3 的完整工作包、退出证据和安全边界以 [M3 阶段文档](milesto
 
 ### 14.7 M4-M6 规格
 
-- M4：补齐安全测试、事务故障注入、OpenAPI 快照、覆盖率门槛。
+- M4.1：冻结 Alpha 攻击面、敏感数据、写操作证据矩阵与退出标准，并重跑 M3 基线门禁。
+- M4.2-M4.4：建立 OpenAPI/稳定语义快照、安全拒绝矩阵以及事务和并发故障注入证据。
+- M4.5-M4.6：检查 sdist/wheel、package data、optional extras 和 console entry point，从隔离 wheel 启动本地独立 Uvicorn 进程，并纳入 CI。
+- M4 不实现 OIDC/JWT、多用户或租户隔离、TLS/反向代理/WAF/公网限流、PostgreSQL/分布式运行时、任意文件/shell/网络工具或不可信代码沙箱；这些能力需在单独的 Productionization 里程碑重新设计和验收。
 - M5：冻结 `experiment.yaml`，执行 240 次生成，生成 `analysis.ipynb` 或等价 Python 报告。
 - M6：删除未使用抽象，固定 `1.0.0-alpha.1`，生成架构图和 API 文档。
 

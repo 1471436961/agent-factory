@@ -158,7 +158,7 @@ FastAPI 使用 `HTTPBearer(auto_error=False, scheme_name="BearerAuth")`，让接
 
 - 一个进程配置只对应一个静态 Token 与 Principal，不支持多用户并发身份。
 - Token 没有轮换、撤销、过期和服务端持久化机制。
-- 认证失败不进入业务审计表；M4 需单独设计安全日志、限流和告警。
+- 认证失败不进入业务审计表；M4 增加独立的结构化安全日志。公网限流、共享告警和容量防护属于后续 Productionization，不以进程内限流器代替生产设计。
 - HTTP Bearer 不替代 TLS；明文 HTTP 上发送 Token 不安全。
 - 当前授权只保护 FastAPI 路由。M3.4 Tool adapter 必须接收宿主已经认证的 Principal，并复用同一 AuthorizationPolicy。
 - 当前服务仍使用单机 SQLite，不能因增加认证而宣称具备生产吞吐、租户隔离或公网部署能力。
