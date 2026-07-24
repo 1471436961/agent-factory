@@ -40,7 +40,18 @@ jobs:
         run: uv run ruff check src tests
 
       - name: Type check
-        run: uv run mypy src tests
+        shell: bash
+        run: |
+          mkdir -p .tmp
+          set +e
+          uv run mypy src tests 2>&1 | tee .tmp/mypy.log
+          status=${PIPESTATUS[0]}
+          if (( status != 0 )); then
+            while IFS= read -r line; do
+              printf '::error title=mypy::%s\n' "$line"
+            done < .tmp/mypy.log
+          fi
+          exit "$status"
 
       - name: Test and collect branch coverage
         run: uv run pytest -q --cov --cov-report=term-missing
