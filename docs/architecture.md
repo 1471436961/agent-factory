@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M3，M3.1-M3.4 已完成本地提交；M3.5 Runtime 与安全工具执行已通过完整本地质量门禁、尚待提交；M3 工作包均待推送与远程 CI
+**当前阶段**：Alpha / M3，M3.1-M3.6 已完成本地提交；M3 工作包均待推送与远程 CI
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)、[Gradio 演示设计说明](design/gradio-demo.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -4268,9 +4268,11 @@ pytest -q tests/unit
 - M3.2 已实现实例生命周期 transition、revision CAS、typed idempotency、审计与 Runtime 数据契约，并完成本地提交；推送与远程 CI 仍待完成。
 - M3.3 SDK 已覆盖全部 20 个公开 REST operation，通过完整本地门禁并完成本地提交；推送与远程 CI 仍待完成。
 - M3.4 Factory Tool adapter 已实现五项工具、可信宿主上下文、权限过滤、Pydantic Schema、稳定结果 envelope 和跨 REST/SDK/Tool 精确幂等重放，并完成本地提交；推送与远程 CI 仍待完成。
-- M3.5 已实现固定 Registry、`ToolExecutor`、脱敏 `ToolCallRecord`、`006_tool_call_records.sql`、离线 Demo Runtime、provider-neutral `ModelGateway` 和可选 OpenAI Responses adapter；`341 passed`，domain/application/全项目 branch coverage 为 96%/94%/94%，本地提交、推送与远程 CI 仍待完成。
-- Gradio 只承担演示，不导入 domain 或 repository。
-- Gradio 调用 SDK 完成生产操作；运行任务时调用默认离线的 `DemoRuntimeAdapter`。
+- M3.5 已实现固定 Registry、`ToolExecutor`、脱敏 `ToolCallRecord`、`006_tool_call_records.sql`、离线 Demo Runtime、provider-neutral `ModelGateway` 和可选 OpenAI Responses adapter；`341 passed`，domain/application/全项目 branch coverage 为 96%/94%/94%，本地提交 `fbe5d7c` 已完成，推送与远程 CI 仍待完成。
+- M3.6 已实现固定 Writer fixtures、不可变 Demo DTO、可 checkpoint 的三步 `DemoWorkflow`、本地 Gradio Blocks 页面和独立 composition root；完整本地门禁为 `350 passed`，domain/application/全项目 branch coverage 为 96%/94%/92%，Ruff、mypy strict、sdist/wheel 均通过，提交仍待完成。
+- Gradio 只承担演示，import-boundary test 禁止其直接导入 domain、Controller、Repository、SQLite 或 Container。
+- Gradio 调用 SDK 完成生产操作；运行任务时调用默认离线的 `OfflineDemoRuntimeAdapter`。评估后必须由用户显式批准 review，才可晋升 `mid-writer`。
+- 浏览器验收已覆盖桌面完整主链与 `390x844` 移动视口；移动端页面无整页横向溢出，三步操作按单列布局显示。
 - 可选 OpenAI adapter 使用官方 SDK，但真实模型调用不进入默认测试或 M3 退出门禁。
 - 可执行工具只实现固定只读 `document-search`；不实现 shell、动态代码、任意文件或任意网络工具。
 - Demo 页面显示实例 revision、原型来源、知识版本、active skill 和审计时间线。

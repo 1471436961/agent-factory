@@ -31,7 +31,7 @@ jobs:
           enable-cache: true
 
       - name: Synchronize locked dependencies
-        run: uv sync --locked --extra dev --extra test --extra llm
+        run: uv sync --locked --extra dev --extra test --extra llm --extra demo
 
       - name: Check formatting
         run: uv run ruff format --check src tests
@@ -81,6 +81,7 @@ jobs:
             'agent_factory/application/security.py',
             'agent_factory/application/tool_contracts.py',
             'agent_factory/application/tool_execution.py',
+            'agent_factory/demo.py',
             'agent_factory/sdk/__init__.py',
             'agent_factory/sdk/client.py',
             'agent_factory/sdk/errors.py',
@@ -103,6 +104,11 @@ jobs:
             'agent_factory/interfaces/factory_tools/__init__.py',
             'agent_factory/interfaces/factory_tools/adapter.py',
             'agent_factory/interfaces/factory_tools/contracts.py',
+            'agent_factory/interfaces/demo/__init__.py',
+            'agent_factory/interfaces/demo/contracts.py',
+            'agent_factory/interfaces/demo/fixtures.py',
+            'agent_factory/interfaces/demo/gradio_app.py',
+            'agent_factory/interfaces/demo/workflow.py',
             'agent_factory/infrastructure/sqlite/governance_repositories.py',
             'agent_factory/infrastructure/sqlite/repository_base.py',
             'agent_factory/infrastructure/sqlite/runtime_repositories.py',

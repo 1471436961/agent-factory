@@ -24,6 +24,9 @@ dependencies = [
   "uvicorn[standard]>=0.30,<1",
 ]
 
+[project.scripts]
+agent-factory-demo = "agent_factory.demo:main"
+
 [project.optional-dependencies]
 demo = ["gradio>=6,<7"]
 llm = ["openai>=2,<3"]

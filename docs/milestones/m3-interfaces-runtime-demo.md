@@ -120,7 +120,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 使用与 REST/SDK 相同的命令和幂等 key 验证精确对象重放与审计不重复。
 - 不在 M3 实现 MCP server；MCP 仍是未来协议适配层。
 
-### M3.5 Runtime 与安全工具执行（完整本地质量门禁通过，待提交、推送与远程 CI）
+### M3.5 Runtime 与安全工具执行（本地提交完成，待推送与远程 CI）
 
 - 定义 `ToolDefinition`、`RegisteredTool`、`ToolCallRequest`、`ToolCallRecord` 和 `ToolRegistry`。
 - `ToolExecutor` 核对 instance/revision、AgentSpec 授权、工具版本和 permission tags，再执行 Pydantic 输入净化、timeout 与输出校验。
@@ -129,7 +129,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - 实现默认离线 Demo Runtime；可选 OpenAI adapter 通过可替换 gateway 使用官方 SDK，测试只使用 fake gateway。
 - 在代码前补充 Runtime/Tool design note，并根据最终持久化需求决定 forward-only migration，不预改既有 migration。
 
-### M3.6 Gradio 演示
+### M3.6 Gradio 演示（本地提交完成，待推送与远程 CI）
 
 - Gradio 只依赖 SDK、Runtime 接口和演示 DTO，不导入 domain、Controller 或 Repository。
 - 固定 `technical-writer@1.0.0`、`agent-factory-docs@1.0.0`、`writer-skills@1.0.0` 与 `mid-writer-suite@1.0.0` 数据。
@@ -158,7 +158,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - [x] REST、SDK、Tool adapter 使用相同幂等命令时返回精确相同对象且不重复审计。
 - [x] ToolExecutor 拒绝未授权、版本不匹配和非法输入，超时与失败均有脱敏记录。
 - [x] Demo Runtime 校验 AgentSpec、revision 和知识 checksum，默认运行不访问网络。
-- [ ] Gradio 不导入 domain/Repository，并能完成固定 Writer 主链。
+- [x] Gradio 不导入 domain/Repository，并能完成固定 Writer 主链。
 - [x] 关闭并重建应用后，M3 状态、调用记录和审计可恢复。
 - [x] M1/M2 全部回归测试继续通过。
 - [x] 默认测试和本地质量门禁不需要模型 API key 或互联网访问。
@@ -195,7 +195,7 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 
 ## 9. 阶段报告
 
-当前状态：M3.1-M3.4 已完成本地提交；M3.5 已完成代码、migration、设计说明和完整本地质量门禁、尚待提交；M3 工作包均尚未推送或取得远程 CI 证据。M3.5 提供固定只读业务工具执行、离线 Runtime、provider-neutral 模型边界与可选 OpenAI gateway，不实现任意代码执行、外部写工具、沙箱、Gradio 或生产任务调度。
+当前状态：M3.1-M3.6 已完成本地提交；M3 工作包均尚未推送或取得远程 CI 证据。M3.6 通过 SDK 与离线 Runtime 串联固定 Writer 主链，不新增 REST operation、migration、真实模型默认路径或公网部署承诺。
 
 - M2 封存提交：`da4b408 docs: close M2 milestone`。
 - M2 封存远程证据：GitHub Actions [`CI #17`](https://github.com/1471436961/agent-factory/actions/runs/29930708726) 通过。
@@ -246,4 +246,11 @@ Factory Tool adapter 把工厂能力暴露给上层 Agent；`ToolExecutor` 则�
 - M3.5 覆盖率：domain 96%、application 94%、全项目 94%，均为 branch coverage。
 - M3.5 静态门禁：Ruff format/check 通过，mypy strict 通过 126 个 source/test 文件。
 - M3.5 构建门禁：sdist 与 wheel 构建通过；wheel 已核对包含 ModelGateway、Runtime、ToolExecutor、runtime repository 和 `006_tool_call_records.sql`。
-- 未完成能力：Gradio 与 M3.7 跨入口退出验收仍是后续工作包，不能描述为已有实现。
+- M3.5 本地提交：`fbe5d7c feat: add M3.5 secure runtime tool execution`。
+- M3.6 方案已由项目 owner 于 2026-07-23 确认；先冻结 [Gradio 演示设计说明](../design/gradio-demo.md)，再实施代码。
+- M3.6 代码边界：新增固定 fixtures、不可变 `DemoSession`/display DTO、三步 `DemoWorkflow`、Gradio Blocks 页面和 `agent-factory-demo` composition root；UI 包直接依赖仅限 SDK、Runtime contract 和 Demo DTO。
+- M3.6 工作流证据：空文件 SQLite 经真实 FastAPI、HTTP SDK 与离线 Runtime 完成注册、发布、克隆、知识绑定、revision 3 运行、revision 4 人工复核和 revision 5 晋升；页面只显示脱敏 RunResult 与审计投影。
+- M3.6 定向测试：`9 passed`，覆盖 import boundary、固定 fixture、DTO 不变性、Blocks 私有事件、完整主链、checkpoint 重试、非法阶段和未知 Runtime 异常脱敏。
+- M3.6 完整本地门禁：`350 passed`；domain/application/全项目 branch coverage 为 96%/94%/92%；Ruff format/check、mypy strict（136 个文件）、sdist 与 wheel 均通过，wheel 已核对包含 composition root 和全部 Demo 模块。
+- M3.6 浏览器验收：桌面端真实执行三步主链至 revision 5、`mid-writer`；`390x844` 移动视口中三步按钮单列显示，页面 `scrollWidth` 与 `clientWidth` 均为 375px，无整页横向溢出；浏览器控制台无错误，RunResult 未暴露完整知识正文。
+- 未完成能力：M3.7 跨入口退出验收仍是后续工作；M3 工作包尚未推送或取得远程 CI 证据，不能描述为已完成。
