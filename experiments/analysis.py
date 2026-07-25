@@ -72,11 +72,7 @@ class ExperimentAnalyzer:
             for population in AnalysisPopulation
             for result in self._hypothesis_results(population, aggregates)
         )
-        score_set_checksum = hashlib.sha256(
-            canonical_json_bytes(
-                [score.model_dump(mode="json") for score in ordered_scores]
-            )
-        ).hexdigest()
+        score_set_checksum = calculate_score_set_checksum(ordered_scores)
         return AnalysisSummary(
             experiment_id=self._dataset.definition.experiment_id,
             dataset_checksum=self._dataset.dataset_checksum,
@@ -474,6 +470,14 @@ class ExperimentAnalyzer:
             if interval.upper < thresholds.h4_noninferiority_margin:
                 return HypothesisDecision.NOT_SUPPORTED
         return HypothesisDecision.INSUFFICIENT_EVIDENCE
+
+
+def calculate_score_set_checksum(scores: Sequence[RunScoreRecord]) -> str:
+    """Hash plan-ordered score evidence without depending on storage layout."""
+
+    return hashlib.sha256(
+        canonical_json_bytes([score.model_dump(mode="json") for score in scores])
+    ).hexdigest()
 
 
 def _omission_effect(

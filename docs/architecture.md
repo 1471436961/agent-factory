@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.4 评分与分析流水线实现中，M5.4.4 可验证报告产物已完成；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.4 评分与分析流水线已完成，下一步进入 M5.5 Pilot 与正式冻结；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4104,6 +4104,8 @@ M5.4.3 新增 `AnalysisConfig`、`TaskConditionAggregate`、`ConfidenceInterval`
 
 M5.4.4 新增 `AnalysisArtifactFile`、`AnalysisArtifactManifest` 与 `AnalysisReportPublisher`。发布路径为 `analysis/<experiment_id>/<sha256_model(summary)>/`；其中 `summary.json` 是机器事实源，`metrics.csv` 与 `report.md` 是确定性派生展示。三个数据文件先通过 `ArtifactStore` write-once 发布，`artifact-manifest.json` 最后发布并记录文件媒体类型、长度和 SHA-256。验证时必须重新读取 summary、重算 analysis checksum，并逐字节重渲染 CSV/Markdown，不能只相信 manifest 中的摘要。
 
+M5.4.5 新增只读 `ExperimentEvidenceLoader`、`ScoreArtifactManifest`、`ScoreArtifactPublisher` 和 `OfflineAnalysisPipeline`。加载器按计划核对 execution manifest、request、attempt journal、terminal run 及完整文件集合，不使用具有恢复写入行为的执行器。评分记录先写入 `scores/<experiment_id>/<execution_manifest_checksum>/records/`，`score-manifest.json` 最后提交；流水线只从已验证的磁盘评分继续分析，并要求报告中的 `score_set_checksum` 与评分 Manifest 一致。`python -m experiments analyze` 不包含 provider 或 live 参数。
+
 ### 13.3 实验规模与分组
 
 - 任务：6 个虚构领域，每个领域 2 个一致性任务和 2 个适应性任务，共 24 个。
@@ -4232,7 +4234,7 @@ H5 使用独立确定性验证记录。验证器必须从 Prototype、Knowledge�
 
 结论分为“支持”“不支持”“证据不足”，不使用“证明框架更优”这类超出实验范围的表述。分析实现必须是可测试的 Python 模块，notebook 不能成为唯一计算来源。M5.5 冻结 provider、模型、价格快照、请求/token/成本上限后，仍须由项目 owner 明确批准，M5.6 才能执行真实调用；默认测试和 CI 始终使用 fake gateway。
 
-当前 `experiments/analysis.py` 已实现上述主要指标。Bootstrap 不使用 Python PRNG，而是对 seed、命题、population、scenario、replicate 和 draw 计算 SHA-256，并用 rejection sampling 生成无直接取模偏差的 task 索引。H2 的 MANUAL 遗漏率零分母会显式计入 invalid replicate；有效比例低于 95% 时结论为“证据不足”，同时保留绝对遗漏率差区间。`experiments/reporting.py` 已实现 content-addressed、manifest-last 的 write-once 报告 package，但尚未实现从 terminal run 自动发现、评分、分析到发布的一键 M5.4.5 编排，也尚未读取真实模型数据。
+当前 `experiments/analysis.py` 已实现上述主要指标。Bootstrap 不使用 Python PRNG，而是对 seed、命题、population、scenario、replicate 和 draw 计算 SHA-256，并用 rejection sampling 生成无直接取模偏差的 task 索引。H2 的 MANUAL 遗漏率零分母会显式计入 invalid replicate；有效比例低于 95% 时结论为“证据不足”，同时保留绝对遗漏率差区间。`experiments/pipeline.py` 已将完整 journal 校验、评分 Manifest、统计分析和 content-addressed 报告发布串成一键离线复算，但尚未读取真实模型数据。
 
 
 ---
@@ -4352,7 +4354,7 @@ M3 的完整工作包、退出证据和安全边界以 [M3 阶段文档](milesto
 - M4 不实现 OIDC/JWT、多用户或租户隔离、TLS/反向代理/WAF/公网限流、PostgreSQL/分布式运行时、任意文件/shell/网络工具或不可信代码沙箱；这些能力需在单独的 Productionization 里程碑重新设计和验收。
 - M5.1-M5.2：冻结证据类型与协议，实现实验模型、24 个合成知识 Writer 任务和确定性 rubric。
 - M5.3：实现 240 项固定执行计划、条件公平性验证、不可变 attempt journal、有限重试、保守 token/request 预算和失败恢复。
-- M5.4：实现确定性评分和可测试 Python 分析模块。
+- M5.4：实现确定性评分、只读证据回放、评分 Manifest、可测试 Python 分析模块和一键离线报告发布。
 - M5.5：使用与正式数据隔离的 pilot 校准协议，并冻结模型、SDK、价格快照、请求/token/成本上限及 manifest。
 - M5.6：仅在项目 owner 明确批准冻结配置与预算后执行 240 次真实生成，并生成盲化人工评审包。
 - M5.7：从原始产物复算 H1/H2/H4，单独报告 H3 探索性构建案例和 H5 确定性审计验证；notebook 不作为唯一计算来源。
@@ -4440,7 +4442,8 @@ agent-factory/
 │   │   ├── tasks/
 │   │   └── rubrics/
 │   ├── runs/          # 本地执行产物，默认不进入 Git
-│   └── analysis/      # M5.4
+│   ├── scores/        # M5.4 逐 run 评分与提交 Manifest
+│   └── analysis/      # M5.4 汇总、CSV、Markdown 与提交 Manifest
 ├── pyproject.toml
 ├── README.md
 └── .env.example

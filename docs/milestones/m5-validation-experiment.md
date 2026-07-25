@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.3 已实现，M5.4 已进入且 M5.4.4 可验证报告产物已实现。
+- 状态：进行中；M5.1-M5.4 已实现，下一工作包为 M5.5 Pilot、校准与正式冻结。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
@@ -151,7 +151,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] M5.1 阶段文档与实验协议建立。
 - [x] M5.2 实验模型、24 个任务和冻结 rubric 通过离线测试。
 - [x] M5.3 执行计划、条件公平性、不可变产物和恢复机制通过离线故障测试。
-- [ ] M5.4 评分与分析可由 fixture 完整复算。
+- [x] M5.4 评分与分析可由 fixture 完整复算。
 - [ ] M5.5 pilot 完成，正式配置、预算和 manifest 经人工冻结。
 - [ ] M5.6 正式调用经人工批准并完整执行。
 - [ ] M5.7 报告、原始数据和复算证据完成。
@@ -159,7 +159,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.4 已实现离线评分、task 配对分析和可验证报告发布。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是 M5.4.5：把 terminal run 发现、完整评分、分析和报告发布串成可重复执行的离线命令。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是 M5.5：使用隔离 pilot 校准调用协议，并由项目 owner 人工冻结正式模型、SDK、价格、预算和 Manifest。
 
 ## 10. M5.2 实现证据
 
@@ -234,3 +234,13 @@ M5.4.3 定向分析测试为 `16 passed`；完整实验门禁为 `124 passed`，
 - 多文件发布不是单次文件系统事务，完整性依赖 manifest-last 协议。本地 checksum 不能防止管理员同时改写 summary、展示文件与 manifest；正式归档仍需要外部 checksum 清单、只读权限或对象锁。
 
 M5.4.4 定向报告测试为 `11 passed`；完整实验门禁为 `135 passed`，`experiments` 分支覆盖率 93%，其中 `reporting.py` 为 100%；全量回归为 `544 passed`。Ruff format、Ruff lint 与全量 mypy strict 均通过。测试覆盖幂等重放、同身份冲突、manifest-last 中断恢复、digest 篡改、manifest 身份错位、summary 身份错位、同步篡改后的重新渲染校验和 24 task / 96 aggregate 输出规模。这些产物均由合成 `AnalysisSummary` 生成，不是正式实验报告。
+
+## 16. M5.4.5 一键离线复算
+
+- `ExperimentEvidenceLoader` 按冻结计划读取 `execution-manifest.json`、240 个 request、完整 attempt intent/completion journal 和 terminal run，并交叉校验 execution identity、generation、Prompt/知识来源、token reservation、重试顺序和时间关系。它不调用 `ExperimentExecutor`，因此不会补写中断结果或触发 provider。
+- `ArtifactStore.list_files()` 对实验目录执行最多 10,000 个普通文件的稳定枚举，拒绝符号链接；加载器据此拒绝缺失和计划外产物。该检查防止孤立或额外 terminal 文件被静默忽略，但不抵御拥有本地管理权限的同步篡改。
+- 每个 `RunScoreRecord` 先发布到 `scores/<experiment_id>/<execution_manifest_checksum>/records/`，`score-manifest.json` 最后发布并绑定 dataset、plan、execution manifest、逐 run checksum、逐 score checksum 和规范 `score_set_checksum`。中断时不存在 commit marker，使用相同输入可幂等补齐。
+- `OfflineAnalysisPipeline` 从磁盘重新读取并校验已发布评分，再执行 `ExperimentAnalyzer` 和 `AnalysisReportPublisher`；`AnalysisSummary.score_set_checksum` 必须与评分 Manifest 一致。CLI `python -m experiments analyze` 不接受 provider、API key 或 live 开关，只能执行离线派生计算。
+- 完整 fake journal 测试覆盖 240 个 terminal run、240 条评分、96 个 aggregate、6 个 hypothesis、Manifest 中断恢复、逐字节重放、journal/score 篡改和来源变化冲突。fake 输入只证明工程复算链路，不构成 H1-H5 的模型质量证据。
+
+M5.4.5 的 CI 同构 experiment 门禁为 `149 passed`，`experiments` 分支覆盖率 92.99%，其中 `score_artifacts.py` 为 98%；全仓回归为 `558 passed`。Ruff format、Ruff lint、全量 mypy strict 和契约快照检查均通过。测试执行没有网络请求或真实模型调用。

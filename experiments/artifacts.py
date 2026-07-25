@@ -14,6 +14,7 @@ from pydantic import BaseModel, ValidationError
 from agent_factory.domain.common import canonical_json_bytes
 
 _MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
+_MAX_LISTED_ARTIFACTS = 10_000
 _ModelT = TypeVar("_ModelT", bound=BaseModel)
 PublishHook = Callable[[Path, Path], None]
 
@@ -122,6 +123,43 @@ class ArtifactStore:
         if path.is_symlink():
             raise ArtifactStoreError("artifact target cannot be a symbolic link")
         return path.is_file()
+
+    def list_files(self, relative_prefix: str) -> tuple[str, ...]:
+        """List bounded regular files below one in-root directory."""
+
+        directory = self._target(relative_prefix, create_parent=False)
+        if not directory.exists():
+            return ()
+        if directory.is_symlink():
+            raise ArtifactStoreError("artifact directory cannot be a symbolic link")
+        if not directory.is_dir():
+            raise ArtifactStoreError("artifact prefix must be a directory")
+
+        files: list[str] = []
+        pending = [directory]
+        try:
+            while pending:
+                current = pending.pop()
+                for child in sorted(current.iterdir(), key=lambda item: item.name):
+                    if child.is_symlink():
+                        raise ArtifactStoreError(
+                            "artifact tree cannot contain symbolic links"
+                        )
+                    if child.is_dir():
+                        pending.append(child)
+                        continue
+                    if not child.is_file():
+                        raise ArtifactStoreError(
+                            "artifact tree contains a non-regular entry"
+                        )
+                    files.append(child.relative_to(self._root).as_posix())
+                    if len(files) > _MAX_LISTED_ARTIFACTS:
+                        raise ArtifactStoreError("artifact listing exceeds file limit")
+        except ArtifactStoreError:
+            raise
+        except OSError as exc:
+            raise ArtifactStoreError("artifact tree cannot be listed") from exc
+        return tuple(sorted(files))
 
     def _verify_replay(self, target: Path, expected: bytes) -> bool:
         if target.is_symlink():

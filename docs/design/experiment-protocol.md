@@ -384,4 +384,18 @@ M5.4.3 完整实验门禁为 `124 passed`，`experiments` 分支覆盖率 93%，
 
 验证器先核对 manifest 与 package 路径的 experiment/analysis 身份，再核对三个文件的长度与 checksum，并读取规范化 `AnalysisSummary` 重算 analysis checksum。最后重新渲染 CSV 和 Markdown 并逐字节比较。因此，仅同步改写展示文件和 manifest 仍不能伪装成由 summary 生成的展示结果；若管理员同时修改所有文件和 summary，本地 package 仍缺少外部签名提供的防篡改保证。
 
-M5.4.4 完整实验门禁为 `135 passed`，`experiments` 分支覆盖率 93%，`reporting.py` 覆盖率 100%；全量回归为 `544 passed`。当前尚无从 terminal run 到 report 的一键 CLI，也没有正式模型数据；M5.4.5 将补齐离线复算编排。
+M5.4.4 完整实验门禁为 `135 passed`，`experiments` 分支覆盖率 93%，`reporting.py` 覆盖率 100%；全量回归为 `544 passed`。该工作包没有读取正式模型数据。
+
+## 19. M5.4.5 只读证据回放与评分提交
+
+`ExperimentEvidenceLoader` 是独立于执行器的只读边界。它按 `ExecutionPlan.execution_order` 加载 execution manifest、request、attempt intent/completion 和 terminal run，逐层核对 run/manifest/plan identity、generation、Prompt hash、知识 checksum、AgentSpec 来源、token reservation、重试顺序与时间关系。分析入口不得调用 `ExperimentExecutor.execute()`，因为执行器在孤立 intent 后会补写 `RESULT_UNKNOWN_AFTER_INTERRUPTION`，这与离线复算不得修改原始证据的要求冲突。
+
+加载器使用 `ArtifactStore.list_files()` 比较计划期望文件集合和实际普通文件集合。枚举上限为 10,000，结果按 root-relative POSIX 路径排序，目录树中出现符号链接或特殊文件即失败。固定计划中缺少 request/terminal/attempt，或出现计划外 terminal 和孤立 journal，都在评分前拒绝。
+
+评分 package 路径为 `scores/<experiment_id>/<execution_manifest_checksum>/`。240 个 `RunScoreRecord` 先写入 `records/<run_id>.json`，最后写 `score-manifest.json` 作为提交标志。`ScoreArtifactManifest` 绑定 dataset、plan、execution manifest、run count、连续 execution order、逐 run checksum、逐 score checksum、字节数和整个规范评分集合的 checksum。验证器从磁盘读取每条评分后重新计算这些身份；原 terminal run 改变时，同一 package 路径上的 write-once 冲突阻止新证据覆盖旧评分。
+
+`OfflineAnalysisPipeline.run()` 的固定顺序是 `journal validation -> deterministic scoring -> score package commit -> persisted score verification -> paired analysis -> report package commit`。`python -m experiments analyze --runs-root <runs> --output-root <derived>` 是该流水线的唯一 CLI 入口，不包含 provider、凭据、live switch 或网络配置。相同完整输入和 `AnalysisConfig` 必须产生逐字节相同的 score/report package；缺少评分 Manifest 或报告 Manifest 的目录都只属于可恢复的未提交产物。
+
+该链路可以证明“报告可由指定本地执行证据重复派生”，不能证明 fake run 是正式实验，也不能防止本地管理员同步改写全部文件和 checksum。正式 M5.6 仍必须由 M5.5 冻结 Manifest、外部归档和项目 owner 审批建立证据身份。
+
+M5.4.5 的 CI 同构 experiment 门禁为 `149 passed`，分支覆盖率 92.99%；全仓回归为 `558 passed`。完整链路测试使用 fake gateway 生成的合成终态，只验证 240-run 工程规模、恢复语义和可重复派生，不产生正式实验结论。

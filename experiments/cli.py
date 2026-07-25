@@ -1,4 +1,4 @@
-"""Offline-only command line entry points for M5.3 infrastructure."""
+"""Offline-only command line entry points for M5 experiment workflows."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from agent_factory.domain.models import AgentSpec, KnowledgeRef, PrototypeRef
 from agent_factory.domain.services.spec import checksum_agent_spec
 from experiments.artifacts import ArtifactStore
 from experiments.contracts import (
+    AnalysisConfig,
     ExecutionLimits,
     ExperimentCondition,
     ExperimentTask,
@@ -23,6 +24,7 @@ from experiments.contracts import (
 from experiments.executor import ExperimentExecutor
 from experiments.gateway import FakeExperimentGateway
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
+from experiments.pipeline import OfflineAnalysisPipeline
 from experiments.planning import (
     build_execution_manifest,
     build_execution_plan,
@@ -95,6 +97,17 @@ def build_parser() -> argparse.ArgumentParser:
     smoke.add_argument("--plan", type=Path)
     smoke.add_argument("--output-root", type=Path, required=True)
     smoke.add_argument("--max-items", type=int, default=4)
+
+    analyze = subcommands.add_parser(
+        "analyze",
+        help="validate complete execution evidence and publish offline analysis",
+    )
+    _add_definition_root(analyze)
+    analyze.add_argument("--plan", type=Path)
+    analyze.add_argument("--runs-root", type=Path, required=True)
+    analyze.add_argument("--output-root", type=Path, required=True)
+    analyze.add_argument("--bootstrap-seed", type=int)
+    analyze.add_argument("--bootstrap-iterations", type=int, default=10_000)
     return parser
 
 
@@ -115,6 +128,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "verify-plan":
         print(
             f"verified {plan_path} runs={len(plan.items)} sha256={plan.plan_checksum}"
+        )
+        return 0
+    if args.command == "analyze":
+        config = AnalysisConfig(
+            bootstrap_seed=(
+                dataset.definition.randomization_seed
+                if args.bootstrap_seed is None
+                else args.bootstrap_seed
+            ),
+            bootstrap_iterations=args.bootstrap_iterations,
+        )
+        result = OfflineAnalysisPipeline(
+            dataset=dataset,
+            plan=plan,
+            run_store=ArtifactStore(args.runs_root),
+            output_store=ArtifactStore(args.output_root),
+            config=config,
+        ).run()
+        print(
+            "offline analysis published: "
+            f"runs={result.score_manifest.run_count} "
+            f"score_set_sha256={result.score_manifest.score_set_checksum} "
+            f"analysis_sha256={result.analysis_manifest.analysis_checksum}"
         )
         return 0
     return asyncio.run(

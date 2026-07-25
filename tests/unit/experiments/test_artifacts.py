@@ -59,6 +59,28 @@ def test_artifact_store_rejects_escape_missing_and_invalid_size(tmp_path: Path) 
     assert store.exists("not-created/result.json") is False
 
 
+def test_artifact_store_lists_only_sorted_root_relative_regular_files(
+    tmp_path: Path,
+) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    store.write_bytes_once("runs/z.json", b"{}\n")
+    store.write_bytes_once("runs/nested/a.json", b"{}\n")
+
+    assert store.list_files("runs") == (
+        "runs/nested/a.json",
+        "runs/z.json",
+    )
+    assert store.list_files("missing") == ()
+
+
+def test_artifact_store_listing_rejects_file_prefix(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    store.write_bytes_once("runs/result.json", b"{}\n")
+
+    with pytest.raises(ArtifactStoreError, match="prefix must be a directory"):
+        store.list_files("runs/result.json")
+
+
 def test_artifact_store_rejects_file_root(tmp_path: Path) -> None:
     root = tmp_path / "root-file"
     root.write_text("not a directory", encoding="utf-8")
@@ -119,3 +141,19 @@ def test_symbolic_link_target_is_rejected_when_supported(tmp_path: Path) -> None
 
     with pytest.raises(ArtifactStoreError, match="symbolic link"):
         store.read_bytes("linked.json")
+
+
+def test_symbolic_link_in_listing_is_rejected_when_supported(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    directory = store.root / "runs"
+    directory.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("outside", encoding="utf-8")
+    link = directory / "linked.json"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("symbolic links are unavailable for this Windows account")
+
+    with pytest.raises(ArtifactStoreError, match="symbolic links"):
+        store.list_files("runs")

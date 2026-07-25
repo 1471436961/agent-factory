@@ -746,6 +746,49 @@ class RunScoreRecord(FrozenModel):
             raise ValueError("deterministic quality score does not match checks")
 
 
+class ScoreArtifactRecord(FrozenModel):
+    run_id: UUID
+    execution_order: PositiveInt
+    path: ArtifactPath
+    run_checksum: Sha256
+    score_checksum: Sha256
+    byte_size: PositiveInt
+
+    @model_validator(mode="after")
+    def path_must_match_run_identity(self) -> Self:
+        if self.path != f"records/{self.run_id}.json":
+            raise ValueError("score artifact path does not match run identity")
+        return self
+
+
+class ScoreArtifactManifest(FrozenModel):
+    schema_version: Literal["1.0"] = "1.0"
+    scorer_version: Literal["1.0"] = "1.0"
+    experiment_id: Slug
+    dataset_checksum: Sha256
+    plan_checksum: Sha256
+    execution_manifest_checksum: Sha256
+    score_set_checksum: Sha256
+    run_count: PositiveInt
+    records: Annotated[
+        tuple[ScoreArtifactRecord, ...],
+        Field(min_length=1, max_length=10_000),
+    ]
+
+    @model_validator(mode="after")
+    def records_must_be_unique_complete_and_ordered(self) -> Self:
+        if len(self.records) != self.run_count:
+            raise ValueError("score artifact count does not match run_count")
+        run_ids = [item.run_id for item in self.records]
+        paths = [item.path for item in self.records]
+        orders = [item.execution_order for item in self.records]
+        if len(run_ids) != len(set(run_ids)) or len(paths) != len(set(paths)):
+            raise ValueError("score artifacts contain duplicate identities")
+        if orders != list(range(1, self.run_count + 1)):
+            raise ValueError("score artifacts must use contiguous execution order")
+        return self
+
+
 class AnalysisConfig(FrozenModel):
     schema_version: Literal["1.0"] = "1.0"
     analyzer_version: Literal["1.0"] = "1.0"
