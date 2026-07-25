@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from enum import StrEnum
 from typing import Annotated, Literal, Self, cast
@@ -23,6 +24,7 @@ from agent_factory.domain.common import (
     SemVer,
     Sha256,
     Slug,
+    canonical_json_bytes,
 )
 from agent_factory.domain.enums import AuditEventType
 
@@ -272,6 +274,19 @@ class GenerationConfig(FrozenModel):
     concurrency: int = Field(default=1, ge=1, le=16)
 
 
+class ExecutionLimits(FrozenModel):
+    max_provider_requests: PositiveInt
+    max_prompt_tokens: PositiveInt
+    max_completion_tokens: PositiveInt
+    prompt_tokens_per_attempt_upper_bound: PositiveInt
+
+    @model_validator(mode="after")
+    def per_attempt_reservation_must_fit_total(self) -> Self:
+        if self.prompt_tokens_per_attempt_upper_bound > self.max_prompt_tokens:
+            raise ValueError("per-attempt prompt reservation exceeds total limit")
+        return self
+
+
 class ExecutionPlanItem(FrozenModel):
     run_id: UUID
     condition: ExperimentCondition
@@ -305,13 +320,110 @@ class ExecutionPlan(FrozenModel):
         return self
 
 
+class ExecutionManifest(FrozenModel):
+    schema_version: Literal["1.0"] = "1.0"
+    experiment_id: Slug
+    dataset_checksum: Sha256
+    plan_checksum: Sha256
+    condition_bundle_checksum: Sha256
+    generation: GenerationConfig
+    limits: ExecutionLimits
+    manifest_checksum: Sha256
+
+    @model_validator(mode="after")
+    def m5_3_requires_sequential_execution(self) -> Self:
+        if self.generation.concurrency != 1:
+            raise ValueError("M5.3 executor supports concurrency=1 only")
+        return self
+
+
+class RenderedInvocation(FrozenModel):
+    renderer_version: Literal["1.0"] = "1.0"
+    condition: ExperimentCondition
+    task_id: Slug
+    instructions: str = Field(min_length=1, max_length=64_000)
+    task_input: str = Field(min_length=1, max_length=128_000)
+    output_schema: JsonObject | None = None
+    knowledge_checksum: Sha256
+    agent_spec_checksum: Sha256 | None = None
+    prompt_hash: Sha256
+
+    @model_validator(mode="after")
+    def provenance_must_match_condition(self) -> Self:
+        if self.condition is ExperimentCondition.FACTORY:
+            if self.agent_spec_checksum is None or self.output_schema is None:
+                raise ValueError("FACTORY invocation requires AgentSpec provenance")
+        elif self.agent_spec_checksum is not None:
+            raise ValueError("MANUAL invocation cannot claim AgentSpec provenance")
+        visible = {
+            "instructions": self.instructions,
+            "task_input": self.task_input,
+            "output_schema": self.output_schema,
+        }
+        expected_hash = hashlib.sha256(canonical_json_bytes(visible)).hexdigest()
+        if self.prompt_hash != expected_hash:
+            raise ValueError("rendered invocation prompt_hash does not match")
+        return self
+
+
+class ExperimentRunRequest(FrozenModel):
+    run_id: UUID
+    experiment_id: Slug
+    manifest_checksum: Sha256
+    plan_checksum: Sha256
+    condition: ExperimentCondition
+    task_id: Slug
+    repetition: int = Field(ge=1, le=20)
+    execution_order: PositiveInt
+    generation: GenerationConfig
+    invocation: JsonObject
+    prompt_hash: Sha256
+    knowledge_checksum: Sha256
+    agent_spec_checksum: Sha256 | None = None
+    started_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def agent_spec_provenance_must_match_condition(self) -> Self:
+        if (
+            self.condition is ExperimentCondition.FACTORY
+            and self.agent_spec_checksum is None
+        ):
+            raise ValueError("FACTORY run request requires AgentSpec provenance")
+        if (
+            self.condition is ExperimentCondition.MANUAL
+            and self.agent_spec_checksum is not None
+        ):
+            raise ValueError("MANUAL run request cannot claim AgentSpec provenance")
+        expected_hash = hashlib.sha256(
+            canonical_json_bytes(self.invocation)
+        ).hexdigest()
+        if self.prompt_hash != expected_hash:
+            raise ValueError("run request prompt_hash does not match invocation")
+        return self
+
+
+class AttemptIntent(FrozenModel):
+    run_id: UUID
+    manifest_checksum: Sha256
+    attempt_number: int = Field(ge=1, le=3)
+    prompt_hash: Sha256
+    reserved_prompt_tokens: PositiveInt
+    reserved_completion_tokens: PositiveInt
+    backoff_seconds: float = Field(ge=0, le=300)
+    started_at: AwareDatetime
+
+
 class RunAttempt(FrozenModel):
     attempt_number: int = Field(ge=1, le=3)
     status: AttemptStatus
     provider_request_id: str | None = Field(default=None, min_length=1, max_length=256)
     response: JsonObject | None = None
+    error_response: JsonObject | None = None
+    output_text: str | None = Field(default=None, max_length=256_000)
+    structured_output: JsonObject | None = None
     prompt_tokens: int | None = Field(default=None, ge=0)
     completion_tokens: int | None = Field(default=None, ge=0)
+    retryable: bool = False
     error_code: str | None = Field(
         default=None,
         min_length=1,
@@ -326,16 +438,35 @@ class RunAttempt(FrozenModel):
         if self.completed_at < self.started_at:
             raise ValueError("attempt completed_at must not precede started_at")
         if self.status is AttemptStatus.SUCCEEDED:
-            if self.response is None or self.error_code is not None:
+            if (
+                self.response is None
+                or self.error_code is not None
+                or self.error_response is not None
+                or self.output_text is None
+                or self.structured_output is None
+                or self.retryable
+            ):
                 raise ValueError("successful attempt requires response without error")
-        elif self.error_code is None or self.response is not None:
+        elif (
+            self.error_code is None
+            or self.response is not None
+            or self.output_text is not None
+            or self.structured_output is not None
+        ):
             raise ValueError("failed attempt requires error without response")
         return self
+
+
+class AttemptCompletion(FrozenModel):
+    run_id: UUID
+    manifest_checksum: Sha256
+    attempt: RunAttempt
 
 
 class ExperimentRun(FrozenModel):
     run_id: UUID
     experiment_id: Slug
+    manifest_checksum: Sha256
     plan_checksum: Sha256
     condition: ExperimentCondition
     task_id: Slug
@@ -376,6 +507,11 @@ class ExperimentRun(FrozenModel):
         if self.status is RunStatus.SUCCEEDED:
             if self.structured_output is None or self.output_text is None:
                 raise ValueError("successful run requires final structured output")
+            if (
+                self.output_text != self.attempts[-1].output_text
+                or self.structured_output != self.attempts[-1].structured_output
+            ):
+                raise ValueError("run output must match its final attempt")
         elif self.structured_output is not None or self.output_text is not None:
             raise ValueError("failed run cannot contain final output")
         return self

@@ -3,6 +3,7 @@
 from experiments.contracts import (
     AuditVerificationRecord,
     BuildSession,
+    ExecutionManifest,
     ExecutionPlan,
     ExperimentCondition,
     ExperimentDefinition,
@@ -11,18 +12,24 @@ from experiments.contracts import (
     ExperimentTask,
     MetricRecord,
 )
+from experiments.executor import ExperimentExecutor
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
+from experiments.planning import build_execution_plan, load_execution_plan
 
 __all__ = [
     "AuditVerificationRecord",
     "BuildSession",
+    "ExecutionManifest",
     "ExecutionPlan",
     "ExperimentCondition",
     "ExperimentDefinition",
+    "ExperimentExecutor",
     "ExperimentRun",
     "ExperimentScenario",
     "ExperimentTask",
     "LoadedExperimentDataset",
     "MetricRecord",
+    "build_execution_plan",
+    "load_execution_plan",
     "load_experiment_dataset",
 ]

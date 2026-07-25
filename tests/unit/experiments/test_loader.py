@@ -10,6 +10,7 @@ from typing import cast
 
 import pytest
 import yaml  # type: ignore[import-untyped]
+
 from experiments.contracts import ExperimentScenario
 from experiments.loader import (
     ExperimentFixtureError,

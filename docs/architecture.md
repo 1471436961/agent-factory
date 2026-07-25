@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.2 实验契约与冻结 Writer fixture 已实现，M5.3 尚未进入；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.3 离线实验执行基础设施已实现，M5.4 尚未进入；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4016,7 +4016,7 @@ H1、H2、H4 的阈值在首次正式运行前写入实验配置并冻结，不�
 
 ### 13.2 实验模型
 
-M5.2 已在仓库级 [`experiments/contracts.py`](../experiments/contracts.py) 实现严格模型。该 package 属于研究与复算基础设施，不进入 `src/agent_factory`、运行时 wheel、Container、REST 或 SDK。完整字段和校验以源码为准，核心关系如下：
+M5.2-M5.3 已在仓库级 [`experiments/contracts.py`](../experiments/contracts.py) 实现严格模型。该 package 属于研究与复算基础设施，不进入 `src/agent_factory`、运行时 wheel、Container、REST 或 SDK。完整字段和校验以源码为准，核心关系如下：
 
 ```python
 class KnowledgeFixture(FrozenModel):
@@ -4049,8 +4049,12 @@ class RunAttempt(FrozenModel):
     status: AttemptStatus
     provider_request_id: str | None
     response: JsonObject | None
+    error_response: JsonObject | None
+    output_text: str | None
+    structured_output: JsonObject | None
     prompt_tokens: int | None
     completion_tokens: int | None
+    retryable: bool
     error_code: str | None
     started_at: AwareDatetime
     completed_at: AwareDatetime
@@ -4059,6 +4063,7 @@ class RunAttempt(FrozenModel):
 class ExperimentRun(FrozenModel):
     run_id: UUID
     experiment_id: Slug
+    manifest_checksum: Sha256
     plan_checksum: Sha256
     condition: ExperimentCondition
     task_id: Slug
@@ -4089,7 +4094,7 @@ class MetricRecord(FrozenModel):
     human_quality_score: float | None
 ```
 
-`RunAttempt` 强制成功记录具有响应且无错误，失败记录具有错误且无响应；`ExperimentRun` 强制终态与最后一次 attempt 一致，`budget-stopped` 不得伪造供应商调用或最终输出；`MetricRecord` 只允许成功 run 携带确定性或人工质量分数。M5.2 只实现这些契约，原始请求、响应和失败 attempt 的原子写入、拒绝覆盖与恢复属于 M5.3。
+`RunAttempt` 强制成功记录同时具有原始响应、文本输出和结构化输出且无错误；失败记录具有错误码、可选原始错误响应且无成功输出。`ExperimentRun` 强制终态与最后一次 attempt 一致，`budget-stopped` 不得伪造供应商调用或最终输出；`MetricRecord` 只允许成功 run 携带确定性或人工质量分数。M5.3 进一步使用 `ExperimentRunRequest`、`AttemptIntent`、`AttemptCompletion` 和 `ExecutionManifest` 将 provider-visible 输入、调用前意图、调用后结果和技术执行身份分别落盘。
 
 ### 13.3 实验规模与分组
 
@@ -4099,32 +4104,46 @@ class MetricRecord(FrozenModel):
 - MANUAL 组使用正式运行前冻结的人工 system prompt 并手动拼接知识，运行期间不根据输出调优。
 - FACTORY 组必须经过注册 Writer 原型、注册知识、克隆、绑定和导出 `AgentSpec` 的真实生产链，再由条件适配器渲染模型输入。
 - 两组的用户任务和模型实际可见知识正文必须字节级一致；差别只允许是生产工作流和该工作流产生的结构化约束。
-- 执行顺序使用固定随机种子打乱并交替两组，减少模型服务时间漂移。
+- 执行顺序使用固定随机种子做确定性混排，使两组分布在同一执行窗口；当前不承诺逐项严格交替，模型服务时间漂移仍属于效度威胁。
 - 若供应商不支持 seed，记录为 null，不声称输出可复现，只保证实验配置可追溯。
 - Pilot 使用独立 experiment ID、任务和 run ID 命名空间，不进入 240 次正式结果。
 
 ### 13.4 随机化
 
 ```python
-import random
+import hashlib
 
 
-def build_execution_plan(
-    tasks: tuple[ExperimentTask, ...],
-    repetitions: int,
+def coordinate_priority(
     seed: int,
-) -> list[tuple[ExperimentCondition, str, int]]:
-    plan = [
-        (condition, task.task_id, repetition)
-        for task in tasks
-        for repetition in range(1, repetitions + 1)
-        for condition in ExperimentCondition
-    ]
-    random.Random(seed).shuffle(plan)
-    return plan
+    condition: ExperimentCondition,
+    task_id: str,
+    repetition: int,
+) -> bytes:
+    payload = canonical_json_bytes(
+        {
+            "seed": seed,
+            "condition": condition.value,
+            "task_id": task_id,
+            "repetition": repetition,
+        }
+    )
+    return hashlib.sha256(payload).digest()
+
+
+coordinates.sort(
+    key=lambda item: (
+        coordinate_priority(randomization_seed, *item),
+        item[0].value,
+        item[1],
+        item[2],
+    )
+)
 ```
 
-实验计划生成后保存 `execution-plan.json` 并计算 SHA-256；运行中不得增删任务。`run_id` 由 experiment、condition、task 和 repetition 确定性生成，与执行顺序分离。失败请求按原位置最多重试 2 次，每次 attempt 均保留错误类别和供应商 request ID；已有终态 run 只能校验并跳过，不能覆盖。
+实验计划生成后以规范化 JSON 保存并计算 SHA-256；当前 240 项计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。hash-sort 不依赖 Python `random` 的具体实现。`run_id` 由固定 namespace 下的 UUID5 根据 experiment、condition、task 和 repetition 确定性生成，与执行顺序分离。失败请求按原位置最多重试 2 次，每次 attempt 均保留错误类别、原始错误响应和供应商 request ID；已有终态 run 只能校验并跳过，不能覆盖。
+
+M5.3 的 write-once journal 路径为 `requests/<run_id>.json`、`attempts/<run_id>/<NNN>-started.json`、`<NNN>-completed.json` 和 `terminal/<run_id>.json`。调用 gateway 前先写 intent；恢复时若只有 intent，则生成 `RESULT_UNKNOWN_AFTER_INTERRUPTION` 失败 attempt。该设计防止结果被静默丢弃或重复计入，但在 provider 不支持幂等键时，不能保证中断后的再次外部调用不会重复计费。当前执行器只支持 `concurrency=1`，technical manifest 也不替代 M5.5 对模型、SDK、价格和货币成本的正式冻结。
 
 ### 13.5 指标计算
 
@@ -4320,7 +4339,8 @@ M3 的完整工作包、退出证据和安全边界以 [M3 阶段文档](milesto
 - M4.5-M4.6：检查 sdist/wheel、package data、optional extras 和 console entry point，从隔离 wheel 启动本地独立 Uvicorn 进程，并纳入 CI。
 - M4 不实现 OIDC/JWT、多用户或租户隔离、TLS/反向代理/WAF/公网限流、PostgreSQL/分布式运行时、任意文件/shell/网络工具或不可信代码沙箱；这些能力需在单独的 Productionization 里程碑重新设计和验收。
 - M5.1-M5.2：冻结证据类型与协议，实现实验模型、24 个合成知识 Writer 任务和确定性 rubric。
-- M5.3-M5.4：实现固定执行计划、不可变 run 产物、失败恢复、确定性评分和可测试 Python 分析模块。
+- M5.3：实现 240 项固定执行计划、条件公平性验证、不可变 attempt journal、有限重试、保守 token/request 预算和失败恢复。
+- M5.4：实现确定性评分和可测试 Python 分析模块。
 - M5.5：使用与正式数据隔离的 pilot 校准协议，并冻结模型、SDK、价格快照、请求/token/成本上限及 manifest。
 - M5.6：仅在项目 owner 明确批准冻结配置与预算后执行 240 次真实生成，并生成盲化人工评审包。
 - M5.7：从原始产物复算 H1/H2/H4，单独报告 H3 探索性构建案例和 H5 确定性审计验证；notebook 不作为唯一计算来源。
@@ -4389,14 +4409,23 @@ agent-factory/
 │   ├── regression/
 │   └── fixtures/
 ├── experiments/
+│   ├── __main__.py
+│   ├── artifacts.py
+│   ├── cli.py
 │   ├── contracts.py
+│   ├── executor.py
+│   ├── gateway.py
 │   ├── loader.py
+│   ├── planning.py
+│   ├── rendering.py
 │   ├── definitions/writer-v1/
 │   │   ├── dataset.yaml
+│   │   ├── execution-plan.json
+│   │   ├── conditions/
 │   │   ├── knowledge/
 │   │   ├── tasks/
 │   │   └── rubrics/
-│   ├── runs/          # M5.3，默认不进入 Git
+│   ├── runs/          # 本地执行产物，默认不进入 Git
 │   └── analysis/      # M5.4
 ├── pyproject.toml
 ├── README.md

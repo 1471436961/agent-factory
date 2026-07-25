@@ -59,6 +59,7 @@ jobs:
       - name: Validate frozen M5 experiment fixtures
         run: >-
           uv run pytest -q tests/unit/experiments
+          tests/integration/test_experiment_factory_rendering.py
           --cov=experiments
           --cov-report=term-missing
           --cov-fail-under=90

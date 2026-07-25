@@ -7,6 +7,10 @@ from typing import cast
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
+
+from agent_factory.domain.common import canonical_json_bytes, sha256_model
+from agent_factory.domain.enums import AuditEventType
 from experiments.contracts import (
     AttemptStatus,
     AuditStepResult,
@@ -32,10 +36,6 @@ from experiments.contracts import (
     TextMatcher,
 )
 from experiments.loader import LoadedExperimentDataset
-from pydantic import ValidationError
-
-from agent_factory.domain.common import canonical_json_bytes, sha256_model
-from agent_factory.domain.enums import AuditEventType
 
 NOW = datetime(2026, 7, 25, 12, 0, tzinfo=UTC)
 RUN_ID = UUID("10000000-0000-0000-0000-000000000001")
@@ -62,6 +62,8 @@ def _success_attempt() -> RunAttempt:
         status=AttemptStatus.SUCCEEDED,
         provider_request_id="provider-request-1",
         response={"output": {"title": "Example"}},
+        output_text='{"title":"Example"}',
+        structured_output={"title": "Example"},
         prompt_tokens=10,
         completion_tokens=5,
         started_at=NOW,
@@ -73,6 +75,7 @@ def _run_payload() -> dict[str, object]:
     return {
         "run_id": RUN_ID,
         "experiment_id": "writer-validation-v1",
+        "manifest_checksum": SHA_B,
         "plan_checksum": SHA_A,
         "condition": ExperimentCondition.MANUAL,
         "task_id": "nexora-beginner-guide",
@@ -289,6 +292,11 @@ def test_run_requires_status_to_match_attempts_and_output() -> None:
         }
     )
     assert ExperimentRun.model_validate(budget).attempts == ()
+
+    replaced = _run_payload()
+    replaced["output_text"] = '{"title":"Replaced"}'
+    with pytest.raises(ValidationError, match="must match its final attempt"):
+        ExperimentRun.model_validate(replaced)
 
 
 @pytest.mark.parametrize(

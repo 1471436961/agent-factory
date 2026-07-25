@@ -60,7 +60,7 @@ extend-exclude = [".agents", ".codex"]
 select = ["ASYNC", "B", "E", "F", "I", "RUF", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["agent_factory", "scripts"]
+known-first-party = ["agent_factory", "experiments", "scripts"]
 
 [tool.mypy]
 python_version = "3.11"

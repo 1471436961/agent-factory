@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.2 实验契约与冻结 Writer fixture 已实现，M5.3 尚未进入**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 尚未冻结模型、预算或价格快照，也未生成执行计划、实现正式执行器或调用真实模型。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.3 离线实验执行基础设施已实现，M5.4 尚未进入**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 已生成 240 项固定执行计划，并实现条件渲染、不可变产物、fake gateway、有限重试和断点恢复；尚未冻结正式模型、SDK、预算或价格快照，也未调用真实模型。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
@@ -100,14 +100,20 @@ uv --cache-dir E:/Agent-Factory/.tmp/uv-cache run python -m scripts.local_alpha_
 
 ## M5 验证实验
 
-M5 将证据拆分为三类：240 次 Writer 生成只检验结构一致性、知识遗漏和读者适应性；单操作者构建时间只作为探索性工程案例；审计完整性由确定性链路验证。M5.2 已在仓库级 `experiments` package 中实现严格 Pydantic 契约、安全 fixture loader，以及 6 个虚构领域的 24 个任务和 24 份 rubric；固定数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`。该模块不进入运行时 wheel。
+M5 将证据拆分为三类：240 次 Writer 生成只检验结构一致性、知识遗漏和读者适应性；单操作者构建时间只作为探索性工程案例；审计完整性由确定性链路验证。仓库级 `experiments` package 已实现严格契约、安全 fixture loader、240 项确定性执行计划、MANUAL/FACTORY 公平性校验、不可变 attempt journal、有限重试和恢复执行器。数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`，计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。该模块不进入运行时 wheel。
 
 ```bash
 uv run pytest -q tests/unit/experiments \
   --cov=experiments --cov-report=term-missing --cov-fail-under=90
+
+uv run python -m experiments verify-plan
+
+# 仅用于验证执行器和产物恢复，不构成实验数据
+uv run python -m experiments run-fake \
+  --output-root .tmp/m5-fake-smoke --max-items 4
 ```
 
-尚不存在正式实验结果。pilot 与正式数据必须隔离，真实模型调用必须在配置、模型、价格和成本上限冻结后再次由项目 owner 明确批准。
+尚不存在正式实验结果。`run-fake` 只产生合成响应，不能用于 H1-H5。当前 technical manifest 只锁定数据集、计划、条件渲染、生成参数和 token/request 上限，不替代 M5.5 对 source commit、SDK、模型、价格和成本上限的正式冻结。pilot 与正式数据必须隔离，真实模型调用仍须项目 owner 再次明确批准。
 
 ## Python SDK
 

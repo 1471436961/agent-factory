@@ -137,7 +137,7 @@ M5.5 必须冻结：
 
 ## 6. 执行计划与 run 标识
 
-执行计划由固定 `randomization_seed` 生成，包含全部 240 个 run 的唯一顺序。计划生成后保存并计算 SHA-256，正式执行不能重排。
+执行计划由固定 `randomization_seed` 生成，包含全部 240 个 run 的唯一顺序。M5.3 对每个 `seed + condition + task_id + repetition` 计算 SHA-256，再按摘要排序；这避免了 `random.shuffle` 对具体语言运行时与 PRNG 实现的依赖。计划生成后以规范化 JSON 保存并计算 SHA-256，正式执行不能重排。
 
 `run_id` 应由 `experiment_id + condition + task_id + repetition` 使用 UUID5 或等价确定性算法生成。执行顺序不是身份的一部分，以免修复计划元数据时改变 run 身份。
 
@@ -154,21 +154,29 @@ M5.5 必须冻结：
 
 ## 7. 产物目录与不可变规则
 
-M5.2-M5.4 以以下目录为实现目标：
+M5.3 的原始执行产物使用以下目录：
 
 ```text
 experiments/
 ├── definitions/
 │   └── <experiment_id>/
 │       ├── experiment.yaml
-│       ├── manifest.json
 │       ├── execution-plan.json
+│       ├── conditions/
 │       ├── tasks/
 │       ├── knowledge/
 │       └── rubrics/
 ├── runs/
 │   └── <experiment_id>/
-│       └── <run_id>.json
+│       ├── execution-manifest.json
+│       ├── requests/
+│       │   └── <run_id>.json
+│       ├── attempts/
+│       │   └── <run_id>/
+│       │       ├── 001-started.json
+│       │       └── 001-completed.json
+│       └── terminal/
+│           └── <run_id>.json
 ├── reviews/
 │   └── <experiment_id>/
 └── analysis/
@@ -180,20 +188,27 @@ experiments/
 
 规则：
 
-1. 原始 run 使用临时文件写入并原子重命名到目标路径。
-2. 目标 `run_id` 已存在时，读取并校验身份和冻结 manifest；相同则跳过，不同则报冲突。
-3. 任何重试都追加 attempt 记录，不能覆盖前一次供应商结果。
+1. 每个 JSON 先写同目录临时文件并 `fsync`，再用同文件系统 hard link 发布到尚不存在的目标名；不使用可能覆盖目标的 replace。
+2. 目标已存在时比较规范化字节；完全相同视为幂等重放，不同则报冲突。
+3. request、attempt intent、attempt completion 与 terminal run 分文件记录；重试只能追加新 attempt，不能重写旧证据。
 4. 原始文件只追加新文件，不原地编辑；评分和报告属于派生产物，可由原始数据重建。
 5. API key、Authorization header 和其他凭据禁止进入任何产物。
+6. 本地 store 要求临时文件和目标位于支持 hard link 的同一文件系统；对象存储或跨文件系统部署需实现新的 write-once backend。
+7. “不可变”指 ArtifactStore API 不覆盖既有路径，不代表本地文件具备数字签名或防管理员篡改能力；正式归档需要只读权限、外部 checksum 清单或对象锁提供更强防篡改证据。
 
 ## 8. 重试、恢复与成本停止
 
-- 每个 run 最多 2 次重试，即最多 3 个 attempt；仅网络错误、429 和供应商 5xx 可重试。
+- 每个 run 最多 2 次重试，即最多 3 个 attempt；仅网络错误、429、供应商 5xx 和 timeout 可重试。
 - 4xx 输入错误、内容过滤和解析契约失败默认不自动重试。
 - 重试使用相同 run ID、输入和生成参数，并记录供应商 request ID、错误类、时间和退避时长。
-- 恢复时先校验 manifest 与计划 SHA-256，再跳过已有终态 run；校验失败必须停止。
-- 发起每个新 attempt 前，根据已用量和保守 token 上限估算最坏成本；可能突破硬上限时停止，不先请求后补记。
-- 正式执行必须使用显式命令开关，例如 `--execute-live`；CI 和默认测试没有该开关。
+- 调用 gateway 前必须先持久化 attempt intent；完成后另写 completion。只有 intent 而没有 completion 时，恢复为 `RESULT_UNKNOWN_AFTER_INTERRUPTION`，不得把它伪装为从未调用或成功结果。
+- 恢复时先校验 execution manifest 与计划 SHA-256，再跳过已有终态 run；校验失败必须停止。已有 terminal run 必须与 request 和完整 attempt journal 一致。
+- 发起每个新 attempt 前，按所有已落盘 intent 重建 request/prompt/completion token 的保守预算占用；可能突破上限时生成 `budget-stopped` 终态，不先请求后补记。
+- M5.3 的 execution manifest 是技术身份，不是 M5.5 正式冻结 manifest；当前预算也只有 request/token 上限，没有价格快照和货币成本上限。
+- 执行器当前只支持 `concurrency=1`。并发执行需要额外的全局预算协调和 attempt 租约，不能只提高配置数字。
+- 当前 CLI 只暴露 fake gateway。未来 live 命令即使加入，也必须要求显式开关并经过 M5.5 人工审批；CI 和默认测试始终不得启用。
+
+恢复保证的边界是“不会覆盖或重复计入本地结果”，不是“外部调用恰好一次”。若 provider 已接收请求而进程在 completion 落盘前中断，缺少 provider 幂等键时无法排除再次调用产生第二次计费；M5.3 通过 unknown 终态显式保留这种不确定性。
 
 ## 9. 指标与判定
 
@@ -267,7 +282,7 @@ H5 的 expected steps 在运行前冻结。每一步必须同时匹配 event typ
 ### 12.1 内部效度
 
 - 两组 Prompt 组织不同，因此比较的是整体工作流而非单一组件。
-- 模型服务随时间漂移，固定随机交错顺序只能降低、不能消除该影响。
+- 模型服务随时间漂移，固定确定性混排只能降低、不能消除该影响；当前计划不保证两条件逐项严格交替。
 - rubric 可能偏向结构化输出；必须公开任务、Schema 和两组最终输入。
 
 ### 12.2 构念效度
@@ -307,4 +322,19 @@ M5.2 已在仓库级 `experiments` package 实现并测试以下对象：
 
 冻结 fixture 位于 `experiments/definitions/writer-v1/`，包含 6 份知识、24 个任务和 24 份 rubric，dataset checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`。该 checksum 不包含绝对路径，因此相同字节复制到其他工作目录仍得到同一值。
 
-M5.2 只定义了 `ExecutionPlan`、`ExperimentRun` 等产物契约，没有实现计划生成、模型调用、run 文件写入或恢复。上述行为属于 M5.3；当前不得把“模型存在”表述为“执行能力已经存在”。
+M5.2 只定义了 `ExecutionPlan`、`ExperimentRun` 等产物契约；计划生成、条件渲染、run 文件写入与恢复已在 M5.3 落地。真实 provider 调用仍未实现，也不得把 fake gateway 的执行能力表述为正式实验已经运行。
+
+## 14. M5.3 执行基础设施落地
+
+M5.3 新增以下可测试模块：
+
+- `experiments/planning.py`：构建、校验和加载规范化执行计划；生成并校验 technical execution manifest。
+- `experiments/rendering.py`：渲染 MANUAL 与 FACTORY provider 输入，计算 `prompt_hash`，并校验任务与知识可见性公平。
+- `experiments/artifacts.py`：提供 canonical、bounded、path-contained 的 write-once 文件存储。
+- `experiments/gateway.py`：定义原始成功/失败证据边界与确定性 fake gateway。
+- `experiments/executor.py`：顺序执行固定计划，记录 intent/completion journal，执行有限重试、预算停止和断点恢复。
+- `experiments/cli.py`：提供 `plan`、`verify-plan` 与非证据性的 `run-fake` 离线命令；没有 live 子命令。
+
+冻结 Writer fixture 的执行计划共有 240 项，checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。MANUAL prompt 字节与 renderer version 组成的 condition bundle checksum 为 `17781f2fb7d88c4f38edce23580f4eab6b06a4b7e5330b85a20d427fb36b0d76`。FACTORY 条件的集成测试通过真实 `FactoryController` 完成原型注册、知识注册、克隆、绑定和 `AgentSpec` 导出，再与 MANUAL 条件逐字节核对共同 task input。
+
+离线定向门禁为 `83 passed`，`experiments` 分支覆盖率 92.84%；全量回归为 `492 passed`，生产代码总覆盖率 92%，其中 domain 96%、application 95%。这组证据证明代码路径、契约和故障恢复行为满足 M5.3 规格，不证明真实模型质量、正式预算安全或实验命题成立。

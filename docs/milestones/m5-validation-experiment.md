@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1 与 M5.2 已实现，M5.3 尚未进入。
+- 状态：进行中；M5.1-M5.3 已实现，M5.4 尚未进入。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：尚未生成执行计划或实现执行器，尚未冻结模型、预算或价格快照，也未执行真实模型调用。
+- 当前限制：已实现离线执行器但未接入真实 provider；尚未冻结正式模型、SDK、预算或价格快照，也未执行真实模型调用。
 
 ## 2. 阶段目标
 
@@ -82,11 +82,14 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ### M5.3 执行器与不可变原始产物
 
-- 生成固定随机顺序的 `execution-plan.json` 和计划 SHA-256。
-- 实现稳定 `run_id`、逐 run 原子写入、拒绝覆盖、失败记录、有限重试和断点恢复。
-- 抽象模型 gateway；CI 只使用 fake gateway，真实调用必须显式启用。
+- 使用 seed 与 run 坐标的 SHA-256 排序生成 `execution-plan.json`，避免依赖 Python PRNG 实现细节。
+- 使用 UUID5 生成不依赖执行顺序的稳定 `run_id`，并将数据集、计划、条件 bundle、生成参数与技术预算绑定到 execution manifest。
+- 通过真实 `FactoryController` 生产链渲染 FACTORY 条件；MANUAL 与 FACTORY 共用字节级一致的任务和知识正文，并记录 provider-visible `prompt_hash`。
+- 以 write-once 文件分别保存 request、attempt intent、attempt completion 和 terminal run；冲突内容拒绝覆盖。
+- 抽象实验 gateway；CI 与 CLI 只使用 fake gateway，当前没有可调用真实 provider 的 CLI 子命令。
+- 对 network、429、5xx 和 timeout 最多重试 2 次；内容过滤、4xx 与无效响应不自动重试。
 
-退出条件：离线故障注入能证明中断后恢复不会丢失、覆盖或重复计入 run。
+退出条件：离线故障注入证明已完成的结果不会丢失、覆盖或重复计入；未完成 attempt 会恢复为 `RESULT_UNKNOWN_AFTER_INTERRUPTION`，但外部 provider 已接收而本地未落盘时，是否产生第二次计费仍取决于 provider 是否支持幂等键。
 
 ### M5.4 评分与分析流水线
 
@@ -147,7 +150,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] M5 范围、证据拆分和工作包经项目 owner 确认。
 - [x] M5.1 阶段文档与实验协议建立。
 - [x] M5.2 实验模型、24 个任务和冻结 rubric 通过离线测试。
-- [ ] M5.3 执行计划、不可变产物和恢复机制通过故障测试。
+- [x] M5.3 执行计划、条件公平性、不可变产物和恢复机制通过离线故障测试。
 - [ ] M5.4 评分与分析可由 fixture 完整复算。
 - [ ] M5.5 pilot 完成，正式配置、预算和 manifest 经人工冻结。
 - [ ] M5.6 正式调用经人工批准并完整执行。
@@ -156,7 +159,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.2 已建立实验设计基线、严格契约和冻结 Writer fixture。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能根据 fixture 自洽性预判工厂工作流更优。下一步是 M5.3：生成固定执行计划，并实现不可覆盖 run 产物、失败 attempt、有限重试和断点恢复。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把 fake gateway 结果当作模型质量证据。下一步是 M5.4：从不可变 run 产物实现确定性评分与统计复算。
 
 ## 10. M5.2 实现证据
 
@@ -171,3 +174,19 @@ M5.2 将实验基础设施放在仓库级 `experiments` package，而不是 `src
 - `uv build` 成功生成 sdist 与 wheel；wheel 共 95 个条目且不存在 `experiments/` 条目，研究基础设施未进入运行时分发包。
 
 本地定向门禁：`44 passed`，`experiments` 分支覆盖率 92.29%。全量回归为 `453 passed`，生产代码总覆盖率 92%，其中 domain 96%、application 94%；Ruff format、Ruff lint、mypy strict 和既有契约快照检查均通过。反例覆盖知识篡改、非 UTF-8、危险 YAML tag、路径逃逸、缺失文件、无效 JSON Schema、引用错位、未知 fact、matcher 无证据、matcher 超时、场景矩阵错误、失败 run 伪装成功和审计完整率造假。该证据只证明 fixture 和契约结构自洽，不代表任务具有外部效度，也不构成任何模型质量结果。
+
+## 11. M5.3 实现证据
+
+M5.3 在 `experiments` package 中新增计划、渲染、产物、gateway、执行器和离线 CLI，不修改 Agent Factory 的运行时服务边界：
+
+- `experiments/planning.py` 使用 `SHA-256(seed + coordinate)` 排序全部 240 个坐标，使用 UUID5 派生 `run_id`。提交的计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。
+- `experiments/rendering.py` 将两组共同的任务、读者信息与原始知识字节放入同一 `task_input`；MANUAL 使用人工 prompt 与文本化 Schema，FACTORY 使用真实控制器导出的 `AgentSpec` 与 provider-level Schema。条件 bundle checksum 为 `17781f2fb7d88c4f38edce23580f4eab6b06a4b7e5330b85a20d427fb36b0d76`。
+- `experiments/artifacts.py` 使用临时文件、`fsync` 与同文件系统 hard link 发布 write-once 规范化 JSON。相同内容重放是幂等的，不同内容报冲突；路径逃逸和符号链接被拒绝。
+- `experiments/executor.py` 在调用 gateway 前持久化 attempt intent，在调用后写 completion，最后写 terminal run。恢复时从 journal 重建保守 token/request 预算，已有终态只校验并跳过。
+- `experiments/gateway.py` 定义保留原始成功/错误 payload 的实验专用边界；`FakeExperimentGateway` 是当前唯一落地实现，不访问网络。
+- `python -m experiments verify-plan` 离线校验计划；`run-fake` 只做执行器 smoke，不产生正式实验数据。M5.3 仅支持 `concurrency=1`。
+- 发行检查生成 95 项 wheel，确认不存在 `experiments/` 条目；隔离 wheel 安装、Uvicorn/SDK、SQLite 重启恢复、extras 与凭据扫描 smoke 全部通过。
+
+定向门禁为 `83 passed`，`experiments` 分支覆盖率 92.84%。全量回归为 `492 passed`，生产代码总覆盖率 92%，其中 domain 96%、application 95%。故障测试覆盖计划篡改、条件知识错位、AgentSpec 来源错位、非法 live gateway、预算提前停止、重试分类、时钟回拨、写入中断、孤立 intent 恢复、终态重放和内容冲突。
+
+当前 execution manifest 只是一份技术执行身份，绑定数据集、计划、条件 bundle、生成参数和 request/token 上限。它不包含 source commit、Python/SDK 版本、provider 模型、价格快照和货币成本，因此不能替代 M5.5 的正式冻结 manifest。另一个不可消除的边界是：若进程在 provider 接收请求后、本地 completion 落盘前崩溃，M5.3 会将该 attempt 标记为结果未知并避免重复计入，但无法在缺少 provider 幂等支持时保证不会发生第二次外部计费。
