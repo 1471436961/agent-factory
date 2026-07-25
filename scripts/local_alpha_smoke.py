@@ -65,6 +65,14 @@ class SmokeFailure(RuntimeError):
     """A stable, secret-free failure from the release smoke."""
 
 
+def _required_platform_int(namespace: object, name: str) -> int:
+    """Resolve an OS-specific integer constant without platform-stub leakage."""
+    value = getattr(namespace, name, None)
+    if not isinstance(value, int):
+        raise SmokeFailure(f"required platform constant is unavailable: {name}")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class DistributionArtifacts:
     wheel: Path
@@ -481,7 +489,10 @@ def _start_server(
     creation_flags = 0
     start_new_session = False
     if os.name == "nt":
-        creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+        creation_flags = _required_platform_int(
+            subprocess,
+            "CREATE_NEW_PROCESS_GROUP",
+        )
     else:
         start_new_session = True
     with log_path.open("w", encoding="utf-8", newline="") as log:
@@ -592,7 +603,9 @@ def _stop_server(server: ServerProcess, timeout: float) -> None:
         return
     try:
         if os.name == "nt":
-            server.process.send_signal(signal.CTRL_BREAK_EVENT)
+            server.process.send_signal(
+                _required_platform_int(signal, "CTRL_BREAK_EVENT")
+            )
         else:
             server.process.send_signal(signal.SIGTERM)
         return_code = server.process.wait(timeout=timeout)

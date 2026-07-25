@@ -8,6 +8,7 @@ import tarfile
 import zipfile
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -22,6 +23,7 @@ from scripts.local_alpha_smoke import (
     _migration_versions,
     _port_bind_failed,
     _remove_run_directory,
+    _required_platform_int,
     _safe_archive_path,
     _server_environment,
     _start_ready_server,
@@ -31,6 +33,16 @@ from scripts.local_alpha_smoke import (
     source_package_resources,
     verify_distributions,
 )
+
+
+def test_required_platform_int_resolves_only_integer_constants() -> None:
+    namespace = SimpleNamespace(present=512, wrong_type="512")
+
+    assert _required_platform_int(namespace, "present") == 512
+    with pytest.raises(SmokeFailure, match="unavailable: missing"):
+        _required_platform_int(namespace, "missing")
+    with pytest.raises(SmokeFailure, match="unavailable: wrong_type"):
+        _required_platform_int(namespace, "wrong_type")
 
 
 def _write_distribution_pair(
