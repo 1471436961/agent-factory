@@ -185,3 +185,14 @@
    - 最终修正：M4 拆分为基线冻结、公共契约与语义快照、API/Runtime 安全回归、事务并发故障注入、隔离发布制品检查和 CI 退出六个工作包。完整身份系统与公网部署能力进入后续单独的 Productionization 里程碑。
    - 证据：[`docs/milestones/m4-quality-security.md`](docs/milestones/m4-quality-security.md)、[`docs/design/security-regression-gates.md`](docs/design/security-regression-gates.md)、[`docs/project/PROJECT_ROADMAP.md`](docs/project/PROJECT_ROADMAP.md)。
    - 对后续路线的影响：M4 只能对当前存在的接口、只读工具和本地部署拓扑给出自动化证据；未来新增文件、网络、shell、外部写工具或公网入口时，必须先增加与其攻击面匹配的独立设计和阻断门禁。
+
+1. **M5 从单一混合实验修正为三类证据协议**
+
+   - 日期：2026-07-25
+   - 里程碑：M5 规划与 M5.1 实验协议设计
+   - 原判断：使用同一组 240 次 MANUAL/FACTORY Writer 生成，同时验证结构一致性、知识遗漏、构建成本、适应性和审计完整性，并把五项结果放入同一假设表。
+   - 原判断的不足：模型生成不能直接产生开发者构建时间证据，审计完整性又是可以由固定业务链确定性检查的工程属性；把二者混入生成实验会制造不成立的样本量。MANUAL 与 FACTORY 还同时改变生产流程、Prompt 组织和结构约束，因此该比较不能识别某个单一组件的因果效应。将场景改为 Engineer 又会引入代码执行、依赖、文件权限和沙箱等当前 Alpha 不具备的混杂因素。
+   - 人工 review 结论：项目 owner 确认保留可控的 Writer 场景和 24×2×5 生成规模，但必须拆分证据来源、限制因果表述，并在真实模型调用前设置 pilot、冻结和预算人工审批门。
+   - 最终修正：H1/H2/H4 由主要 Writer 生成实验检验；H3 降级为单操作者探索性构建案例；H5 改为确定性审计链验证。正式知识使用虚构合成材料，两组实际可见知识正文必须字节级一致；pilot 不进入正式数据；没有第二名独立评分者时不计算 Cohen's kappa。正式调用只在模型、版本、价格和成本上限冻结并经 owner 明确批准后执行。
+   - 证据：[`docs/milestones/m5-validation-experiment.md`](docs/milestones/m5-validation-experiment.md)、[`docs/design/experiment-protocol.md`](docs/design/experiment-protocol.md)、[`docs/architecture.md`](docs/architecture.md) 第十三章。
+   - 对后续路线的影响：M5 拆分为协议、模型与任务、执行器、分析、pilot 冻结、正式执行和复算报告七个工作包；CI 永远使用 fake gateway，M5.6 不会因前置代码完成而自动触发真实模型调用。实验结论只能解释冻结模型和 Writer workflow bundle，消融或跨模型验证必须使用新的 experiment ID 独立开展。

@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：已完成并封存；M5 尚未进入。
+- 状态：已完成并封存。
 - 开始时间：2026-07-24。
 - 结束时间：2026-07-25。
 - 进入依据：M3 已由项目 owner 验收并封存，退出候选提交 `d2edef7` 的 GitHub Actions CI #20 通过。
@@ -326,6 +326,6 @@ Uvicorn `0.51.0` 在 lifespan shutdown 后恢复原 signal handler，并重新�
 
 ## 13. 阶段结论
 
-M4.1-M4.6 已建立范围基线、契约快照、安全回归、事务故障、隔离制品和跨平台 CI 证据；最终候选通过 409 项本地测试、三档覆盖率、Windows release smoke 与 Ubuntu CI #25。项目 owner 于 2026-07-25 确认结束并封存 M4，M5 尚未进入。
+M4.1-M4.6 已建立范围基线、契约快照、安全回归、事务故障、隔离制品和跨平台 CI 证据；最终候选通过 409 项本地测试、三档覆盖率、Windows release smoke 与 Ubuntu CI #25。项目 owner 于 2026-07-25 确认结束并封存 M4。
 
 该结论只证明当前本地 Alpha 在声明的单机、单 Uvicorn、文件型 SQLite、loopback 和固定只读工具边界内具备可回归的工程证据；不证明 OIDC/TLS/WAF、多租户、PostgreSQL、多进程/分布式运行时、不可信代码沙箱、真实 LLM 质量或公网生产部署能力。

@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M4 已完成并封存，M5 尚未进入**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5 已进入，当前执行 M5.1 实验协议设计**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 尚未冻结模型、任务集、预算或价格快照，也未执行真实模型调用。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
@@ -98,6 +98,10 @@ uv --cache-dir E:/Agent-Factory/.tmp/uv-cache run python -m scripts.local_alpha_
 
 验收包含 wheel 资源、001-006 migration、entry point、SDK 认证写入、进程重启恢复和 Token 日志扫描。唯一受支持的拓扑及阻断项见[本地 Alpha 部署说明](docs/deployment/local-alpha.md)。
 
+## M5 验证实验
+
+M5 将证据拆分为三类：240 次 Writer 生成只检验结构一致性、知识遗漏和读者适应性；单操作者构建时间只作为探索性工程案例；审计完整性由确定性链路验证。正式任务使用合成知识，pilot 与正式数据隔离，真实模型调用必须在配置、模型、价格和成本上限冻结后再次由项目 owner 明确批准。当前只完成协议基线，不存在可报告的实验结果。
+
 ## Python SDK
 
 SDK 复用 REST DTO，通过异步 HTTP 调用服务，不直接访问 Controller 或数据库：
@@ -124,6 +128,7 @@ async with AgentFactoryClient(
 - [M2 里程碑](docs/milestones/m2-skill-governance.md)
 - [M3 里程碑](docs/milestones/m3-interfaces-runtime-demo.md)
 - [M4 里程碑](docs/milestones/m4-quality-security.md)
+- [M5 里程碑](docs/milestones/m5-validation-experiment.md)
 - [Migration Runner 设计说明](docs/design/migration-runner.md)
 - [Domain Contracts 设计说明](docs/design/domain-contracts.md)
 - [SQLite Persistence 设计说明](docs/design/sqlite-persistence.md)
@@ -138,6 +143,7 @@ async with AgentFactoryClient(
 - [Gradio 演示设计说明](docs/design/gradio-demo.md)
 - [Alpha 安全、回归与发布门禁设计说明](docs/design/security-regression-gates.md)
 - [M4.4 事务与并发故障证据](docs/design/transaction-fault-evidence.md)
+- [M5 实验协议设计说明](docs/design/experiment-protocol.md)
 - [本地 Alpha 部署说明](docs/deployment/local-alpha.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)

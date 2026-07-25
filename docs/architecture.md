@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M4 已完成并封存，M5 尚未进入
+**当前阶段**：Alpha / M5 已进入，当前执行 M5.1 实验协议设计；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[M4 阶段文档](milestones/m4-quality-security.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)、[Gradio 演示设计说明](design/gradio-demo.md)、[Alpha 安全、回归与发布门禁设计说明](design/security-regression-gates.md)、[M4.4 事务与并发故障证据](design/transaction-fault-evidence.md)、[本地 Alpha 部署说明](deployment/local-alpha.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[M4 阶段文档](milestones/m4-quality-security.md)、[M5 阶段文档](milestones/m5-validation-experiment.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)、[Gradio 演示设计说明](design/gradio-demo.md)、[Alpha 安全、回归与发布门禁设计说明](design/security-regression-gates.md)、[M4.4 事务与并发故障证据](design/transaction-fault-evidence.md)、[M5 实验协议设计说明](design/experiment-protocol.md)、[本地 Alpha 部署说明](deployment/local-alpha.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -4004,17 +4004,19 @@ branch coverage 由 `pyproject.toml` 的 `[tool.coverage.run]` 开启。三个�
 
 ### 13.1 待验证假设
 
-| 假设 | 指标 | 支持条件 | 反证条件 |
-| --- | --- | --- | --- |
-| H1 工厂提高结构一致性 | Schema 通过率 | 实验组高至少 10 个百分点 | 差值小于 5 个百分点 |
-| H2 工厂减少知识遗漏 | 知识遗漏率 | 实验组相对降低至少 20% | 无下降或反向增加 |
-| H3 原型复用降低构建成本 | 第 2 个及以后领域的构建时间 | 中位数降低至少 25% | 中位数不降 |
-| H4 约束未显著损害灵活性 | 个性化适应度 | 实验组劣化不超过 0.05 | 劣化超过 0.05 |
-| H5 工厂提高可追溯性 | 审计完整率 | 实验组达到 100% | 任一生产步骤无法追溯 |
+| 假设 | 证据类型 | 指标 | 支持条件 | 不支持条件 |
+| --- | --- | --- | --- | --- |
+| H1 工厂工作流提高结构一致性 | 240 次主要生成实验 | Schema 通过率 | FACTORY 高至少 10 个百分点 | 差值小于 5 个百分点 |
+| H2 工厂工作流减少知识遗漏 | 240 次主要生成实验 | 知识遗漏率 | FACTORY 相对降低至少 20% | 无下降或反向增加 |
+| H3 原型复用降低后续构建成本 | 单操作者探索性工程案例 | 第 2 个及以后领域的 active build time | 报告中位数、IQR 和配对差 | 不作人群层面的支持/反证判断 |
+| H4 约束未明显损害适应性 | 240 次主要生成实验 | 个性化适应度 | FACTORY 相对劣化不超过 0.05 | 劣化超过 0.05 |
+| H5 工厂提高可追溯性 | 确定性工程验证 | 审计步骤完整率 | 固定生产链达到 100% | 任一生产步骤无法恢复或来源不一致 |
 
-这些阈值在首次正式运行前写入实验配置并冻结，不能看到结果后修改。
+H1、H2、H4 的阈值在首次正式运行前写入实验配置并冻结，不能看到结果后修改。三者比较的是 MANUAL 与 FACTORY 两套生产工作流的整体效果，不能把差异单独归因于 Prompt、输出 Schema、知识绑定或控制器中的某一组件。H3 与 H5 不使用 240 次模型生成作为证据，分别进入独立构建记录和确定性审计检查。完整执行约束见 [`M5 实验协议设计说明`](design/experiment-protocol.md)。
 
 ### 13.2 实验模型
+
+以下类型是 M5.2 的目标规格，M5.1 尚未在 `src/` 中实现。M5.2 设计评审必须进一步冻结枚举、规范化序列化、checksum 和失败 run 表达，不能把本节示例误述为现有运行能力。
 
 ```python
 from enum import StrEnum
@@ -4045,6 +4047,7 @@ class ExperimentTask(FrozenModel):
     instruction: str
     reader_profile: str
     required_facts: tuple[str, ...]
+    forbidden_facts: tuple[str, ...] = ()
     personalization_constraints: tuple[str, ...]
     output_schema: JsonObject
     knowledge_id: Slug
@@ -4064,13 +4067,16 @@ class ExperimentRun(FrozenModel):
     agent_spec_checksum: str | None = Field(
         default=None, pattern=r"^[a-f0-9]{64}$"
     )
-    output_text: str
+    status: str
+    output_text: str | None = None
     structured_output: JsonObject | None = None
-    latency_ms: int = Field(ge=0)
+    latency_ms: int | None = Field(default=None, ge=0)
     prompt_tokens: int | None = Field(default=None, ge=0)
     completion_tokens: int | None = Field(default=None, ge=0)
     started_at: datetime
     completed_at: datetime
+    provider_request_ids: tuple[str, ...] = ()
+    error_code: str | None = None
 
 
 class MetricRecord(FrozenModel):
@@ -4082,22 +4088,21 @@ class MetricRecord(FrozenModel):
     personalization_satisfied: int = Field(ge=0)
     deterministic_quality_score: float = Field(ge=0, le=1)
     human_quality_score: float | None = Field(default=None, ge=1, le=5)
-    audit_steps_expected: int = Field(ge=0)
-    audit_steps_present: int = Field(ge=0)
 ```
 
-原始输出、评估结果和审计快照写入 `experiments/runs/{experiment_id}/`，每个 run 使用独立 JSON 文件；汇总表使用 CSV，字段名与 `MetricRecord` 一致。
+原始请求、原始响应、失败 attempt 和供应商 request ID 写入 `experiments/runs/{experiment_id}/`，每个 run 使用独立 JSON 文件；汇总表使用 CSV，字段名与 `MetricRecord` 一致。原始 run 不保存凭据且写入后不可覆盖；评分、人工评审和报告写入独立派生目录。
 
 ### 13.3 实验规模与分组
 
-- 任务：一致性场景 12 个、适应性场景 12 个，共 24 个。
+- 任务：6 个虚构领域，每个领域 2 个一致性任务和 2 个适应性任务，共 24 个。
 - 每个任务在每个条件下重复 5 次，共 `24 x 2 x 5 = 240` 次生成。
 - 两组使用同一模型、模型版本、temperature、token 上限、知识正文和任务输入。
-- MANUAL 组由开发者手写 system prompt 并手动拼接知识。
-- FACTORY 组从同一个 Writer 原型克隆、绑定同版本知识、导出 `AgentSpec`。
-- 两组的可见知识内容必须字节级一致；差别只允许是生产方式和结构化约束。
+- MANUAL 组使用正式运行前冻结的人工 system prompt 并手动拼接知识，运行期间不根据输出调优。
+- FACTORY 组必须经过注册 Writer 原型、注册知识、克隆、绑定和导出 `AgentSpec` 的真实生产链，再由条件适配器渲染模型输入。
+- 两组的用户任务和模型实际可见知识正文必须字节级一致；差别只允许是生产工作流和该工作流产生的结构化约束。
 - 执行顺序使用固定随机种子打乱并交替两组，减少模型服务时间漂移。
 - 若供应商不支持 seed，记录为 null，不声称输出可复现，只保证实验配置可追溯。
+- Pilot 使用独立 experiment ID、任务和 run ID 命名空间，不进入 240 次正式结果。
 
 ### 13.4 随机化
 
@@ -4120,7 +4125,7 @@ def build_execution_plan(
     return plan
 ```
 
-实验计划生成后保存 `execution-plan.json` 并计算 SHA-256；运行中不得增删任务。失败请求按原位置最多重试 2 次，保留失败记录和供应商 request ID。
+实验计划生成后保存 `execution-plan.json` 并计算 SHA-256；运行中不得增删任务。`run_id` 由 experiment、condition、task 和 repetition 确定性生成，与执行顺序分离。失败请求按原位置最多重试 2 次，每次 attempt 均保留错误类别和供应商 request ID；已有终态 run 只能校验并跳过，不能覆盖。
 
 ### 13.5 指标计算
 
@@ -4142,12 +4147,6 @@ def personalization_adaptation(metric: MetricRecord) -> float:
     )
 
 
-def audit_completeness(metric: MetricRecord) -> float:
-    if metric.audit_steps_expected == 0:
-        return 1.0
-    return metric.audit_steps_present / metric.audit_steps_expected
-
-
 def deterministic_quality(
     *,
     schema_passed: bool,
@@ -4164,18 +4163,19 @@ def deterministic_quality(
 - Schema 通过率：通过 JSON Schema 校验的 run 数 / 总 run 数。
 - 一致性方差：同一任务 5 次 `deterministic_quality_score` 的样本方差，再对任务取中位数。
 - 知识事实覆盖采用预注册关键词、正则和允许同义词表；规则表在实验前冻结。
-- 人工评分采用 1-5 分，评分者看不到分组信息；至少 20% 样本由两人复评，并报告加权 Cohen's kappa。
+- 人工评分采用 1-5 分，评分者看不到分组信息。只有至少两名独立评分者复评不少于 20% 的预注册样本时，才报告加权 Cohen's kappa；只有一名评分者时不作评审者间信度声明。
 - LLM-as-Judge 只作为探索性指标，不进入 H1-H5 的主要结论。
 
 ### 13.6 构建时间
 
-构建时间由操作日志计算：
+H3 的构建时间由独立操作日志计算，不与 240 次生成 run 混合：
 
 - MANUAL：开始编写 Agent 配置到首次成功完成测试任务。
 - FACTORY：开始选择原型到首次成功完成测试任务。
 - 第一个领域单独报告学习/初始化成本。
-- H3 只比较第 2 个及以后领域，防止用已有原型掩盖首次搭建成本。
+- H3 只描述第 2 个及以后领域，防止用已有原型掩盖首次搭建成本。
 - 暂停、网络故障和等待模型服务的时间单独记录，不计入 active build time。
+- 当前只有一名项目 owner 时，不执行显著性检验，也不将结果外推到其他开发者。
 
 ```python
 class BuildSession(FrozenModel):
@@ -4189,17 +4189,20 @@ class BuildSession(FrozenModel):
     successful: bool
 ```
 
+H5 使用独立确定性验证记录。验证器必须从 Prototype、Knowledge、Instance、AgentSpec、EvaluationReport 和 Promotion 审计中恢复固定链路，并核对 entity ID、revision、checksum 与顺序。任一步骤缺失、重复或来源错位即失败；该检查不调用 LLM。
+
 ### 13.7 统计分析
 
 1. 先按 `task_id + condition` 聚合 5 次重复，避免把同一任务的重复输出当成独立样本。
-2. 对均值或比例差使用按 task 分层的 bootstrap，10,000 次重采样，报告 95% 置信区间。
-3. H1、H2、H4 使用配对任务差；同时报告绝对差和相对差。
-4. 方差比较使用 Brown-Forsythe 检验，并报告两组任务内方差比。
-5. 构建时间报告中位数、IQR 和配对差，不只报告平均值。
-6. 同时报告全部失败请求，禁止只分析成功输出。
-7. 结果表必须包含模型名、执行日期、Prompt hash、知识校验和和代码 commit hash。
+2. H1、H2、H4 使用配对任务差，并按 task 分层执行 10,000 次 bootstrap，报告 95% 区间、绝对差和相对差。
+3. H4 使用预注册非劣界值 `-0.05`；不能仅凭点估计作非劣结论。
+4. 方差比较是次要分析；若使用 Brown-Forsythe，依赖版本和算法必须在 M5.5 前冻结。
+5. H3 只报告单操作者构建时间的中位数、IQR 和配对差，不执行人群推断。
+6. H5 报告确定性链路是否达到 100%，不执行模型输出统计检验。
+7. 同时报告全部失败请求，禁止只分析成功输出。
+8. 结果表必须包含模型名、执行日期、Prompt hash、知识校验和、计划 SHA-256 和代码 commit hash。
 
-结论分为“支持”“不支持”“证据不足”，不使用“证明框架更优”这类超出实验范围的表述。
+结论分为“支持”“不支持”“证据不足”，不使用“证明框架更优”这类超出实验范围的表述。分析实现必须是可测试的 Python 模块，notebook 不能成为唯一计算来源。M5.5 冻结 provider、模型、价格快照、请求/token/成本上限后，仍须由项目 owner 明确批准，M5.6 才能执行真实调用；默认测试和 CI 始终使用 fake gateway。
 
 
 ---
@@ -4215,7 +4218,7 @@ class BuildSession(FrozenModel):
 | M2 技能治理 | DAG、评估规则、晋升、观察期、降级 | 晋升/降级/并发冲突测试通过 |
 | M3 接口与 Demo | REST、SDK、Tool adapter、Gradio | 同一用例从三种入口得到同构对象 |
 | M4 Alpha 安全、回归与发布门禁 | 公共快照、安全拒绝矩阵、事务故障、隔离制品与真实本地进程 smoke | CI 全绿，当前边界与发布证据达到第十二章门槛 |
-| M5 验证实验 | 240 次运行、分析脚本、结果报告 | 原始数据、执行计划、统计结果可复算 |
+| M5 验证实验 | 预注册协议、240 次 Writer 运行、构建案例、审计验证、分析脚本与结果报告 | 冻结输入和原始数据不可变，全部结果可从 manifest 复算 |
 | M6 开源准备 | README、许可证、贡献指南、版本说明 | 新环境按 README 30 分钟内跑通 Demo |
 
 ### 14.2 M0 规格
@@ -4317,7 +4320,11 @@ M3 的完整工作包、退出证据和安全边界以 [M3 阶段文档](milesto
 - M4.2-M4.4：建立 OpenAPI/稳定语义快照、安全拒绝矩阵以及事务和并发故障注入证据。
 - M4.5-M4.6：检查 sdist/wheel、package data、optional extras 和 console entry point，从隔离 wheel 启动本地独立 Uvicorn 进程，并纳入 CI。
 - M4 不实现 OIDC/JWT、多用户或租户隔离、TLS/反向代理/WAF/公网限流、PostgreSQL/分布式运行时、任意文件/shell/网络工具或不可信代码沙箱；这些能力需在单独的 Productionization 里程碑重新设计和验收。
-- M5：冻结 `experiment.yaml`，执行 240 次生成，生成 `analysis.ipynb` 或等价 Python 报告。
+- M5.1-M5.2：冻结证据类型与协议，实现实验模型、24 个合成知识 Writer 任务和确定性 rubric。
+- M5.3-M5.4：实现固定执行计划、不可变 run 产物、失败恢复、确定性评分和可测试 Python 分析模块。
+- M5.5：使用与正式数据隔离的 pilot 校准协议，并冻结模型、SDK、价格快照、请求/token/成本上限及 manifest。
+- M5.6：仅在项目 owner 明确批准冻结配置与预算后执行 240 次真实生成，并生成盲化人工评审包。
+- M5.7：从原始产物复算 H1/H2/H4，单独报告 H3 探索性构建案例和 H5 确定性审计验证；notebook 不作为唯一计算来源。
 - M6：删除未使用抽象，固定 `1.0.0-alpha.1`，生成架构图和 API 文档。
 
 ### 14.8 Alpha Definition of Done
@@ -4356,6 +4363,10 @@ M3 的完整工作包、退出证据和安全边界以 [M3 阶段文档](milesto
 agent-factory/
 ├── docs/
 │   ├── architecture.md
+│   ├── design/
+│   │   └── experiment-protocol.md
+│   ├── milestones/
+│   │   └── m5-validation-experiment.md
 │   └── generated/
 │       └── openapi-v1.json
 ├── src/agent_factory/
@@ -4366,7 +4377,8 @@ agent-factory/
 │   │   ├── 002_persistence_contracts.sql
 │   │   ├── 003_skill_governance.sql
 │   │   ├── 004_instance_configuration_checksum.sql
-│   │   └── 005_task_outcome_integrity.sql
+│   │   ├── 005_task_outcome_integrity.sql
+│   │   └── 006_tool_call_records.sql
 │   ├── interfaces/
 │   ├── sdk/
 │   └── settings.py
