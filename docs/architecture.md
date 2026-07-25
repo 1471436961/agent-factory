@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.4 评分与分析流水线已完成，下一步进入 M5.5 Pilot 与正式冻结；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.1 冻结和成本契约已实现；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4154,6 +4154,8 @@ coordinates.sort(
 实验计划生成后以规范化 JSON 保存并计算 SHA-256；当前 240 项计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。hash-sort 不依赖 Python `random` 的具体实现。`run_id` 由固定 namespace 下的 UUID5 根据 experiment、condition、task 和 repetition 确定性生成，与执行顺序分离。失败请求按原位置最多重试 2 次，每次 attempt 均保留错误类别、原始错误响应和供应商 request ID；已有终态 run 只能校验并跳过，不能覆盖。
 
 M5.3 的 write-once journal 路径为 `requests/<run_id>.json`、`attempts/<run_id>/<NNN>-started.json`、`<NNN>-completed.json` 和 `terminal/<run_id>.json`。调用 gateway 前先写 intent；恢复时若只有 intent，则生成 `RESULT_UNKNOWN_AFTER_INTERRUPTION` 失败 attempt。该设计防止结果被静默丢弃或重复计入，但在 provider 不支持幂等键时，不能保证中断后的再次外部调用不会重复计费。当前执行器只支持 `concurrency=1`，technical manifest 也不替代 M5.5 对模型、SDK、价格和货币成本的正式冻结。
+
+M5.5.1 使用外层 `FrozenExperimentManifest` 补充正式冻结身份，不修改既有 technical manifest 和 journal schema。它内联 technical manifest 与 analysis config，并绑定 source commit、干净工作树声明、CPython/SDK、lockfile、Provider/模型、官方价格来源、微美元成本预算和有序文件清单。Pilot 与 formal 通过 `ExperimentPurpose` 区分；formal 必须引用不同 experiment ID 的 Pilot 证据。金额不使用 float，估算成本由冻结 token 数和每百万 token 的整数微美元单价重算。当前契约尚不读取文件、Git 或价格网站，也不代表已完成人工审批。
 
 ### 13.5 指标计算
 

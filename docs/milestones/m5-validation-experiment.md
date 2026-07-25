@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，下一工作包为 M5.5 Pilot、校准与正式冻结。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5 已进入且 M5.5.1 冻结和成本契约已实现。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
@@ -159,7 +159,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是 M5.5：使用隔离 pilot 校准调用协议，并由项目 owner 人工冻结正式模型、SDK、价格、预算和 Manifest。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。M5.5.1 已建立 Pilot/正式身份、源码、Provider、价格、成本和文件清单契约，但尚未生成冻结候选或运行 Pilot。仓库没有正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是 M5.5.2：实现冻结候选生成和离线验证。
 
 ## 10. M5.2 实现证据
 
@@ -244,3 +244,15 @@ M5.4.4 定向报告测试为 `11 passed`；完整实验门禁为 `135 passed`，
 - 完整 fake journal 测试覆盖 240 个 terminal run、240 条评分、96 个 aggregate、6 个 hypothesis、Manifest 中断恢复、逐字节重放、journal/score 篡改和来源变化冲突。fake 输入只证明工程复算链路，不构成 H1-H5 的模型质量证据。
 
 M5.4.5 的 CI 同构 experiment 门禁为 `149 passed`，`experiments` 分支覆盖率 92.99%，其中 `score_artifacts.py` 为 98%；全仓回归为 `558 passed`。Ruff format、Ruff lint、全量 mypy strict 和契约快照检查均通过。测试执行没有网络请求或真实模型调用。
+
+## 17. M5.5.1 冻结与成本契约
+
+- `ExperimentPurpose` 将 `pilot` 和 `formal` 固定为不同证据用途。`FrozenExperimentManifest` 在 formal 模式下强制引用 `PilotEvidenceRef`，且 Pilot experiment ID 不得与正式 experiment ID 相同；Pilot Manifest 自身不得反向声明 Pilot 证据。
+- `SourceSnapshot` 记录 40-64 位 Git commit、干净工作树声明、CPython 精确版本和 `uv.lock` checksum；`FrozenArtifact` 使用排序、去重的相对路径、字节数和 SHA-256 清单绑定冻结输入。
+- `ProviderSnapshot` 记录 provider、模型、API、官方 SDK 版本及模型是否为不可变 snapshot；`PriceSnapshot` 记录 USD、每百万 token 的输入/缓存输入/输出微美元整数单价、HTTPS 来源和采集时间。
+- `CostBudget` 的金额字段使用 strict integer 微美元，拒绝 float。`calculate_conservative_cost_usd_micros()` 对输入与输出分量分别向上取整；Manifest 重算估算成本，并要求估算 usage 不超过 technical limits、硬成本上限不低于估算且不高于 token 上限对应的保守成本 ceiling。
+- Manifest 内联 technical `ExecutionManifest` 和 `AnalysisConfig`，交叉校验 experiment、provider、model、SDK、价格和 analysis config checksum。`manifest_checksum` 的实际计算、文件读取和 Git 状态验证属于 M5.5.2，本工作包只固定模型结构与跨字段不变量。
+
+M5.5.1 没有选择真实模型或价格，没有读取 API key，也没有网络或模型调用。单元测试中的 Provider、模型、价格 URL 和 checksum 均为合成值，不构成冻结候选。
+
+M5.5.1 的 CI 同构 experiment 门禁为 `158 passed`，`experiments` 分支覆盖率 93.30%，其中扩展后的 `contracts.py` 为 92%；全仓回归为 `567 passed`。Ruff format、Ruff lint 和全量 mypy strict 均通过。

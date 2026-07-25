@@ -37,6 +37,12 @@ ArtifactPath = Annotated[
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$",
     ),
 ]
+GitCommit = Annotated[str, Field(pattern=r"^[a-f0-9]{40,64}$")]
+HttpsUrl = Annotated[
+    str,
+    Field(min_length=9, max_length=2_048, pattern=r"^https://[^\s]+$"),
+]
+PositiveUsdMicros = Annotated[int, Field(strict=True, gt=0, le=10**12)]
 JsonFieldName = Annotated[
     str,
     Field(min_length=1, max_length=128, pattern=r"^[A-Za-z_][A-Za-z0-9_-]*$"),
@@ -46,6 +52,11 @@ JsonFieldName = Annotated[
 class ExperimentCondition(StrEnum):
     MANUAL = "manual-agent"
     FACTORY = "factory-agent"
+
+
+class ExperimentPurpose(StrEnum):
+    PILOT = "pilot"
+    FORMAL = "formal"
 
 
 class ExperimentScenario(StrEnum):
@@ -800,6 +811,169 @@ class AnalysisConfig(FrozenModel):
         ge=0.5,
         le=1,
     )
+
+
+class FrozenArtifact(FrozenModel):
+    path: ArtifactPath
+    byte_size: PositiveInt
+    content_checksum: Sha256
+
+
+class SourceSnapshot(FrozenModel):
+    source_commit: GitCommit
+    working_tree_clean: Literal[True]
+    python_implementation: Literal["CPython"]
+    python_version: SemVer
+    lockfile_path: Literal["uv.lock"] = "uv.lock"
+    lockfile_checksum: Sha256
+
+
+class ProviderSnapshot(FrozenModel):
+    provider: Slug
+    model: str = Field(min_length=1, max_length=256)
+    api_name: Slug
+    sdk_name: Slug
+    sdk_version: SemVer
+    model_is_immutable_snapshot: bool
+
+
+class PriceSnapshot(FrozenModel):
+    provider: Slug
+    model: str = Field(min_length=1, max_length=256)
+    currency: Literal["USD"] = "USD"
+    unit_tokens: Literal[1_000_000] = 1_000_000
+    input_usd_micros_per_unit: PositiveUsdMicros
+    cached_input_usd_micros_per_unit: PositiveUsdMicros | None = None
+    output_usd_micros_per_unit: PositiveUsdMicros
+    source_url: HttpsUrl
+    captured_at: AwareDatetime
+
+
+def calculate_conservative_cost_usd_micros(
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    pricing: PriceSnapshot,
+) -> int:
+    """Round each uncached token component up to a whole USD micro."""
+
+    if input_tokens < 0 or output_tokens < 0:
+        raise ValueError("token counts cannot be negative")
+    unit = pricing.unit_tokens
+    input_cost = (input_tokens * pricing.input_usd_micros_per_unit + unit - 1) // unit
+    output_cost = (
+        output_tokens * pricing.output_usd_micros_per_unit + unit - 1
+    ) // unit
+    return input_cost + output_cost
+
+
+class CostBudget(FrozenModel):
+    currency: Literal["USD"] = "USD"
+    estimated_provider_requests: PositiveInt
+    estimated_prompt_tokens: PositiveInt
+    estimated_completion_tokens: PositiveInt
+    estimated_cost_usd_micros: PositiveUsdMicros
+    hard_cost_limit_usd_micros: PositiveUsdMicros
+
+    @model_validator(mode="after")
+    def hard_limit_must_cover_estimate(self) -> Self:
+        if self.hard_cost_limit_usd_micros < self.estimated_cost_usd_micros:
+            raise ValueError("hard cost limit cannot be below estimated cost")
+        return self
+
+
+class PilotEvidenceRef(FrozenModel):
+    experiment_id: Slug
+    freeze_manifest_checksum: Sha256
+    report_checksum: Sha256
+
+
+class FrozenExperimentManifest(FrozenModel):
+    schema_version: Literal["1.0"] = "1.0"
+    purpose: ExperimentPurpose
+    freeze_id: Slug
+    experiment_id: Slug
+    definition_checksum: Sha256
+    execution_manifest: ExecutionManifest
+    analysis_config: AnalysisConfig
+    analysis_config_checksum: Sha256
+    source: SourceSnapshot
+    provider: ProviderSnapshot
+    pricing: PriceSnapshot
+    cost_budget: CostBudget
+    pilot_evidence: PilotEvidenceRef | None = None
+    files: Annotated[
+        tuple[FrozenArtifact, ...],
+        Field(min_length=1, max_length=1_000),
+    ]
+    created_at: AwareDatetime
+    manifest_checksum: Sha256
+
+    @model_validator(mode="after")
+    def frozen_sources_must_be_consistent(self) -> Self:
+        execution = self.execution_manifest
+        generation = execution.generation
+        if (
+            self.experiment_id != execution.experiment_id
+            or self.provider.provider != generation.provider
+            or self.provider.model != generation.model
+            or self.provider.sdk_version != generation.sdk_version
+            or self.pricing.provider != self.provider.provider
+            or self.pricing.model != self.provider.model
+            or self.analysis_config_checksum != sha256_model(self.analysis_config)
+        ):
+            raise ValueError("frozen manifest source identities do not match")
+        self._validate_file_inventory()
+        self._validate_pilot_boundary()
+        self._validate_budget()
+        return self
+
+    def _validate_file_inventory(self) -> None:
+        paths = [item.path for item in self.files]
+        if len(paths) != len(set(paths)) or paths != sorted(paths):
+            raise ValueError("frozen files must be unique and sorted")
+        lockfiles = [
+            item for item in self.files if item.path == self.source.lockfile_path
+        ]
+        if (
+            len(lockfiles) != 1
+            or lockfiles[0].content_checksum != self.source.lockfile_checksum
+        ):
+            raise ValueError("frozen files do not bind the declared lockfile")
+
+    def _validate_pilot_boundary(self) -> None:
+        if self.purpose is ExperimentPurpose.PILOT:
+            if self.pilot_evidence is not None:
+                raise ValueError("pilot manifest cannot reference pilot evidence")
+            return
+        if self.pilot_evidence is None:
+            raise ValueError("formal manifest requires pilot evidence")
+        if self.pilot_evidence.experiment_id == self.experiment_id:
+            raise ValueError("pilot and formal experiment IDs must differ")
+
+    def _validate_budget(self) -> None:
+        limits = self.execution_manifest.limits
+        budget = self.cost_budget
+        if (
+            budget.estimated_provider_requests > limits.max_provider_requests
+            or budget.estimated_prompt_tokens > limits.max_prompt_tokens
+            or budget.estimated_completion_tokens > limits.max_completion_tokens
+        ):
+            raise ValueError("estimated usage exceeds technical execution limits")
+        expected_cost = calculate_conservative_cost_usd_micros(
+            input_tokens=budget.estimated_prompt_tokens,
+            output_tokens=budget.estimated_completion_tokens,
+            pricing=self.pricing,
+        )
+        if budget.estimated_cost_usd_micros != expected_cost:
+            raise ValueError("estimated cost does not match tokens and pricing")
+        token_ceiling_cost = calculate_conservative_cost_usd_micros(
+            input_tokens=limits.max_prompt_tokens,
+            output_tokens=limits.max_completion_tokens,
+            pricing=self.pricing,
+        )
+        if budget.hard_cost_limit_usd_micros > token_ceiling_cost:
+            raise ValueError("hard cost limit exceeds token-bound cost ceiling")
 
 
 class TaskConditionAggregate(FrozenModel):

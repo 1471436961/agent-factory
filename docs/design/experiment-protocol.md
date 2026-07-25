@@ -399,3 +399,15 @@ M5.4.4 完整实验门禁为 `135 passed`，`experiments` 分支覆盖率 93%，
 该链路可以证明“报告可由指定本地执行证据重复派生”，不能证明 fake run 是正式实验，也不能防止本地管理员同步改写全部文件和 checksum。正式 M5.6 仍必须由 M5.5 冻结 Manifest、外部归档和项目 owner 审批建立证据身份。
 
 M5.4.5 的 CI 同构 experiment 门禁为 `149 passed`，分支覆盖率 92.99%；全仓回归为 `558 passed`。完整链路测试使用 fake gateway 生成的合成终态，只验证 240-run 工程规模、恢复语义和可重复派生，不产生正式实验结论。
+
+## 20. M5.5.1 正式冻结与精确成本契约
+
+M5.5.1 将冻结证据建模为 `FrozenExperimentManifest`，而不是继续扩充 M5.3 `ExecutionManifest`。后者仍是 executor 恢复所需的技术身份；前者内联并绑定它，同时增加 `AnalysisConfig`、source commit、CPython/SDK 版本、lockfile、Provider/模型、价格、成本和文件清单。这样旧的离线 journal 保持兼容，正式身份通过外层 checksum 链补充。
+
+金额统一使用 integer USD micros，单价统一表示为“每 1,000,000 token 的微美元整数”。估算成本对 uncached input 和 output 分别执行整数向上取整后相加，不依赖 binary float。缓存单价只作为冻结事实记录；预算预留默认按完整 input 单价计算，不能提前假设缓存命中。估算请求/token 必须位于 technical limits 内，hard cost limit 必须覆盖估算，同时不得宽于全部 token 上限按冻结单价换算的保守 ceiling。
+
+`ExperimentPurpose` 明确区分 `pilot` 和 `formal`。formal Manifest 必须引用另一 experiment ID 的 `PilotEvidenceRef`；pilot Manifest 不得引用 Pilot 结果。该约束阻止同一 run ID 空间同时承担调试与正式统计身份，但不证明 Pilot 已真实执行，后者必须由 M5.5 后续报告 checksum 和人工审查建立。
+
+文件 inventory 必须按路径排序、去重，并且唯一 `uv.lock` 条目的 checksum 必须与 `SourceSnapshot` 一致。M5.5.1 的 Pydantic 模型只验证已提交字段之间的关系，不读取 Git、文件系统或官方价格页面，也不自行验证自引用 `manifest_checksum`；这些 I/O 和 checksum 责任由 M5.5.2 的候选生成器与 verifier 承担。
+
+M5.5.1 的 CI 同构 experiment 门禁为 `158 passed`，分支覆盖率 93.30%；全仓回归为 `567 passed`。所有价格、Provider 和模型输入均为测试合成值，无网络或真实模型调用。

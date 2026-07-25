@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.4 评分与分析流水线已完成，下一步进入 M5.5 Pilot 与正式冻结**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 已生成 240 项固定执行计划，并实现条件渲染、不可变产物、fake gateway、有限重试、断点恢复、只读 journal 校验、逐 run 可追溯评分、task 配对聚合、确定性 bootstrap、H1/H2/H4 阈值判定、评分 Manifest，以及 content-addressed 的 JSON/CSV/Markdown 报告包和一键离线复算命令；尚未冻结正式模型、SDK、预算或价格快照，也未调用真实模型。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.1 冻结和成本契约已实现**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 已生成 240 项固定执行计划，并实现条件渲染、不可变产物、fake gateway、有限重试、断点恢复、只读 journal 校验、逐 run 可追溯评分、task 配对聚合、确定性 bootstrap、H1/H2/H4 阈值判定、评分 Manifest，以及 content-addressed 的 JSON/CSV/Markdown 报告包和一键离线复算命令；M5.5.1 进一步定义了 Pilot/正式身份隔离、源码环境、Provider、价格快照、微美元成本预算和冻结文件清单契约。尚未选择或冻结正式模型与价格，也未调用真实模型。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
