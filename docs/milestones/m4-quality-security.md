@@ -2,10 +2,12 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M4.6 本地退出候选已通过，提交、远程 CI 与项目 owner 验收待完成。
+- 状态：已完成并封存；M5 尚未进入。
 - 开始时间：2026-07-24。
+- 结束时间：2026-07-25。
 - 进入依据：M3 已由项目 owner 验收并封存，退出候选提交 `d2edef7` 的 GitHub Actions CI #20 通过。
 - 规划依据：项目 owner 于 2026-07-24 确认 M4 的范围、工作包、风险、备选方案与退出标准。
+- 退出依据：项目 owner 于 2026-07-25 确认结束 M4；退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 通过。
 - 阶段定位：以生产级工程标准验证本地 Alpha 的安全、回归和发布边界，不宣称已经具备公网生产部署能力。
 
 ## 2. 阶段目标
@@ -197,7 +199,7 @@ M4.2 于 2026-07-24 完成以下交付：
 | Domain/Application/全项目 branch coverage | 96% / 94% / 92%，通过 90% / 85% / 80% 门槛 |
 | sdist/wheel | `agent_factory-1.0.0a1` 构建成功；`app.py` 已包含，仓库 `scripts` 未进入 wheel |
 
-远程 GitHub Actions 需要在 M4.2 提交并推送后运行，因此当前只记录 CI 配置已接入，不把本地结果表述为远程 CI 通过。
+M4.2 完成时尚无对应远程结果，因此该工作包只记录 CI 配置已接入；最终跨平台证据统一记录在第十二节，未使用后续结果反向改写当时的本地证据。
 
 ## 9. M4.3 API 与执行安全证据
 
@@ -232,7 +234,7 @@ M4.3 于 2026-07-25 完成以下本地实现：
 | CI YAML | 可解析，独立安全回归步骤已接入 |
 | sdist/wheel | `agent_factory-1.0.0a1` 构建成功，wheel 包含 `security_events.py` |
 
-受限沙箱内的首次全量测试仍因 pytest 无权在 session finish 清理 E 盘 basetemp 而失败；在获批的沙箱外使用新的 E 盘目录重跑后 368 项全部通过。首次隔离构建因沙箱网络不可用而无法解析 hatchling；获批联网后使用 `E:\Agent-Factory\.tmp\uv-cache` 成功构建，未向 C 盘安装新依赖。远程 GitHub Actions 仍需待提交推送后记录，不能由本地结果代替。
+受限沙箱内的首次全量测试仍因 pytest 无权在 session finish 清理 E 盘 basetemp 而失败；在获批的沙箱外使用新的 E 盘目录重跑后 368 项全部通过。首次隔离构建因沙箱网络不可用而无法解析 hatchling；获批联网后使用 `E:\Agent-Factory\.tmp\uv-cache` 成功构建，未向 C 盘安装新依赖。该工作包完成时远程结果尚未产生，最终跨平台证据见第十二节。
 
 ## 10. M4.4 事务与并发故障证据
 
@@ -261,7 +263,7 @@ M4.4 于 2026-07-25 完成以下本地实现：
 
 `BEFORE_COMMIT` 在真实 commit 调用前注入异常，因此只证明未成功提交的事务会回滚，不模拟断电、进程强杀、磁盘损坏或 WAL 持久性。Tool handler 的外部副作用也无法由本地 SQLite 回滚；当前默认工具为只读，未来外部写工具必须设计独立的幂等或 outbox/补偿协议。上述结论只适用于当前单机文件型 SQLite，不外推到 PostgreSQL 或分布式事务。
 
-受限沙箱中的 build 因无法访问 PyPI 解析 `hatchling` 而失败；获批联网后仍使用 E 盘 uv cache 成功构建。全量 pytest 使用获批的沙箱外 E 盘 basetemp，避免已知的 session cleanup 权限假失败。远程 GitHub Actions 仍需待提交推送后记录，不能由本地结果代替。
+受限沙箱中的 build 因无法访问 PyPI 解析 `hatchling` 而失败；获批联网后仍使用 E 盘 uv cache 成功构建。全量 pytest 使用获批的沙箱外 E 盘 basetemp，避免已知的 session cleanup 权限假失败。该工作包完成时远程结果尚未产生，最终跨平台证据见第十二节。
 
 ## 11. M4.5 发布制品与本地部署证据
 
@@ -292,9 +294,9 @@ M4.5 于 2026-07-25 完成以下本地实现：
 
 首次真实运行发现 Windows `CTRL_BREAK_EVENT` 在 Uvicorn 完整 application shutdown 后返回平台退出码 3。脚本没有放宽全部非零返回码，只在 Windows、返回码 3 且日志同时包含 `Application shutdown complete.` 与 `Finished server process` 时接受。第二次运行完成全部业务阶段后，成功清理暴露 `sqlite3.Connection` 上下文只提交/回滚但不关闭连接；修正为显式 `closing()`，并对唯一 `run-*` 子目录实施路径校验和有限清理重试。最终脚本完整重跑通过。
 
-依赖构建和安装可能访问 package index；安装后的应用、SDK 和 import 探针只使用 loopback，不调用真实模型。该结果证明本地制品可安装、启动和恢复，不证明公网安全、多进程 SQLite、高可用或 disaster recovery。M4.6 已把真实进程 smoke 纳入最终 CI，远程证据仍需在退出候选提交推送后记录。
+依赖构建和安装可能访问 package index；安装后的应用、SDK 和 import 探针只使用 loopback，不调用真实模型。该结果证明本地制品可安装、启动和恢复，不证明公网安全、多进程 SQLite、高可用或 disaster recovery。M4.6 已把真实进程 smoke 纳入最终 CI，最终跨平台结果记录在下一节。
 
-## 12. M4.6 本地退出候选证据
+## 12. M4.6 退出候选与远程证据
 
 M4.6 于 2026-07-25 完成以下本地实现与验证：
 
@@ -311,15 +313,19 @@ M4.6 于 2026-07-25 完成以下本地实现与验证：
 | Ruff format/check | 151 个文件通过 |
 | mypy strict | 151 个 source file 无问题 |
 | 契约快照 | 三份 SHA-256 与 M4.2 基线一致 |
-| Alpha 安全回归 | 12 项通过，2.55 秒 |
-| 事务故障回归 | 34 项通过，7.85 秒 |
-| 全量 pytest | 404 项通过，73.11 秒 |
+| Alpha 安全回归 | 12 项通过，3.11 秒 |
+| 事务故障回归 | 34 项通过，10.16 秒 |
+| 全量 pytest | 409 项通过，93.65 秒 |
 | Domain/Application/全项目 branch coverage | 96% / 94% / 92%，通过 90% / 85% / 80% 门槛 |
 | 统一 release step | fresh sdist/wheel、全部源码资源、minimal/extras、migration 1-6、两次 Uvicorn、SDK 重启恢复与 Token 扫描全部通过 |
 | CI workflow | PyYAML 可解析，共 14 个步骤，job timeout 20 分钟 |
 
-当前 `main` 在 M4.6 修改前已领先 `origin/main` 5 个 M4 提交。为让远程证据覆盖完整 M4，退出候选应在本地门禁通过后一次推送，并以该 push 的 head commit 和 GitHub Actions run 为准。M4 尚未封存：远程 workflow 必须通过，随后由项目 owner 人工确认退出。
+首次完整推送后的提交 `3590775` 触发 [`CI #23`](https://github.com/1471436961/agent-factory/actions/runs/30147162529)，Ubuntu mypy 发现 `subprocess.CREATE_NEW_PROCESS_GROUP` 与 `signal.CTRL_BREAK_EVENT` 两个 Windows 专属属性不在 Linux typeshed 中。修复提交 `bf9d695` 通过运行时 `getattr()` 和整数类型校验读取平台常量，没有增加全局 ignore；随后 [`CI #24`](https://github.com/1471436961/agent-factory/actions/runs/30147589651) 的 type check、快照、安全、事务、全量测试和覆盖率均通过，但 release step 暴露 POSIX Uvicorn 完整关闭后返回 `-SIGTERM`。
+
+Uvicorn `0.51.0` 在 lifespan shutdown 后恢复原 signal handler，并重新抛出捕获的终止信号。提交 `4a55d73` 只在 POSIX 返回 `-SIGTERM` 且日志同时包含 `Application shutdown complete.` 与 `Finished server process` 时接受该路径；Windows 仍只接受相同日志条件下的退出码 3，其他非零结果继续失败。该提交的 [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 全部通过，证明统一 release step 能在干净 Ubuntu runner 完成构建、隔离安装、真实 Uvicorn 重启和 SDK/SQLite 恢复。两次失败没有通过降低 mypy strict、删除断言、放宽任意非零退出码或跳过 release step 规避。
 
 ## 13. 阶段结论
 
-M4.1-M4.5 已建立范围基线、契约快照、安全回归、事务故障和隔离制品证据；M4.6 本地退出候选已通过 404 项测试、三档覆盖率与统一 release step。M4 仍处于进行中，等待退出候选提交、远程 GitHub Actions 和项目 owner 验收。
+M4.1-M4.6 已建立范围基线、契约快照、安全回归、事务故障、隔离制品和跨平台 CI 证据；最终候选通过 409 项本地测试、三档覆盖率、Windows release smoke 与 Ubuntu CI #25。项目 owner 于 2026-07-25 确认结束并封存 M4，M5 尚未进入。
+
+该结论只证明当前本地 Alpha 在声明的单机、单 Uvicorn、文件型 SQLite、loopback 和固定只读工具边界内具备可回归的工程证据；不证明 OIDC/TLS/WAF、多租户、PostgreSQL、多进程/分布式运行时、不可信代码沙箱、真实 LLM 质量或公网生产部署能力。

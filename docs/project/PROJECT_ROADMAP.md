@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前状态：M4.1-M4.5 已完成本地实现，M4.6 本地退出候选门禁已通过，提交、远程 GitHub Actions 与项目 owner 验收待完成。M4.2 已建立 OpenAPI 与稳定语义快照；M4.3-M4.4 已建立集中安全回归和 15 类写能力事务证据；M4.5-M4.6 已从全新 wheel 启动真实 Uvicorn，经已安装 SDK 完成认证写入和 SQLite 重启恢复，并将全部源码资源、minimal/extras、migration 与 Token 日志边界统一纳入 CI release step。阶段范围与本地证据见 [`docs/milestones/m4-quality-security.md`](../milestones/m4-quality-security.md)，工程门禁设计见 [`docs/design/security-regression-gates.md`](../design/security-regression-gates.md)，部署边界见 [`docs/deployment/local-alpha.md`](../deployment/local-alpha.md)。M3 接口、运行时与演示已于 2026-07-24 验收结束，退出候选提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 已通过。M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
+当前状态：M4 已于 2026-07-25 由项目 owner 验收并封存，M5 尚未进入。M4.2 已建立 OpenAPI 与稳定语义快照；M4.3-M4.4 已建立集中安全回归和 15 类写能力事务证据；M4.5-M4.6 已从全新 wheel 启动真实 Uvicorn，经已安装 SDK 完成认证写入和 SQLite 重启恢复，并将全部源码资源、minimal/extras、migration 与 Token 日志边界统一纳入 CI release step。退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过；该结论只覆盖本地 Alpha 的既定边界，不包含公网生产部署。阶段范围与证据见 [`docs/milestones/m4-quality-security.md`](../milestones/m4-quality-security.md)，工程门禁设计见 [`docs/design/security-regression-gates.md`](../design/security-regression-gates.md)，部署边界见 [`docs/deployment/local-alpha.md`](../deployment/local-alpha.md)。M3 已于 2026-07-24 封存，M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 

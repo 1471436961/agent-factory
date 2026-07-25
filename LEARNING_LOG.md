@@ -794,12 +794,12 @@
 
    - 日期：2026-07-25
    - 里程碑：M4.5
-   - 主题：`sqlite3.Connection` 生命周期、Windows Uvicorn 关闭语义和受约束临时目录清理。
-   - 上下文：真实进程 smoke 首次暴露两个仅靠单进程测试不容易发现的问题：数据库事务上下文结束不等于连接已关闭；Windows 信号后的非零退出码也不能脱离关闭日志直接解释为服务异常。
-   - 证据：首次 M4.5 运行中，Uvicorn 收到 `CTRL_BREAK_EVENT` 后完整打印 application shutdown 日志但返回 Windows 平台退出码 3；第二次运行完成业务阶段后，残留 SQLite handle 阻止清理运行目录。`scripts/local_alpha_smoke.py` 最终使用 `contextlib.closing(sqlite3.connect(...))`，并只在 Windows、退出码为 3 且同时出现 `Application shutdown complete.` 与 `Finished server process` 时接受该退出结果。
+   - 主题：`sqlite3.Connection` 生命周期、跨平台 Uvicorn 关闭语义和受约束临时目录清理。
+   - 上下文：真实进程 smoke 暴露三个仅靠单进程或单平台测试不容易发现的问题：数据库事务上下文结束不等于连接已关闭；Windows 与 POSIX 信号后的非零退出码都不能脱离关闭日志直接解释为服务异常。
+   - 证据：首次 M4.5 运行中，Uvicorn 收到 `CTRL_BREAK_EVENT` 后完整打印 application shutdown 日志但返回 Windows 平台退出码 3；第二次运行完成业务阶段后，残留 SQLite handle 阻止清理运行目录。远程 CI #24 又发现 Uvicorn `0.51.0` 在 Ubuntu 完成相同 shutdown 后返回 `-SIGTERM`。其 `capture_signals()` 在 lifespan 结束后恢复原 handler，再通过 `signal.raise_signal()` 重新抛出捕获信号。`scripts/local_alpha_smoke.py` 最终使用 `contextlib.closing()` 关闭连接，并只在对应平台退出码与两条完整关闭标记同时匹配时接受非零结果。
    - 结论：
      - `with sqlite3.connect(...) as connection` 管理的是事务：正常退出提交、异常退出回滚；它不会自动调用 `connection.close()`。需要确定释放文件 handle 时，应叠加 `closing()` 或显式关闭连接。
-     - 进程退出码必须结合所使用的信号、平台和完整生命周期日志解释，但不能宽泛忽略所有非零值。当前兼容条件被限制为一个已观察、可复现且有完整关闭标记的 Windows 情形。
+     - 进程退出码必须结合所使用的信号、平台和完整生命周期日志解释，但不能宽泛忽略所有非零值。当前兼容条件只接受 Windows 码 3 或 POSIX `-SIGTERM`，且都必须同时出现 `Application shutdown complete.` 与 `Finished server process`；错误平台、其他信号和缺失日志仍失败。
      - 临时目录清理必须先解析并验证目标位于专用工作根目录、名称符合唯一 `run-*` 子目录，再进行有限次数重试；不能为追求测试清理成功而递归删除未经确认的计算路径。
      - 启动失败、业务失败和用户中断都要进入同一 `finally` 清理路径，优先终止已发布的子进程并释放数据库连接，避免留下后台服务和锁定文件。
    - 易混点：事务上下文不等于资源上下文；完整关闭日志不意味着任意非零码都可忽略；清理失败也不应通过无限重试或扩大删除范围掩盖。
@@ -811,12 +811,12 @@
    - 里程碑：M4.6
    - 主题：动态 wheel 资源检查、CI 去重、专门风险门禁和本地/远程证据分层。
    - 上下文：理解减少 CI 重复代码不等于把所有检查合并成一个不可诊断的黑盒，以及为什么源码资源清单应从当前 package 树推导，而 migrations、metadata、extras 和 entry point 仍需要显式断言。
-   - 证据：`source_package_resources()` 动态遍历 `src/agent_factory/**/*.py` 并推导 wheel 内预期路径；`.github/workflows/ci.yml` 从 16 个步骤收敛到 14 个，统一调用 `scripts.local_alpha_smoke`，但继续单独执行 security 和 transaction suites；M4.6 本地候选验证为 Ruff/mypy 覆盖 151 个文件、12 项安全测试、34 项事务测试、总计 404 项测试，以及 domain/application/全项目 branch coverage 96%/94%/92%。
+   - 证据：`source_package_resources()` 动态遍历 `src/agent_factory/**/*.py` 并推导 wheel 内预期路径；`.github/workflows/ci.yml` 从 16 个步骤收敛到 14 个，统一调用 `scripts.local_alpha_smoke`，但继续单独执行 security 和 transaction suites；最终本地候选验证为 Ruff/mypy 覆盖 151 个文件、12 项安全测试、34 项事务测试、总计 409 项测试，以及 domain/application/全项目 branch coverage 96%/94%/92%。远程 CI #23 和 #24 分别暴露 Linux typeshed 与 POSIX shutdown 差异，修复后的 `4a55d73` 由 CI #25 完整通过。
    - 结论：
      - 手工维护生产模块清单会随新增文件漂移；从源码 package 树动态推导能让“新增 `.py` 却未进入 wheel”自动失败。非 Python 资源和发布元数据无法由该遍历推断，仍需显式检查。
      - CI 应复用与开发者相同的跨平台发布脚本，避免本地和 YAML 内联逻辑形成两个真相源；脚本本身需要单元测试，否则“统一入口”只会集中未知错误。
      - 安全和事务套件虽然也包含在完整 pytest 中，仍保留独立步骤，因为它们是阶段声明的风险门禁，独立失败信号能缩短诊断路径并防止关键证据被总测试输出淹没。
      - job timeout 约束整条流水线的失控上限，发布脚本内部的进程和命令 timeout 约束具体资源生命周期；二者作用层级不同。
-     - 本地全门禁通过只形成“可推送的退出候选”，远程 GitHub Actions 才能补充干净 Ubuntu runner 和仓库工作流证据。当前 M4 提交尚未推送并取得远程结果，因此不能把 M4 标记为完成。
+     - 本地全门禁通过只形成“可推送的退出候选”，远程 GitHub Actions 才能补充干净 Ubuntu runner 和仓库工作流证据。CI #23 和 #24 的失败说明这种分层确实发现了 Windows 本地无法证明的类型与进程语义；CI #25 通过后，项目 owner 才确认封存 M4。
    - 易混点：CI 步骤更少不等于验证变少；完整 pytest 已包含专项测试不等于专项门禁没有价值；动态 Python 文件清单不等于所有 package data 自动正确；本地通过不等于远程 CI 已通过。
-   - 后续应用：推送当前 M4 提交后保存远程 run URL、commit SHA 和各门禁结果，再由 owner 决定是否封存 M4；未来调整 CI 时优先消除重复实现，但保留与风险声明一一对应的可见失败信号。
+   - 后续应用：每次里程碑封存都保存远程 run URL、commit SHA 和各门禁结果，并把失败运行作为纠错证据保留；未来调整 CI 时优先消除重复实现，但保留与风险声明一一对应的可见失败信号。
