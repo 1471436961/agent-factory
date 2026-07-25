@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.3 已实现，M5.4 已进入且 M5.4.1 评分契约已实现。
+- 状态：进行中；M5.1-M5.3 已实现，M5.4 已进入且 M5.4.2 确定性评分器已实现。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
@@ -159,7 +159,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1 已固定评分证据与汇总指标之间的不变量。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把 fake gateway 结果当作模型质量证据。下一步是 M5.4.2：从不可变 run 产物实现确定性评分器。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.2 已固定评分证据并实现离线确定性评分器。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把 fake gateway 结果当作模型质量证据。下一步是 M5.4.3：实现任务级配对聚合与确定性 bootstrap。
 
 ## 10. M5.2 实现证据
 
@@ -201,3 +201,13 @@ M5.3 在 `experiments` package 中新增计划、渲染、产物、gateway、执
 - provider 成功但 Schema 不通过仍属于可评分成功 run；provider/timeout/filter/budget 等执行失败则由主要 ITT 分析按最差值映射，不能伪装成 Schema 评分记录。
 
 M5.4.1 定向门禁为 `93 passed`，`experiments` 分支覆盖率 92.75%；全量回归为 `502 passed`。Ruff format、Ruff lint 和 mypy strict 均通过。该证据只证明评分契约能拒绝结构与汇总矛盾，实际 matcher、Schema 执行、bootstrap 和命题结论尚不存在。
+
+## 13. M5.4.2 确定性评分器
+
+- `experiments/matching.py` 成为 loader 与评分器唯一 matcher 实现，保持 exact 子字符串、大小写选项、regex flags 和 100ms timeout 一致。
+- `experiments/scoring.py` 校验 run 与冻结 task/rubric/knowledge 的来源关系，并为成功 run 计算 Schema、事实、legacy forbidden 和个性化逐项证据。
+- 结构化输出递归提取字符串、数字、布尔和 null 值；对象按 key 排序，数组保留顺序。matcher 不检查字段名，避免字段名造成事实假命中。
+- personalization 有 `target_field` 时只检查目标字段；无目标字段时检查完整输出。regex timeout 转换为 `ScoringError`，不静默记为未命中。
+- provider 成功但 Schema 不通过仍保留评分；执行失败生成无检查明细的 `RunScoreRecord`，由后续 ITT 聚合映射为最差结果。
+
+M5.4.2 定向 matcher/loader/scoring 测试为 `38 passed`；完整实验门禁为 `108 passed`，`experiments` 分支覆盖率 93.03%，其中 `scoring.py` 为 96%；全量回归为 `517 passed`。统计聚合与命题判定尚未实现，因此这些分数不能形成 H1/H2/H4 结论。

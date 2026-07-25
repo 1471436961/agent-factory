@@ -9,7 +9,6 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import TypeVar
 
-import regex
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, ValidationError
 
@@ -21,13 +20,13 @@ from experiments.contracts import (
     ExperimentScenario,
     ExperimentTask,
     KnowledgeFixture,
-    MatcherKind,
     RubricBundle,
     RubricDefinition,
     TaskBundle,
     TextMatcher,
     model_payload,
 )
+from experiments.matching import MatcherTimeoutError, matches_text
 
 _MAX_YAML_BYTES = 256 * 1024
 _MAX_KNOWLEDGE_BYTES = 128 * 1024
@@ -241,14 +240,14 @@ def _validate_dataset(
         content = knowledge_bytes[key].decode("utf-8")
         for fact_id in rubric.required_fact_ids:
             if not any(
-                _matcher_matches(matcher, content)
+                _matches_fixture_text(matcher, content)
                 for matcher in facts[fact_id].accepted_matchers
             ):
                 raise ExperimentFixtureError(
                     "required fact matcher has no evidence in knowledge"
                 )
         for matcher in rubric.forbidden_matchers:
-            if not _matcher_matches(matcher, content):
+            if not _matches_fixture_text(matcher, content):
                 raise ExperimentFixtureError(
                     "forbidden matcher must represent a knowledge distractor"
                 )
@@ -287,15 +286,10 @@ def _validate_constraint_targets(
             )
 
 
-def _matcher_matches(matcher: TextMatcher, text: str) -> bool:
-    if matcher.kind is MatcherKind.EXACT:
-        if matcher.case_sensitive:
-            return matcher.pattern in text
-        return matcher.pattern.casefold() in text.casefold()
-    flags = 0 if matcher.case_sensitive else regex.IGNORECASE
+def _matches_fixture_text(matcher: TextMatcher, text: str) -> bool:
     try:
-        return regex.search(matcher.pattern, text, flags=flags, timeout=0.1) is not None
-    except TimeoutError as exc:
+        return matches_text(matcher, text)
+    except MatcherTimeoutError as exc:
         raise ExperimentFixtureError("matcher evaluation exceeded timeout") from exc
 
 

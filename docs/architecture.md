@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.4 评分与分析流水线实现中，M5.4.1 评分契约已完成；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.4 评分与分析流水线实现中，M5.4.2 确定性评分器已完成；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4098,6 +4098,8 @@ class MetricRecord(FrozenModel):
 
 `RunAttempt` 强制成功记录同时具有原始响应、文本输出和结构化输出且无错误；失败记录具有错误码、可选原始错误响应且无成功输出。`ExperimentRun` 强制终态与最后一次 attempt 一致，`budget-stopped` 不得伪造供应商调用或最终输出；`MetricRecord` 只允许成功 run 携带确定性或人工质量分数。M5.3 使用 `ExperimentRunRequest`、`AttemptIntent`、`AttemptCompletion` 和 `ExecutionManifest` 将 provider-visible 输入、调用前意图、调用后结果和技术执行身份分别落盘。M5.4.1 新增 `SchemaViolation`、`FactCheck`、`ForbiddenMatcherCheck`、`PersonalizationCheck` 和 `RunScoreRecord`；评分记录绑定 run/rubric checksum，并在 Pydantic 层重算计数与确定性质量分，拒绝明细和汇总互相矛盾。
 
+M5.4.2 的 `DeterministicScorer` 根据冻结 dataset 解析 task、rubric 与 knowledge，先校验 experiment、repetition、knowledge checksum 和 MANUAL/FACTORY 来源，再使用 Draft 2020-12 校验 Schema。required fact、forbidden matcher 和 personalization 共用 `experiments/matching.py` 的 exact/regex 语义与 100ms regex timeout；个性化约束声明 `target_field` 时只检查对应字段。评分产物不保存命中正文或 jsonschema 错误消息，只保存预注册索引、路径和 validator。评分器是纯离线逻辑，不读取时钟、不调用模型，也不产生统计结论。
+
 ### 13.3 实验规模与分组
 
 - 任务：6 个虚构领域，每个领域 2 个一致性任务和 2 个适应性任务，共 24 个。
@@ -4418,8 +4420,10 @@ agent-factory/
 │   ├── executor.py
 │   ├── gateway.py
 │   ├── loader.py
+│   ├── matching.py
 │   ├── planning.py
 │   ├── rendering.py
+│   ├── scoring.py
 │   ├── definitions/writer-v1/
 │   │   ├── dataset.yaml
 │   │   ├── execution-plan.json

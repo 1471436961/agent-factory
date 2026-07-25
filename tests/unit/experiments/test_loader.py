@@ -257,7 +257,7 @@ def test_loader_wraps_regex_match_timeout(
     def raise_timeout(*args: object, **kwargs: object) -> None:
         raise TimeoutError
 
-    monkeypatch.setattr("experiments.loader.regex.search", raise_timeout)
+    monkeypatch.setattr("experiments.matching.regex.search", raise_timeout)
 
     with pytest.raises(ExperimentFixtureError, match="exceeded timeout"):
         load_experiment_dataset(dataset.root)

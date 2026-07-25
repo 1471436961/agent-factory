@@ -348,3 +348,13 @@ M5.4.1 在 `experiments/contracts.py` 固定逐 run 评分证据，尚未实现 
 确定性质量分只作为次要摘要：Schema 通过率、required fact 覆盖率、存在 forbidden matcher 时的合规率，以及存在个性化约束时的满足率组成适用分量，取等权平均并舍入到 12 位小数。模型会根据逐项证据重新计算分母、分子和总分，拒绝客户端直接提交不一致汇总。人工评分不进入 `RunScoreRecord`，继续由独立盲化评审流程管理。
 
 M5.4.1 离线定向门禁为 `93 passed`，`experiments` 分支覆盖率 92.75%；全量回归为 `502 passed`。这些结果不包含任何真实模型输出或统计结论。
+
+## 16. M5.4.2 确定性评分器
+
+`DeterministicScorer.score(run)` 是纯函数式评分入口：它只读取已验证 dataset 和不可变 terminal run，不访问 provider、网络、数据库或时钟。评分前必须匹配 experiment ID、任务、repetition、知识 checksum、rubric 和条件来源；FACTORY 必须具有 AgentSpec checksum，MANUAL 不得声明该来源。
+
+Schema 使用 `Draft202012Validator` 执行。违规记录只包含 RFC 6901 风格的实例路径、Schema 路径和 validator 名称；相同违规去重并排序，不保存可能回显输出正文的 message。required fact 的 accepted matcher 按冻结顺序检查并记录首个命中索引；forbidden matcher 按 rubric 顺序逐项记录。结构化输出只将 value 递归展平为文本，对象 key 排序、数组顺序保留，字段名本身不进入匹配文本。
+
+loader 与评分器共用 `experiments/matching.py`。exact matcher 是可配置大小写的子字符串匹配；regex matcher 使用相同 flags 与 100ms timeout。timeout 是评分失败而不是“未命中”。personalization 声明 `target_field` 时只读取该字段，避免其他字段中的相同词造成假阳性；未声明时读取完整输出。
+
+M5.4.2 完整实验门禁为 `108 passed`，分支覆盖率 93.03%，`scoring.py` 覆盖率 96%；全量回归为 `517 passed`。该门禁使用合成 fixture 和离线 terminal run，不构成正式实验结果。
