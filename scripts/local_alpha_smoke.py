@@ -629,17 +629,19 @@ def _graceful_shutdown_completed(
 ) -> bool:
     if return_code == 0:
         return True
-    # Uvicorn handles Windows SIGBREAK, completes its lifespan, then restores
-    # and re-raises the signal. CPython reports that completed path as code 3.
-    windows_markers = (
+    # Uvicorn restores the original handler after lifespan shutdown, then
+    # re-raises the captured signal to preserve platform process semantics.
+    shutdown_markers = (
         "Application shutdown complete.",
         "Finished server process",
     )
-    return (
-        platform_name == "nt"
-        and return_code == 3
-        and all(marker in log for marker in windows_markers)
-    )
+    if not all(marker in log for marker in shutdown_markers):
+        return False
+    if platform_name == "nt":
+        return return_code == 3
+    if platform_name == "posix":
+        return return_code == -int(signal.SIGTERM)
+    return False
 
 
 def _force_stop(server: ServerProcess | None, timeout: float) -> None:

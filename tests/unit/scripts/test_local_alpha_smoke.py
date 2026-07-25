@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import signal
 import sqlite3
 import subprocess
 import tarfile
@@ -244,6 +245,25 @@ def test_sensitive_value_scan_reports_location_without_echoing_secret() -> None:
         (3, "nt", "Application shutdown complete.", False),
         (3, "posix", "Application shutdown complete.\nFinished server process", False),
         (1, "nt", "Application shutdown complete.\nFinished server process", False),
+        (
+            -int(signal.SIGTERM),
+            "posix",
+            "Application shutdown complete.\nFinished server process [1]",
+            True,
+        ),
+        (-int(signal.SIGTERM), "posix", "Application shutdown complete.", False),
+        (
+            -int(signal.SIGTERM),
+            "nt",
+            "Application shutdown complete.\nFinished server process",
+            False,
+        ),
+        (
+            -int(signal.SIGINT),
+            "posix",
+            "Application shutdown complete.\nFinished server process",
+            False,
+        ),
     ),
 )
 def test_graceful_shutdown_requires_platform_specific_exit_evidence(
