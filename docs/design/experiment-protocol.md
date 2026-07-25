@@ -217,9 +217,9 @@ experiments/
 `schema_pass_rate = schema_passed_runs / terminal_runs`
 
 - 主要效应：FACTORY 与 MANUAL 的任务级通过率差。
-- 支持：差值至少 `+0.10`。
-- 不支持：差值小于 `+0.05`。
-- 中间区间：证据不足。
+- 支持：95% bootstrap 区间下界至少为 `+0.10`。
+- 不支持：95% bootstrap 区间上界低于 `+0.05`。
+- 其余区间：证据不足。
 
 ### 9.2 H2 知识遗漏
 
@@ -227,9 +227,9 @@ experiments/
 
 `omission_rate = 1 - covered_required_facts / required_facts_total`
 
-- 支持：FACTORY 相对遗漏率降低至少 20%。
-- 不支持：无下降或反向增加。
-- 其余：证据不足。
+- 支持：相对遗漏率降低的 95% bootstrap 区间下界至少为 20%。
+- 不支持：该区间上界不大于 0，即没有可辨认的下降。
+- 其余：证据不足；MANUAL 遗漏率为 0 时相对降低未定义，只报告绝对差并判为证据不足。
 
 事实匹配优先使用结构字段、精确值、预注册正则和同义词表。任何运行后新增的同义词只进入敏感性分析，不能改写主要结果。
 
@@ -239,7 +239,7 @@ experiments/
 
 - 使用配对任务差 `FACTORY - MANUAL`。
 - 非劣界值为 `-0.05`；95% 区间下界不低于该值时支持“未明显损害”。
-- 点估计或区间明显低于界值时不支持。
+- 95% 区间上界低于该值时不支持；跨越界值时证据不足。
 
 ### 9.4 次要指标
 
@@ -266,6 +266,8 @@ H5 的 expected steps 在运行前冻结。每一步必须同时匹配 event typ
 5. 方差比较属于次要分析；若引入 Brown-Forsythe，依赖和实现必须在 M5.5 前冻结。
 6. 报告所有失败和缺失，不对失败样本做无说明的 complete-case 删除。
 7. 分析实现必须是可测试的 Python 模块；notebook 不能成为唯一计算来源。
+
+主要分析采用 intention-to-treat：provider、timeout、filter、invalid-response 和 budget-stopped run 在 H1 中按 Schema 未通过、H2 中按 required facts 全部遗漏、H4 中按个性化约束全部未满足计入。只分析成功 run 的结果必须明确标注为次要敏感性分析，不能替代主要结论。
 
 结论只使用“支持”“不支持”“证据不足”。即使区间和阈值均有利，也只能限定到冻结模型、Writer 任务集和本次 workflow bundle。
 
@@ -338,3 +340,11 @@ M5.3 新增以下可测试模块：
 冻结 Writer fixture 的执行计划共有 240 项，checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。MANUAL prompt 字节与 renderer version 组成的 condition bundle checksum 为 `17781f2fb7d88c4f38edce23580f4eab6b06a4b7e5330b85a20d427fb36b0d76`。FACTORY 条件的集成测试通过真实 `FactoryController` 完成原型注册、知识注册、克隆、绑定和 `AgentSpec` 导出，再与 MANUAL 条件逐字节核对共同 task input。
 
 离线定向门禁为 `83 passed`，`experiments` 分支覆盖率 92.84%；全量回归为 `492 passed`，生产代码总覆盖率 92%，其中 domain 96%、application 95%。这组证据证明代码路径、契约和故障恢复行为满足 M5.3 规格，不证明真实模型质量、正式预算安全或实验命题成立。
+
+## 15. M5.4.1 评分证据契约
+
+M5.4.1 在 `experiments/contracts.py` 固定逐 run 评分证据，尚未实现 matcher、Schema 执行或统计分析。`RunScoreRecord` 必须同时引用源 `ExperimentRun` checksum 和 `RubricDefinition` checksum；成功记录包含排序后的 Schema 违规、required fact 覆盖、forbidden matcher 违规和个性化约束明细，失败记录不携带这些派生评分。
+
+确定性质量分只作为次要摘要：Schema 通过率、required fact 覆盖率、存在 forbidden matcher 时的合规率，以及存在个性化约束时的满足率组成适用分量，取等权平均并舍入到 12 位小数。模型会根据逐项证据重新计算分母、分子和总分，拒绝客户端直接提交不一致汇总。人工评分不进入 `RunScoreRecord`，继续由独立盲化评审流程管理。
+
+M5.4.1 离线定向门禁为 `93 passed`，`experiments` 分支覆盖率 92.75%；全量回归为 `502 passed`。这些结果不包含任何真实模型输出或统计结论。

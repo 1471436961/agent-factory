@@ -21,17 +21,23 @@ from experiments.contracts import (
     ExperimentCondition,
     ExperimentDefinition,
     ExperimentRun,
+    ExperimentScenario,
+    FactCheck,
     FactDefinition,
+    ForbiddenMatcherCheck,
     GenerationConfig,
     HypothesisThresholds,
     KnowledgeFixture,
     MatcherKind,
     MatchExpectation,
     MetricRecord,
+    PersonalizationCheck,
     PersonalizationConstraint,
     RubricDefinition,
     RunAttempt,
+    RunScoreRecord,
     RunStatus,
+    SchemaViolation,
     TaskBundle,
     TextMatcher,
 )
@@ -91,6 +97,50 @@ def _run_payload() -> dict[str, object]:
         "structured_output": {"title": "Example"},
         "started_at": NOW,
         "completed_at": NOW + timedelta(seconds=1),
+    }
+
+
+def _successful_metric(
+    *,
+    quality: float = 0.833333333333,
+    personalization_total: int = 0,
+    personalization_satisfied: int = 0,
+) -> MetricRecord:
+    return MetricRecord(
+        run_id=RUN_ID,
+        run_status=RunStatus.SUCCEEDED,
+        schema_passed=True,
+        required_facts_total=2,
+        required_facts_covered=1,
+        forbidden_matchers_total=1,
+        forbidden_matchers_violated=0,
+        personalization_total=personalization_total,
+        personalization_satisfied=personalization_satisfied,
+        deterministic_quality_score=quality,
+    )
+
+
+def _score_payload() -> dict[str, object]:
+    return {
+        "run_id": RUN_ID,
+        "run_checksum": SHA_A,
+        "experiment_id": "writer-validation-v1",
+        "plan_checksum": SHA_A,
+        "condition": ExperimentCondition.MANUAL,
+        "task_id": "nexora-integration-reference",
+        "scenario": ExperimentScenario.CONSISTENCY,
+        "repetition": 1,
+        "execution_order": 1,
+        "run_status": RunStatus.SUCCEEDED,
+        "rubric_id": "nexora-integration-reference-rubric",
+        "rubric_checksum": SHA_B,
+        "schema_passed": True,
+        "fact_checks": [
+            FactCheck(fact_id="ingestion-endpoint", covered=True, matched_by_index=0),
+            FactCheck(fact_id="batch-limit", covered=False),
+        ],
+        "forbidden_checks": [ForbiddenMatcherCheck(matcher_index=0, violated=False)],
+        "metric": _successful_metric(),
     }
 
 
@@ -358,6 +408,8 @@ def test_metric_counts_cannot_exceed_denominators() -> None:
             schema_passed=True,
             required_facts_total=2,
             required_facts_covered=3,
+            forbidden_matchers_total=1,
+            forbidden_matchers_violated=0,
             personalization_total=0,
             personalization_satisfied=0,
             deterministic_quality_score=1,
@@ -391,10 +443,178 @@ def test_metric_counts_cannot_exceed_denominators() -> None:
             schema_passed=True,
             required_facts_total=2,
             required_facts_covered=2,
+            forbidden_matchers_total=1,
+            forbidden_matchers_violated=0,
             personalization_total=1,
             personalization_satisfied=2,
             deterministic_quality_score=1,
         )
+
+    with pytest.raises(ValidationError, match="violated forbidden"):
+        MetricRecord(
+            run_id=RUN_ID,
+            run_status=RunStatus.SUCCEEDED,
+            schema_passed=True,
+            required_facts_total=2,
+            required_facts_covered=2,
+            forbidden_matchers_total=1,
+            forbidden_matchers_violated=2,
+            personalization_total=0,
+            personalization_satisfied=0,
+            deterministic_quality_score=1,
+        )
+
+
+def test_scoring_checks_reject_self_contradictory_evidence() -> None:
+    with pytest.raises(ValidationError, match="coverage must match"):
+        FactCheck(fact_id="batch-limit", covered=True)
+
+    with pytest.raises(ValidationError, match="contradicts expectation"):
+        PersonalizationCheck(
+            constraint_id="risk-label",
+            expectation=MatchExpectation.ABSENT,
+            matcher_matched=True,
+            satisfied=True,
+        )
+
+
+def test_run_score_binds_successful_check_evidence_to_metric() -> None:
+    score = RunScoreRecord.model_validate(_score_payload())
+
+    assert score.metric.required_facts_covered == 1
+    assert score.metric.forbidden_matchers_violated == 0
+    assert score.schema_violations == ()
+
+
+def test_successful_run_can_record_schema_failure_as_scoring_evidence() -> None:
+    payload = _score_payload()
+    payload.update(
+        {
+            "schema_passed": False,
+            "schema_violations": [
+                SchemaViolation(
+                    instance_path="$.summary",
+                    schema_path="$.properties.summary.minLength",
+                    validator="minLength",
+                )
+            ],
+            "metric": _successful_metric(quality=0.5).model_copy(
+                update={"schema_passed": False}
+            ),
+        }
+    )
+
+    score = RunScoreRecord.model_validate(payload)
+
+    assert score.run_status is RunStatus.SUCCEEDED
+    assert score.schema_passed is False
+    assert len(score.schema_violations) == 1
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        (
+            {"metric": _successful_metric().model_copy(update={"run_id": INSTANCE_ID})},
+            "references another run",
+        ),
+        ({"schema_passed": False}, "contradicts violation evidence"),
+        (
+            {
+                "schema_violations": [
+                    SchemaViolation(
+                        instance_path="$.summary",
+                        schema_path="$.properties.summary.minLength",
+                        validator="minLength",
+                    ),
+                    SchemaViolation(
+                        instance_path="$.summary",
+                        schema_path="$.properties.summary.minLength",
+                        validator="minLength",
+                    ),
+                ]
+            },
+            "unique and sorted",
+        ),
+        (
+            {
+                "forbidden_checks": [
+                    ForbiddenMatcherCheck(matcher_index=1, violated=False)
+                ]
+            },
+            "indices must be contiguous",
+        ),
+        (
+            {
+                "metric": _successful_metric().model_copy(
+                    update={"required_facts_covered": 2}
+                )
+            },
+            "counts do not match",
+        ),
+        (
+            {
+                "metric": _successful_metric().model_copy(
+                    update={"deterministic_quality_score": 0.9}
+                )
+            },
+            "quality score does not match",
+        ),
+    ],
+)
+def test_run_score_rejects_cross_artifact_contradictions(
+    changes: dict[str, object],
+    message: str,
+) -> None:
+    payload = _score_payload()
+    payload.update(changes)
+    with pytest.raises(ValidationError, match=message):
+        RunScoreRecord.model_validate(payload)
+
+
+def test_run_score_enforces_scenario_and_failed_run_boundaries() -> None:
+    adaptation = _score_payload()
+    adaptation.update(
+        {
+            "scenario": ExperimentScenario.ADAPTATION,
+            "personalization_checks": [
+                PersonalizationCheck(
+                    constraint_id="risk-label",
+                    expectation=MatchExpectation.PRESENT,
+                    target_field="summary",
+                    matcher_matched=True,
+                    satisfied=True,
+                )
+            ],
+            "metric": _successful_metric(
+                quality=0.875,
+                personalization_total=1,
+                personalization_satisfied=1,
+            ),
+        }
+    )
+    assert len(RunScoreRecord.model_validate(adaptation).personalization_checks) == 1
+
+    missing = _score_payload()
+    missing["scenario"] = ExperimentScenario.ADAPTATION
+    with pytest.raises(ValidationError, match="requires personalization"):
+        RunScoreRecord.model_validate(missing)
+
+    failed = _score_payload()
+    failed.update(
+        {
+            "run_status": RunStatus.TIMED_OUT,
+            "schema_passed": None,
+            "fact_checks": [],
+            "forbidden_checks": [],
+            "metric": MetricRecord(run_id=RUN_ID, run_status=RunStatus.TIMED_OUT),
+        }
+    )
+    assert RunScoreRecord.model_validate(failed).fact_checks == ()
+
+    failed["schema_passed"] = False
+    with pytest.raises(ValidationError, match="failed run cannot contain"):
+        RunScoreRecord.model_validate(failed)
 
 
 def test_build_session_rejects_impossible_duration_accounting() -> None:

@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前状态：M5 已于 2026-07-25 经项目 owner 确认进入，M5.1-M5.3 已实现，M5.4 尚未进入。仓库级 `experiments` package 已提供严格模型、冻结 Writer fixture、240 项确定性执行计划、MANUAL/FACTORY 渲染与公平性检查、不可变产物仓库、fake gateway、有限重试和断点恢复；数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`，计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。尚未冻结正式模型、SDK、预算或价格快照，也未调用真实模型；当前 technical manifest 不是 M5.5 的正式冻结 manifest。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)。M4 已于 2026-07-25 封存，退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过；该结论只覆盖本地 Alpha 的既定边界，不包含公网生产部署。M3 已于 2026-07-24 封存，M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
+当前状态：M5 已于 2026-07-25 经项目 owner 确认进入，M5.1-M5.3 已实现，M5.4 已进入且 M5.4.1 评分契约已实现。仓库级 `experiments` package 已提供严格模型、冻结 Writer fixture、240 项确定性执行计划、MANUAL/FACTORY 渲染与公平性检查、不可变产物仓库、fake gateway、有限重试、断点恢复和可追溯评分证据模型；数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`，计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。实际评分器、bootstrap 与报告尚未实现；尚未冻结正式模型、SDK、预算或价格快照，也未调用真实模型。当前 technical manifest 不是 M5.5 的正式冻结 manifest。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)。M4 已于 2026-07-25 封存，退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过；该结论只覆盖本地 Alpha 的既定边界，不包含公网生产部署。M3 已于 2026-07-24 封存，M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 

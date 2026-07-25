@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.3 已实现，M5.4 尚未进入。
+- 状态：进行中；M5.1-M5.3 已实现，M5.4 已进入且 M5.4.1 评分契约已实现。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
@@ -159,7 +159,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把 fake gateway 结果当作模型质量证据。下一步是 M5.4：从不可变 run 产物实现确定性评分与统计复算。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1 已固定评分证据与汇总指标之间的不变量。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把 fake gateway 结果当作模型质量证据。下一步是 M5.4.2：从不可变 run 产物实现确定性评分器。
 
 ## 10. M5.2 实现证据
 
@@ -190,3 +190,14 @@ M5.3 在 `experiments` package 中新增计划、渲染、产物、gateway、执
 定向门禁为 `83 passed`，`experiments` 分支覆盖率 92.84%。全量回归为 `492 passed`，生产代码总覆盖率 92%，其中 domain 96%、application 95%。故障测试覆盖计划篡改、条件知识错位、AgentSpec 来源错位、非法 live gateway、预算提前停止、重试分类、时钟回拨、写入中断、孤立 intent 恢复、终态重放和内容冲突。
 
 当前 execution manifest 只是一份技术执行身份，绑定数据集、计划、条件 bundle、生成参数和 request/token 上限。它不包含 source commit、Python/SDK 版本、provider 模型、价格快照和货币成本，因此不能替代 M5.5 的正式冻结 manifest。另一个不可消除的边界是：若进程在 provider 接收请求后、本地 completion 落盘前崩溃，M5.3 会将该 attempt 标记为结果未知并避免重复计入，但无法在缺少 provider 幂等支持时保证不会发生第二次外部计费。
+
+## 12. M5.4.1 评分契约
+
+- `MetricRecord` 增加 forbidden matcher 总数与违规数；失败 run 仍不得伪造任何确定性分数。
+- `SchemaViolation` 只记录实例路径、Schema 路径和 validator，不复制可能包含敏感正文的错误消息。
+- `FactCheck` 记录覆盖结果及命中的预注册 matcher 索引；`ForbiddenMatcherCheck` 和 `PersonalizationCheck` 保留逐项布尔证据。
+- `RunScoreRecord` 绑定 run checksum、rubric checksum、实验坐标和 scorer version；成功 run 的明细计数必须等于 `MetricRecord`，失败 run 的检查明细必须为空。
+- 确定性质量分是 Schema、事实覆盖、禁用信息合规和适用的个性化约束四类分量的等权平均，保留 12 位小数；它只是次要指标，不替代 H1/H2/H4。
+- provider 成功但 Schema 不通过仍属于可评分成功 run；provider/timeout/filter/budget 等执行失败则由主要 ITT 分析按最差值映射，不能伪装成 Schema 评分记录。
+
+M5.4.1 定向门禁为 `93 passed`，`experiments` 分支覆盖率 92.75%；全量回归为 `502 passed`。Ruff format、Ruff lint 和 mypy strict 均通过。该证据只证明评分契约能拒绝结构与汇总矛盾，实际 matcher、Schema 执行、bootstrap 和命题结论尚不存在。

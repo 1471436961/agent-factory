@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.3 离线实验执行基础设施已实现，M5.4 尚未进入；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.4 评分与分析流水线实现中，M5.4.1 评分契约已完成；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4088,13 +4088,15 @@ class MetricRecord(FrozenModel):
     schema_passed: bool | None
     required_facts_total: int | None
     required_facts_covered: int | None
+    forbidden_matchers_total: int | None
+    forbidden_matchers_violated: int | None
     personalization_total: int | None
     personalization_satisfied: int | None
     deterministic_quality_score: float | None
     human_quality_score: float | None
 ```
 
-`RunAttempt` 强制成功记录同时具有原始响应、文本输出和结构化输出且无错误；失败记录具有错误码、可选原始错误响应且无成功输出。`ExperimentRun` 强制终态与最后一次 attempt 一致，`budget-stopped` 不得伪造供应商调用或最终输出；`MetricRecord` 只允许成功 run 携带确定性或人工质量分数。M5.3 进一步使用 `ExperimentRunRequest`、`AttemptIntent`、`AttemptCompletion` 和 `ExecutionManifest` 将 provider-visible 输入、调用前意图、调用后结果和技术执行身份分别落盘。
+`RunAttempt` 强制成功记录同时具有原始响应、文本输出和结构化输出且无错误；失败记录具有错误码、可选原始错误响应且无成功输出。`ExperimentRun` 强制终态与最后一次 attempt 一致，`budget-stopped` 不得伪造供应商调用或最终输出；`MetricRecord` 只允许成功 run 携带确定性或人工质量分数。M5.3 使用 `ExperimentRunRequest`、`AttemptIntent`、`AttemptCompletion` 和 `ExecutionManifest` 将 provider-visible 输入、调用前意图、调用后结果和技术执行身份分别落盘。M5.4.1 新增 `SchemaViolation`、`FactCheck`、`ForbiddenMatcherCheck`、`PersonalizationCheck` 和 `RunScoreRecord`；评分记录绑定 run/rubric checksum，并在 Pydantic 层重算计数与确定性质量分，拒绝明细和汇总互相矛盾。
 
 ### 13.3 实验规模与分组
 

@@ -523,6 +523,8 @@ class MetricRecord(FrozenModel):
     schema_passed: bool | None = None
     required_facts_total: int | None = Field(default=None, ge=1)
     required_facts_covered: int | None = Field(default=None, ge=0)
+    forbidden_matchers_total: int | None = Field(default=None, ge=0)
+    forbidden_matchers_violated: int | None = Field(default=None, ge=0)
     personalization_total: int | None = Field(default=None, ge=0)
     personalization_satisfied: int | None = Field(default=None, ge=0)
     deterministic_quality_score: float | None = Field(default=None, ge=0, le=1)
@@ -534,6 +536,8 @@ class MetricRecord(FrozenModel):
             self.schema_passed,
             self.required_facts_total,
             self.required_facts_covered,
+            self.forbidden_matchers_total,
+            self.forbidden_matchers_violated,
             self.personalization_total,
             self.personalization_satisfied,
             self.deterministic_quality_score,
@@ -547,13 +551,180 @@ class MetricRecord(FrozenModel):
             raise ValueError("successful run requires complete deterministic scores")
         assert self.required_facts_total is not None
         assert self.required_facts_covered is not None
+        assert self.forbidden_matchers_total is not None
+        assert self.forbidden_matchers_violated is not None
         assert self.personalization_total is not None
         assert self.personalization_satisfied is not None
         if self.required_facts_covered > self.required_facts_total:
             raise ValueError("covered facts cannot exceed total facts")
+        if self.forbidden_matchers_violated > self.forbidden_matchers_total:
+            raise ValueError("violated forbidden matchers cannot exceed total")
         if self.personalization_satisfied > self.personalization_total:
             raise ValueError("satisfied constraints cannot exceed total constraints")
         return self
+
+
+class SchemaViolation(FrozenModel):
+    instance_path: str = Field(min_length=1, max_length=1_000)
+    schema_path: str = Field(min_length=1, max_length=1_000)
+    validator: str = Field(min_length=1, max_length=128)
+
+
+class FactCheck(FrozenModel):
+    fact_id: Slug
+    covered: bool
+    matched_by_index: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def matcher_index_must_match_coverage(self) -> Self:
+        if self.covered != (self.matched_by_index is not None):
+            raise ValueError("fact coverage must match matcher index evidence")
+        return self
+
+
+class ForbiddenMatcherCheck(FrozenModel):
+    matcher_index: int = Field(ge=0)
+    violated: bool
+
+
+class PersonalizationCheck(FrozenModel):
+    constraint_id: Slug
+    expectation: MatchExpectation
+    target_field: JsonFieldName | None = None
+    matcher_matched: bool
+    satisfied: bool
+
+    @model_validator(mode="after")
+    def satisfaction_must_match_expectation(self) -> Self:
+        expected = (
+            self.matcher_matched
+            if self.expectation is MatchExpectation.PRESENT
+            else not self.matcher_matched
+        )
+        if self.satisfied != expected:
+            raise ValueError("personalization satisfaction contradicts expectation")
+        return self
+
+
+class RunScoreRecord(FrozenModel):
+    schema_version: Literal["1.0"] = "1.0"
+    scorer_version: Literal["1.0"] = "1.0"
+    run_id: UUID
+    run_checksum: Sha256
+    experiment_id: Slug
+    plan_checksum: Sha256
+    condition: ExperimentCondition
+    task_id: Slug
+    scenario: ExperimentScenario
+    repetition: int = Field(ge=1, le=20)
+    execution_order: PositiveInt
+    run_status: RunStatus
+    rubric_id: Slug
+    rubric_checksum: Sha256
+    schema_passed: bool | None = None
+    schema_violations: Annotated[
+        tuple[SchemaViolation, ...],
+        Field(max_length=128),
+    ] = ()
+    fact_checks: tuple[FactCheck, ...] = ()
+    forbidden_checks: tuple[ForbiddenMatcherCheck, ...] = ()
+    personalization_checks: tuple[PersonalizationCheck, ...] = ()
+    metric: MetricRecord
+
+    @model_validator(mode="after")
+    def evidence_must_match_metric(self) -> Self:
+        if self.metric.run_id != self.run_id:
+            raise ValueError("score metric references another run")
+        if self.metric.run_status is not self.run_status:
+            raise ValueError("score metric status does not match run")
+        if self.metric.human_quality_score is not None:
+            raise ValueError("deterministic run score cannot contain human rating")
+        self._validate_unique_evidence()
+        if self.run_status is not RunStatus.SUCCEEDED:
+            if self.schema_passed is not None or any(
+                (
+                    self.schema_violations,
+                    self.fact_checks,
+                    self.forbidden_checks,
+                    self.personalization_checks,
+                )
+            ):
+                raise ValueError("failed run cannot contain deterministic checks")
+            return self
+        if self.schema_passed is None or not self.fact_checks:
+            raise ValueError("successful run requires schema and fact checks")
+        if self.schema_passed != (not self.schema_violations):
+            raise ValueError("schema result contradicts violation evidence")
+        self._validate_successful_counts()
+        return self
+
+    def _validate_unique_evidence(self) -> None:
+        violations = [
+            (item.instance_path, item.schema_path, item.validator)
+            for item in self.schema_violations
+        ]
+        if len(violations) != len(set(violations)) or violations != sorted(violations):
+            raise ValueError("schema violations must be unique and sorted")
+        fact_ids = [item.fact_id for item in self.fact_checks]
+        if len(fact_ids) != len(set(fact_ids)):
+            raise ValueError("fact checks contain duplicate fact IDs")
+        matcher_indices = [item.matcher_index for item in self.forbidden_checks]
+        if matcher_indices != list(range(len(matcher_indices))):
+            raise ValueError("forbidden matcher indices must be contiguous")
+        constraint_ids = [item.constraint_id for item in self.personalization_checks]
+        if len(constraint_ids) != len(set(constraint_ids)):
+            raise ValueError("personalization checks contain duplicate IDs")
+
+    def _validate_successful_counts(self) -> None:
+        metric = self.metric
+        assert self.schema_passed is not None
+        assert metric.required_facts_total is not None
+        assert metric.required_facts_covered is not None
+        assert metric.forbidden_matchers_total is not None
+        assert metric.forbidden_matchers_violated is not None
+        assert metric.personalization_total is not None
+        assert metric.personalization_satisfied is not None
+        assert metric.deterministic_quality_score is not None
+        if metric.schema_passed is not self.schema_passed:
+            raise ValueError("score metric schema result does not match checks")
+        expected_counts = (
+            len(self.fact_checks),
+            sum(item.covered for item in self.fact_checks),
+            len(self.forbidden_checks),
+            sum(item.violated for item in self.forbidden_checks),
+            len(self.personalization_checks),
+            sum(item.satisfied for item in self.personalization_checks),
+        )
+        actual_counts = (
+            metric.required_facts_total,
+            metric.required_facts_covered,
+            metric.forbidden_matchers_total,
+            metric.forbidden_matchers_violated,
+            metric.personalization_total,
+            metric.personalization_satisfied,
+        )
+        if actual_counts != expected_counts:
+            raise ValueError("score metric counts do not match check evidence")
+        if self.scenario is ExperimentScenario.CONSISTENCY:
+            if self.personalization_checks:
+                raise ValueError("consistency score cannot contain personalization")
+        elif not self.personalization_checks:
+            raise ValueError("adaptation score requires personalization checks")
+        components = [
+            float(self.schema_passed),
+            metric.required_facts_covered / metric.required_facts_total,
+        ]
+        if metric.forbidden_matchers_total:
+            components.append(
+                1 - metric.forbidden_matchers_violated / metric.forbidden_matchers_total
+            )
+        if metric.personalization_total:
+            components.append(
+                metric.personalization_satisfied / metric.personalization_total
+            )
+        expected_quality = round(sum(components) / len(components), 12)
+        if abs(metric.deterministic_quality_score - expected_quality) > 1e-12:
+            raise ValueError("deterministic quality score does not match checks")
 
 
 class BuildSession(FrozenModel):

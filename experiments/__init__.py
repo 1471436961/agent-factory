@@ -11,6 +11,7 @@ from experiments.contracts import (
     ExperimentScenario,
     ExperimentTask,
     MetricRecord,
+    RunScoreRecord,
 )
 from experiments.executor import ExperimentExecutor
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
@@ -29,6 +30,7 @@ __all__ = [
     "ExperimentTask",
     "LoadedExperimentDataset",
     "MetricRecord",
+    "RunScoreRecord",
     "build_execution_plan",
     "load_execution_plan",
     "load_experiment_dataset",
