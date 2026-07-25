@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M4.3 已完成本地实现**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M4.1 已冻结范围和起始基线，M4.2 已建立 OpenAPI 与 Writer 稳定语义快照，M4.3 已建立 API 与默认 Runtime 的集中安全回归。M4 聚焦当前 Alpha 的安全、回归与发布门禁，不包含公网生产部署能力。
+当前仓库处于 **Alpha / M4.4 已完成本地实现**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M4.1 已冻结范围和起始基线，M4.2 已建立 OpenAPI 与 Writer 稳定语义快照，M4.3 已建立 API 与默认 Runtime 的集中安全回归，M4.4 已建立 15 类写能力证据矩阵以及事务、并发和 migration 故障证据。M4 聚焦当前 Alpha 的安全、回归与发布门禁，不包含公网生产部署能力。
 
 ## 核心边界
 
@@ -75,6 +75,19 @@ uv run pytest -q tests/security
 
 这些测试只证明当前本地 Alpha 的固定边界，不代表已经实现 OAuth/OIDC、公网限流、TLS、租户隔离、网络/文件工具安全或不可信代码沙箱。
 
+## 事务故障回归
+
+M4.4 使用测试专用 UoW 装饰器在真实文件型 SQLite 事务的实体写入后、审计写入后、幂等写入后和 commit 前注入失败，并验证 revision、审计与重放事实不会部分提交：
+
+```bash
+uv run pytest -q \
+  tests/integration/test_transaction_fault_injection.py \
+  tests/integration/test_tool_execution.py \
+  tests/integration/test_migrations.py
+```
+
+该证据不模拟断电、磁盘损坏或外部工具副作用回滚，也不能外推到 PostgreSQL 或分布式事务。
+
 ## Python SDK
 
 SDK 复用 REST DTO，通过异步 HTTP 调用服务，不直接访问 Controller 或数据库：
@@ -114,6 +127,7 @@ async with AgentFactoryClient(
 - [Runtime 与安全工具执行设计说明](docs/design/runtime-tool-execution.md)
 - [Gradio 演示设计说明](docs/design/gradio-demo.md)
 - [Alpha 安全、回归与发布门禁设计说明](docs/design/security-regression-gates.md)
+- [M4.4 事务与并发故障证据](docs/design/transaction-fault-evidence.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)
 

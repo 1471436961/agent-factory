@@ -59,6 +59,13 @@ jobs:
       - name: Run Alpha security regression
         run: uv run pytest -q tests/security
 
+      - name: Run transaction fault regression
+        run: >-
+          uv run pytest -q
+          tests/integration/test_transaction_fault_injection.py
+          tests/integration/test_tool_execution.py
+          tests/integration/test_migrations.py
+
       - name: Test and collect branch coverage
         run: uv run pytest -q --cov --cov-report=term-missing
 

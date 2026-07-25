@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M4.1-M4.3 已完成本地实现，M4.4 待项目 owner 确认后进入。
+- 状态：进行中；M4.1-M4.4 已完成本地实现，M4.5 待进入。
 - 开始时间：2026-07-24。
 - 进入依据：M3 已由项目 owner 验收并封存，退出候选提交 `d2edef7` 的 GitHub Actions CI #20 通过。
 - 规划依据：项目 owner 于 2026-07-24 确认 M4 的范围、工作包、风险、备选方案与退出标准。
@@ -131,9 +131,9 @@ M4 不增加 Agent 生产或技能治理能力，而是验证 M1-M3 已实现能
 - [x] OpenAPI 与稳定语义快照可重复生成并由 CI 检查。
 - [x] 当前认证、授权、请求和错误攻击面有集中安全回归测试。
 - [x] 测试 Secret、Prompt、知识正文和工具参数不进入响应、日志或审计。
-- [ ] 全部写操作具备幂等/审计/事务证据矩阵。
-- [ ] 关键写路径故障注入后不留部分状态。
-- [ ] migration 从空库升级并在失败时不记录虚假版本。
+- [x] 全部写操作具备幂等/审计/事务证据矩阵。
+- [x] 关键写路径故障注入后不留部分状态。
+- [x] migration 从空库升级并在失败时不记录虚假版本。
 - [ ] wheel 包含代码、001-006 migration、extras 和入口。
 - [ ] 安装后的 wheel 能经独立 Uvicorn/loopback HTTP 启动和重启恢复。
 - [ ] domain/application/全项目 branch coverage 不低于 90%/85%/80%。
@@ -234,6 +234,35 @@ M4.3 于 2026-07-25 完成以下本地实现：
 
 受限沙箱内的首次全量测试仍因 pytest 无权在 session finish 清理 E 盘 basetemp 而失败；在获批的沙箱外使用新的 E 盘目录重跑后 368 项全部通过。首次隔离构建因沙箱网络不可用而无法解析 hatchling；获批联网后使用 `E:\Agent-Factory\.tmp\uv-cache` 成功构建，未向 C 盘安装新依赖。远程 GitHub Actions 仍需待提交推送后记录，不能由本地结果代替。
 
-## 10. 阶段结论
+## 10. M4.4 事务与并发故障证据
 
-M4.1 已冻结阶段范围、风险边界、退出标准和起始基线；M4.2 已建立公共契约与稳定语义回归快照；M4.3 已建立当前 API 和默认 Runtime 的集中安全回归。M4.4 尚未进入，M4 也尚未通过事务、制品和部署退出验收。
+M4.4 于 2026-07-25 完成以下本地实现：
+
+- 新增 [`事务与并发故障证据`](../design/transaction-fault-evidence.md)，逐项记录 14 个 Controller 写操作和 1 个 ToolExecutor 终态写操作的主实体、revision、审计、重放约束与测试引用。
+- 新增 `tests/support/fault_injection.py`。测试装饰器代理真实文件型 SQLite UoW，在实体写入后、审计写入后、幂等写入后和 commit 前抛出稳定异常；生产代码与公开 API 未增加故障开关。
+- `transition_instance` 在四个故障点均证明 head、`N+1` snapshot、审计与幂等记录不会部分提交，并证明恢复正常 UoW 后可使用原命令重试。
+- ToolExecutor 在三个适用故障点均证明 `ToolCallRecord` 与 `tool.called` 审计共同回滚。
+- 两个独立 Container 首次并发导出同一 revision 的 AgentSpec 时，返回相同对象，数据库只保存一条 Spec 和一条 `spec.exported` 审计。
+- 合成的待执行 `007` migration 在 DDL 后失败时，不保留部分表或虚假版本；修正尚未应用的脚本后可重试成功。
+- GitHub Actions 增加独立事务故障回归步骤；`tests/support` 不进入 wheel。
+
+本地门禁：
+
+| 门禁 | 可复现命令 | 结果 |
+| --- | --- | --- |
+| M4.4 定向测试 | `uv run pytest -q tests/integration/test_transaction_fault_injection.py tests/integration/test_tool_execution.py tests/integration/test_migrations.py` | 34 项通过，12.98 秒 |
+| Ruff format/check | `uv run ruff format --check src tests scripts`；`uv run ruff check src tests scripts` | 149 个文件通过 |
+| mypy strict | `uv run mypy src tests scripts` | 149 个 source file 无问题 |
+| 契约快照 | `uv run python -m scripts.contract_snapshots --check` | 三份 SHA-256 与 M4.2 基线一致 |
+| 全量 pytest | `uv run pytest -q --cov --cov-report=term-missing` | 377 项通过，92.54 秒 |
+| Domain/Application/全项目 branch coverage | 三档 `coverage report --fail-under` | 96% / 94% / 92%，通过 90% / 85% / 80% 门槛 |
+| CI YAML | 使用 PyYAML 解析 workflow | 可解析，独立事务故障步骤已接入 |
+| sdist/wheel | `uv --cache-dir E:\Agent-Factory\.tmp\uv-cache build` | `agent_factory-1.0.0a1` 构建成功；001-006 migration 存在，测试支持代码未进入 wheel |
+
+`BEFORE_COMMIT` 在真实 commit 调用前注入异常，因此只证明未成功提交的事务会回滚，不模拟断电、进程强杀、磁盘损坏或 WAL 持久性。Tool handler 的外部副作用也无法由本地 SQLite 回滚；当前默认工具为只读，未来外部写工具必须设计独立的幂等或 outbox/补偿协议。上述结论只适用于当前单机文件型 SQLite，不外推到 PostgreSQL 或分布式事务。
+
+受限沙箱中的 build 因无法访问 PyPI 解析 `hatchling` 而失败；获批联网后仍使用 E 盘 uv cache 成功构建。全量 pytest 使用获批的沙箱外 E 盘 basetemp，避免已知的 session cleanup 权限假失败。远程 GitHub Actions 仍需待提交推送后记录，不能由本地结果代替。
+
+## 11. 阶段结论
+
+M4.1 已冻结阶段范围、风险边界、退出标准和起始基线；M4.2 已建立公共契约与稳定语义回归快照；M4.3 已建立当前 API 和默认 Runtime 的集中安全回归；M4.4 已建立 15 类写能力证据矩阵以及事务、并发和 migration 故障证据。M4.5 尚未进入，M4 也尚未通过隔离制品与本地部署退出验收。

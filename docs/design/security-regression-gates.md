@@ -125,6 +125,8 @@ socket guard 只验证当前固定 `document-search` handler 经标准 Python so
 
 ## 7. 事务故障证据
 
+15 类写能力的逐项入口、审计、重放和自动化证据见 [`M4.4 事务与并发故障证据`](transaction-fault-evidence.md)。本节只定义通用故障模型。
+
 每项写能力在矩阵中记录：operation、主实体、是否改变 revision、审计事件、幂等 operation 名和现有测试。缺口按风险增加以下故障点：
 
 ```text
@@ -143,6 +145,8 @@ commit 时
 - 必要的外键和 checksum 投影。
 
 故障注入优先通过测试专用 UoW/Repository wrapper 实现，不在公开 Settings、Command 或 Repository API 中加入 `fail_after_*` 参数。
+
+M4.4 使用真实文件型 SQLite 验证 revision 写路径的四个持久化阶段、ToolCall 终态的三个适用阶段，并补充首次并发导出 AgentSpec 与失败 migration 的证据。`BEFORE_COMMIT` 代表提交前异常，不等同于断电或进程强杀；外部工具副作用也不属于 SQLite rollback 能力。
 
 ## 8. 发布与进程 smoke
 

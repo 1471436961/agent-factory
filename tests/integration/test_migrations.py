@@ -124,6 +124,61 @@ async def test_modified_applied_migration_is_rejected(
 
 
 @pytest.mark.asyncio
+async def test_pending_migration_failure_rolls_back_schema_history_and_can_retry(
+    tmp_path: Path,
+    migrations_dir: Path,
+) -> None:
+    copied_migrations = tmp_path / "migrations"
+    shutil.copytree(migrations_dir, copied_migrations)
+    database_path = tmp_path / "factory.db"
+    runner = SqliteMigrationRunner(database_path, copied_migrations, FrozenClock())
+    assert (await runner.migrate()).current_version == 6
+
+    pending = copied_migrations / "007_intentional_failure.sql"
+    pending.write_text(
+        "CREATE TABLE m44_partial (id INTEGER PRIMARY KEY);\n"
+        "INSERT INTO table_that_does_not_exist (id) VALUES (1);\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(MigrationExecutionError, match="007_intentional_failure"):
+        await runner.migrate()
+
+    async with aiosqlite.connect(database_path) as connection:
+        cursor = await connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        )
+        versions = tuple(int(row[0]) for row in await cursor.fetchall())
+        cursor = await connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            ("m44_partial",),
+        )
+        partial_table = await cursor.fetchone()
+    assert versions == (1, 2, 3, 4, 5, 6)
+    assert partial_table is None
+
+    pending.write_text(
+        "CREATE TABLE m44_recovered (id INTEGER PRIMARY KEY);\n",
+        encoding="utf-8",
+    )
+    recovered = await runner.migrate()
+    assert recovered.applied_versions == (7,)
+    assert recovered.current_version == 7
+
+    async with aiosqlite.connect(database_path) as connection:
+        cursor = await connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        )
+        versions = tuple(int(row[0]) for row in await cursor.fetchall())
+        cursor = await connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            ("m44_recovered",),
+        )
+        recovered_table = await cursor.fetchone()
+    assert versions == (1, 2, 3, 4, 5, 6, 7)
+    assert recovered_table == ("m44_recovered",)
+
+
+@pytest.mark.asyncio
 async def test_task_outcome_integrity_migration_rejects_replayed_reports_atomically(
     tmp_path: Path,
     migrations_dir: Path,

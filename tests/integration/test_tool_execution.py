@@ -10,6 +10,12 @@ from uuid import UUID, uuid4
 
 import aiosqlite
 import pytest
+from tests.support import (
+    EntityWriteTarget,
+    FaultInjectingUnitOfWorkFactory,
+    FaultPoint,
+    InjectedTransactionFailure,
+)
 
 from agent_factory.application.audit import AuditEventFactory
 from agent_factory.application.commands import (
@@ -646,6 +652,53 @@ async def test_record_and_audit_roll_back_together(
             AuditQuery(event_types=frozenset({AuditEventType.TOOL_CALLED}))
         )
         assert all(event.entity_id != str(call_id) for event in audit.items)
+    finally:
+        await setup.container.close()
+
+
+@pytest.mark.parametrize(
+    "fault_point",
+    (
+        FaultPoint.AFTER_ENTITY_WRITE,
+        FaultPoint.AFTER_AUDIT_WRITE,
+        FaultPoint.BEFORE_COMMIT,
+    ),
+)
+@pytest.mark.asyncio
+async def test_tool_record_and_audit_are_atomic_at_every_persistence_stage(
+    fault_point: FaultPoint,
+    tmp_path: Path,
+    migrations_dir: Path,
+) -> None:
+    setup = await _prepare(tmp_path, migrations_dir)
+    call_id = uuid4()
+    fault_factory = FaultInjectingUnitOfWorkFactory(
+        setup.container.uow_factory,
+        point=fault_point,
+        entity_target=EntityWriteTarget.TOOL_CALL,
+    )
+    executor = ToolExecutor(
+        registry=setup.container.tool_registry,
+        uow_factory=fault_factory,
+        clock=setup.container.clock,
+        monotonic_clock=setup.container.monotonic_clock,
+        audit_factory=AuditEventFactory(setup.container.id_generator),
+    )
+    try:
+        with pytest.raises(InjectedTransactionFailure) as captured:
+            await executor.execute(_request(setup, call_id=call_id), setup.context)
+        assert captured.value.point is fault_point
+
+        async with setup.container.uow_factory(read_only=True) as uow:
+            record = await uow.tool_calls.get(call_id)
+            audit = await uow.audit.query(
+                AuditQuery(
+                    entity_id=str(call_id),
+                    event_types=frozenset({AuditEventType.TOOL_CALLED}),
+                )
+            )
+        assert record is None
+        assert audit.total == 0
     finally:
         await setup.container.close()
 
