@@ -708,3 +708,115 @@
    - 易混点：本地测试通过不等于 wheel 完整；wheel 可导入不等于业务行为正确；重新创建 FastAPI app 不等于重启 Python 解释器；正常 lifespan 关闭不等于崩溃恢复；覆盖率达到门槛不等于断言充分；远程 CI 通过不等于公网部署安全。
    - 验证边界：M3.7 证明固定 M3 主链、持久化幂等与审计在跨 App 重建后可恢复，当前 wheel 包含声明资源并能在锁定依赖的隔离 Linux 环境安装，质量门禁可由 GitHub Actions 重复执行；不证明多进程 SQLite 写入、强制崩溃恢复、真实网络部署、容器隔离、生产身份或真实 LLM 可靠。
    - 后续应用：每个里程碑结束时同时保存行为回归、重启/故障证据、构建归档检查和隔离安装 smoke test；新增 package data、extra 或 console script 时扩展 wheel 验证；需要宣称多进程或崩溃恢复前，增加独立 OS 进程、kill/fault injection、数据库耐久性与竞争写入测试，不能沿用 App 重建结果推断。
+
+1. **M4.2 用稳定语义快照把公共契约变化变成显式评审事件**
+
+   - 日期：2026-07-25
+   - 里程碑：M4.2
+   - 主题：OpenAPI、AgentSpec 与审计时间线的稳定语义投影，以及 `--check`/`--write` 的职责分离。
+   - 上下文：理解为什么回归快照不能直接保存每次运行产生的 UUID、时间戳等动态数据，以及 CI 为什么只能报告契约漂移，不能自动接受新的基线。
+   - 证据：`scripts/contract_snapshots.py` 生成 `docs/generated/openapi-v1.json`、`tests/regression/snapshots/writer-agent-spec-v1.json` 和 `tests/regression/snapshots/writer-audit-timeline-v1.json`；`tests/regression/test_contract_snapshots.py` 验证稳定投影、连续生成字节一致、缺失/漂移失败和显式写入；CI 在测试前运行 `python -m scripts.contract_snapshots --check`。
+   - 结论：
+     - 快照比较的对象应是调用方依赖的稳定语义，而不是原始运行记录。动态 UUID、绝对时间和环境路径必须被固定、归一化或排除，否则快照只能制造无意义噪声。
+     - 规范 JSON 使用固定 UTF-8 编码、键排序、缩进和末尾换行，使字节差异能够对应可审查的契约差异；连续生成字节一致是确定性证据，不等于契约设计本身正确。
+     - `--check` 是只读门禁：快照缺失或发生字节漂移时返回非零退出码；`--write` 是人工确认后的基线替换操作。CI 不应自动执行 `--write`，否则真正的破坏性变更会被测试流程自行接受。
+     - 后续快照变更需要按兼容性说明 PATCH、MINOR 或 MAJOR 影响。版本标签是评审语言，不代替对消费者行为和迁移方案的分析。
+   - 易混点：快照变化不一定是缺陷，但必须被解释；快照未变化也不能证明所有行为兼容；OpenAPI 一致不代表 SDK、Factory Tool、运行时副作用或数据库语义全部一致。
+   - 后续应用：新增公开字段、错误码、路由、AgentSpec 语义或审计投影时，先运行 `--check` 查看差异，人工确认兼容性与变更级别后再显式更新快照，并把原因写入提交说明。
+
+1. **M4.3 安全回归必须覆盖真实信任边界和信息泄漏面**
+
+   - 日期：2026-07-25
+   - 里程碑：M4.3
+   - 主题：fail-closed 认证授权、服务端身份来源、请求体边界、敏感数据最小化和默认 Runtime 能力。
+   - 上下文：理解安全测试为什么不能只验证“非法参数返回 4xx”，而要证明未认证请求不会进入 Controller 或工具 handler、客户端不能伪造 actor，并且错误响应、日志和 UI 不泄漏凭据或完整业务内容。
+   - 证据：`tests/security/test_api_security.py` 覆盖 Bearer Token、权限、correlation、安全响应头、非法/重复 `Content-Length` 与流式请求体上限；`tests/security/test_sensitive_data_boundaries.py` 扫描响应、日志、Demo 和持久化边界；`tests/security/test_runtime_capabilities.py` 证明默认注册表只开放固定只读工具且不建立外部 socket；`docs/design/security-regression-gates.md` 记录信任边界和证据矩阵。
+   - 结论：
+     - 认证和授权必须早于详细业务参数校验与 Controller/handler 调用。这样既阻止副作用，也避免未授权调用方利用校验差异探测受保护 Schema 和业务状态。
+     - 审计 actor 必须由认证后的服务端上下文构造；客户端提供的 actor、owner 或标签只能视为不可信输入，不能直接成为责任归属证据。
+     - 请求大小需要同时校验声明的单个非负十进制 `Content-Length` 和实际流式读取字节数。只相信 Header 会被 chunked body 或错误长度绕过，只限制读取则会浪费处理资源并延迟拒绝。
+     - 错误响应、结构化日志、审计记录和 Demo 只保留稳定错误码、身份摘要、hash 与 correlation，不保存 Token、完整 Prompt、知识正文、原始工具参数/结果或 traceback。
+     - 默认 Runtime 能力应保持封闭：当前只注册固定、只读、无文件与网络副作用的工具。网络 socket 测试证明的是默认执行路径没有联网，不是操作系统级网络沙箱。
+   - 验证边界：M4.3 的 12 项专门安全测试证明当前 Alpha 的本地单用户入口和默认 Runtime 能力遵守已声明边界；不证明 OIDC、TLS、WAF、租户隔离、密钥轮换、容器沙箱或公网抗攻击能力，因而不能把“安全门禁通过”表述为“可安全公网部署”。
+   - 后续应用：每增加一个公开入口、凭据来源、工具副作用或展示字段，都要先更新信任边界和数据分类，再补充入口前置拒绝、敏感信息扫描及最小权限测试。
+
+1. **M4.4 用事务阶段故障注入证明原子性，而不是从正常路径推断**
+
+   - 日期：2026-07-25
+   - 里程碑：M4.4
+   - 主题：UoW 阶段故障、业务事实与审计/幂等原子提交、并发首次写入和 migration 回滚。
+   - 上下文：理解一条写命令在正常测试中成功，只能证明 happy path；要声称原子性，必须在实体、审计、幂等记录和最终提交之间主动制造失败，并检查所有可观察状态都没有留下半成品。
+   - 证据：`tests/integration/test_transaction_fault_injection.py` 通过测试专用 UoW/Repository wrapper 在 `after entity`、`after audit`、`after idempotency` 和 `before commit` 注入异常，覆盖生产、治理与工具记录写能力；同一测试集验证并发 AgentSpec 导出仅产生一份 Spec/审计，以及临时 `007` migration 失败不会留下 DDL 或历史记录。`docs/design/transaction-fault-evidence.md` 保存写能力矩阵、判定口径和限制。
+   - 结论：
+     - fault injector 位于测试装配边界，不改变生产 Controller API 和领域规则；它观察真实 UoW 阶段，使测试能够稳定复现原本依赖时序的失败窗口。
+     - 任一阶段失败后，实体 revision/head、审计事件和幂等记录必须整体保持原状。只断言抛出异常不充分，因为数据库仍可能已经提交部分事实。
+     - `ToolCallRecord` 与 `tool.called` 审计必须在同一短事务提交；否则可能出现工具调用有记录但无审计，或审计声称发生但没有对应调用事实。
+     - 并发首次 AgentSpec 导出需要依靠最终事务和数据库唯一约束收敛为一份事实；事务外预查只能优化性能，不能消除 check-then-act 竞态。
+     - migration 只有在 DDL 与 `schema_migrations` 历史同时提交后才算成功。临时错误的 pending migration 必须整体回滚，修正同一未应用脚本后才能重试；失败版本不能留下虚假的成功历史。
+   - 易混点：`before commit` 注入验证应用事务回滚，不等于模拟断电、进程被强杀或 SQLite WAL 耐久性；本地事务能撤销数据库记录，不能撤销已经发生的付款、发信或文件修改等外部副作用。
+   - 验证边界：M4.4 的 34 项事务故障测试为当前 SQLite 单进程写链提供阶段级回滚证据；不证明多进程竞争写入、操作系统崩溃恢复、磁盘故障或外部系统 exactly-once。
+   - 后续应用：新增写能力时先列出实体、审计、幂等和外部副作用，再把每个数据库提交阶段纳入故障矩阵；外部写工具需另外设计 reservation、outbox、远端幂等键或补偿协议。
+
+1. **M4.5 用隔离 wheel 和真实进程重启验证实际交付物**
+
+   - 日期：2026-07-25
+   - 里程碑：M4.5
+   - 主题：源码与发布制品隔离、锁定依赖、真实 Uvicorn/HTTP/SDK 链路和 SQLite 重启恢复。
+   - 上下文：理解 M3 的 wheel import smoke 为什么仍不足以证明用户安装后的服务可以运行，以及如何排除当前工作目录、editable package、`PYTHONPATH` 和已导入模块造成的源码遮蔽。
+   - 证据：`scripts/local_alpha_smoke.py` 作为标准库编排器，不从工作区导入 `agent_factory`；脚本重新构建 sdist/wheel，检查 metadata、extras、entry point 与 001-006 migrations，在分别由 `uv.lock` 导出的 minimal 和 `[demo,llm]` 隔离环境中以 `--no-deps` 安装 wheel；随后在仓库外启动两次真实 Uvicorn，第一次通过已安装 SDK 跨 HTTP 写入 Prototype，第二次从同一文件 SQLite 读取恢复。
+   - 流程图：
+
+     ```text
+     工作区源码
+         │ 构建并检查归档
+         ▼
+     sdist + wheel
+         │ 锁定依赖、隔离安装、移除源码路径影响
+         ▼
+     wheel-only 环境
+         │ 启动 Uvicorn #1，SDK 经 HTTP 写入
+         ▼
+     文件型 SQLite
+         │ 关闭并启动 Uvicorn #2，SDK 经 HTTP 读取
+         ▼
+     恢复相同 Prototype 业务事实
+     ```
+
+   - 结论：
+     - 源码测试证明工作区代码行为，隔离安装证明归档内容和发布元数据，真实进程 smoke 证明 console/ASGI 启动、网络协议、SDK 和持久化能够组合运行；三类证据回答的问题不同，不能互相替代。
+     - wheel 使用 `--no-deps` 安装，是为了确保依赖集合来自锁文件导出、项目代码只来自刚构建的制品，而不是让安装器重新解析一套可能不同的依赖结果。
+     - minimal 与 `[demo,llm]` 必须使用不同隔离环境，才能同时证明核心安装不偷偷依赖 optional package，以及完整 extra 的声明和导入路径确实可用。
+     - 第二个独立 Uvicorn 进程能够读取第一个进程写入的 Prototype，排除了数据只保存在 Python 对象或旧 Container 内存中的假阳性；但它仍是正常关闭后的单机串行恢复，不是强制崩溃恢复。
+   - 验证边界：本地部署拓扑是单机、单 Uvicorn、单文件 SQLite、loopback；脚本不证明公网服务、反向代理、多 worker、多主机、容器镜像、TLS 或生产数据库可用。
+   - 后续应用：发布面新增模块、migration、extra 或 entry point 时同步扩展制品检查；需要扩大部署声明前，分别增加容器、反向代理、多进程数据库和强制终止恢复证据。
+
+1. **M4.5 资源释放和进程退出必须依据 API 与平台语义判断**
+
+   - 日期：2026-07-25
+   - 里程碑：M4.5
+   - 主题：`sqlite3.Connection` 生命周期、Windows Uvicorn 关闭语义和受约束临时目录清理。
+   - 上下文：真实进程 smoke 首次暴露两个仅靠单进程测试不容易发现的问题：数据库事务上下文结束不等于连接已关闭；Windows 信号后的非零退出码也不能脱离关闭日志直接解释为服务异常。
+   - 证据：首次 M4.5 运行中，Uvicorn 收到 `CTRL_BREAK_EVENT` 后完整打印 application shutdown 日志但返回 Windows 平台退出码 3；第二次运行完成业务阶段后，残留 SQLite handle 阻止清理运行目录。`scripts/local_alpha_smoke.py` 最终使用 `contextlib.closing(sqlite3.connect(...))`，并只在 Windows、退出码为 3 且同时出现 `Application shutdown complete.` 与 `Finished server process` 时接受该退出结果。
+   - 结论：
+     - `with sqlite3.connect(...) as connection` 管理的是事务：正常退出提交、异常退出回滚；它不会自动调用 `connection.close()`。需要确定释放文件 handle 时，应叠加 `closing()` 或显式关闭连接。
+     - 进程退出码必须结合所使用的信号、平台和完整生命周期日志解释，但不能宽泛忽略所有非零值。当前兼容条件被限制为一个已观察、可复现且有完整关闭标记的 Windows 情形。
+     - 临时目录清理必须先解析并验证目标位于专用工作根目录、名称符合唯一 `run-*` 子目录，再进行有限次数重试；不能为追求测试清理成功而递归删除未经确认的计算路径。
+     - 启动失败、业务失败和用户中断都要进入同一 `finally` 清理路径，优先终止已发布的子进程并释放数据库连接，避免留下后台服务和锁定文件。
+   - 易混点：事务上下文不等于资源上下文；完整关闭日志不意味着任意非零码都可忽略；清理失败也不应通过无限重试或扩大删除范围掩盖。
+   - 后续应用：涉及文件数据库、子进程、socket 或临时目录的脚本，都要分别设计资源所有权、关闭顺序、超时、平台差异和失败后的有界清理策略。
+
+1. **M4.6 用单一发布入口收敛 CI，同时保留可诊断的独立门禁**
+
+   - 日期：2026-07-25
+   - 里程碑：M4.6
+   - 主题：动态 wheel 资源检查、CI 去重、专门风险门禁和本地/远程证据分层。
+   - 上下文：理解减少 CI 重复代码不等于把所有检查合并成一个不可诊断的黑盒，以及为什么源码资源清单应从当前 package 树推导，而 migrations、metadata、extras 和 entry point 仍需要显式断言。
+   - 证据：`source_package_resources()` 动态遍历 `src/agent_factory/**/*.py` 并推导 wheel 内预期路径；`.github/workflows/ci.yml` 从 16 个步骤收敛到 14 个，统一调用 `scripts.local_alpha_smoke`，但继续单独执行 security 和 transaction suites；M4.6 本地候选验证为 Ruff/mypy 覆盖 151 个文件、12 项安全测试、34 项事务测试、总计 404 项测试，以及 domain/application/全项目 branch coverage 96%/94%/92%。
+   - 结论：
+     - 手工维护生产模块清单会随新增文件漂移；从源码 package 树动态推导能让“新增 `.py` 却未进入 wheel”自动失败。非 Python 资源和发布元数据无法由该遍历推断，仍需显式检查。
+     - CI 应复用与开发者相同的跨平台发布脚本，避免本地和 YAML 内联逻辑形成两个真相源；脚本本身需要单元测试，否则“统一入口”只会集中未知错误。
+     - 安全和事务套件虽然也包含在完整 pytest 中，仍保留独立步骤，因为它们是阶段声明的风险门禁，独立失败信号能缩短诊断路径并防止关键证据被总测试输出淹没。
+     - job timeout 约束整条流水线的失控上限，发布脚本内部的进程和命令 timeout 约束具体资源生命周期；二者作用层级不同。
+     - 本地全门禁通过只形成“可推送的退出候选”，远程 GitHub Actions 才能补充干净 Ubuntu runner 和仓库工作流证据。当前 M4 提交尚未推送并取得远程结果，因此不能把 M4 标记为完成。
+   - 易混点：CI 步骤更少不等于验证变少；完整 pytest 已包含专项测试不等于专项门禁没有价值；动态 Python 文件清单不等于所有 package data 自动正确；本地通过不等于远程 CI 已通过。
+   - 后续应用：推送当前 M4 提交后保存远程 run URL、commit SHA 和各门禁结果，再由 owner 决定是否封存 M4；未来调整 CI 时优先消除重复实现，但保留与风险声明一一对应的可见失败信号。
