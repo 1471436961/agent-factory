@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.4 评分与分析流水线实现中，M5.4.2 确定性评分器已完成；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.4 评分与分析流水线实现中，M5.4.3 任务级统计分析已完成；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4100,6 +4100,8 @@ class MetricRecord(FrozenModel):
 
 M5.4.2 的 `DeterministicScorer` 根据冻结 dataset 解析 task、rubric 与 knowledge，先校验 experiment、repetition、knowledge checksum 和 MANUAL/FACTORY 来源，再使用 Draft 2020-12 校验 Schema。required fact、forbidden matcher 和 personalization 共用 `experiments/matching.py` 的 exact/regex 语义与 100ms regex timeout；个性化约束声明 `target_field` 时只检查对应字段。评分产物不保存命中正文或 jsonschema 错误消息，只保存预注册索引、路径和 validator。评分器是纯离线逻辑，不读取时钟、不调用模型，也不产生统计结论。
 
+M5.4.3 新增 `AnalysisConfig`、`TaskConditionAggregate`、`ConfidenceInterval`、`HypothesisResult` 和 `AnalysisSummary`。`ExperimentAnalyzer` 要求完整评分集合与冻结计划一一对应，先按 `task_id + condition` 聚合 5 次重复，再执行 task 级 MANUAL/FACTORY 配对。主要 intention-to-treat population 将执行失败映射为 Schema 未通过、required facts 全遗漏和个性化全不满足；`succeeded-only` 只输出敏感性效应，不允许产生正式命题判定。分析产物同时绑定 dataset、definition、plan、score set 和 analysis config checksum。
+
 ### 13.3 实验规模与分组
 
 - 任务：6 个虚构领域，每个领域 2 个一致性任务和 2 个适应性任务，共 24 个。
@@ -4162,7 +4164,7 @@ def knowledge_omission_rate(metric: MetricRecord) -> float:
 
 def personalization_adaptation(metric: MetricRecord) -> float:
     if metric.personalization_total == 0:
-        return 1.0
+        raise ValueError("metric has no personalization constraints")
     return (
         metric.personalization_satisfied
         / metric.personalization_total
@@ -4173,13 +4175,15 @@ def deterministic_quality(
     *,
     schema_passed: bool,
     fact_coverage: float,
-    personalization: float,
+    forbidden_compliance: float | None,
+    personalization: float | None,
 ) -> float:
-    return (
-        0.4 * float(schema_passed)
-        + 0.4 * fact_coverage
-        + 0.2 * personalization
-    )
+    components = [float(schema_passed), fact_coverage]
+    if forbidden_compliance is not None:
+        components.append(forbidden_compliance)
+    if personalization is not None:
+        components.append(personalization)
+    return round(sum(components) / len(components), 12)
 ```
 
 - Schema 通过率：通过 JSON Schema 校验的 run 数 / 总 run 数。
@@ -4216,15 +4220,17 @@ H5 使用独立确定性验证记录。验证器必须从 Prototype、Knowledge�
 ### 13.7 统计分析
 
 1. 先按 `task_id + condition` 聚合 5 次重复，避免把同一任务的重复输出当成独立样本。
-2. H1、H2、H4 使用配对任务差，并按 task 分层执行 10,000 次 bootstrap，报告 95% 区间、绝对差和相对差。
+2. H1、H2、H4 使用配对任务差；H1/H2 在 consistency 与 adaptation strata 内、H4 在 adaptation task 内执行 10,000 次 bootstrap，报告 Type-7 95% 区间、绝对差和适用的相对差。
 3. H4 使用预注册非劣界值 `-0.05`；不能仅凭点估计作非劣结论。
 4. 方差比较是次要分析；若使用 Brown-Forsythe，依赖版本和算法必须在 M5.5 前冻结。
 5. H3 只报告单操作者构建时间的中位数、IQR 和配对差，不执行人群推断。
 6. H5 报告确定性链路是否达到 100%，不执行模型输出统计检验。
-7. 同时报告全部失败请求，禁止只分析成功输出。
+7. 主要分析采用 intention-to-treat 并按最差值映射全部执行失败；只分析成功输出的结果必须标为不产生命题判定的敏感性分析。
 8. 结果表必须包含模型名、执行日期、Prompt hash、知识校验和、计划 SHA-256 和代码 commit hash。
 
 结论分为“支持”“不支持”“证据不足”，不使用“证明框架更优”这类超出实验范围的表述。分析实现必须是可测试的 Python 模块，notebook 不能成为唯一计算来源。M5.5 冻结 provider、模型、价格快照、请求/token/成本上限后，仍须由项目 owner 明确批准，M5.6 才能执行真实调用；默认测试和 CI 始终使用 fake gateway。
+
+当前 `experiments/analysis.py` 已实现上述主要指标。Bootstrap 不使用 Python PRNG，而是对 seed、命题、population、scenario、replicate 和 draw 计算 SHA-256，并用 rejection sampling 生成无直接取模偏差的 task 索引。H2 的 MANUAL 遗漏率零分母会显式计入 invalid replicate；有效比例低于 95% 时结论为“证据不足”，同时保留绝对遗漏率差区间。该实现尚未读取真实模型数据，也尚未生成 M5.4.4 的 write-once 报告产物。
 
 
 ---

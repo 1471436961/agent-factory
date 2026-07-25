@@ -25,6 +25,7 @@ from agent_factory.domain.common import (
     Sha256,
     Slug,
     canonical_json_bytes,
+    sha256_model,
 )
 from agent_factory.domain.enums import AuditEventType
 
@@ -50,6 +51,24 @@ class ExperimentCondition(StrEnum):
 class ExperimentScenario(StrEnum):
     CONSISTENCY = "consistency"
     ADAPTATION = "adaptation"
+
+
+class AnalysisPopulation(StrEnum):
+    INTENTION_TO_TREAT = "intention-to-treat"
+    SUCCEEDED_ONLY = "succeeded-only"
+
+
+class HypothesisName(StrEnum):
+    H1_SCHEMA_CONSISTENCY = "h1-schema-consistency"
+    H2_KNOWLEDGE_OMISSION = "h2-knowledge-omission"
+    H4_PERSONALIZATION = "h4-personalization"
+
+
+class HypothesisDecision(StrEnum):
+    SUPPORTED = "supported"
+    NOT_SUPPORTED = "not-supported"
+    INSUFFICIENT_EVIDENCE = "insufficient-evidence"
+    NOT_EVALUATED = "not-evaluated"
 
 
 class MatcherKind(StrEnum):
@@ -725,6 +744,243 @@ class RunScoreRecord(FrozenModel):
         expected_quality = round(sum(components) / len(components), 12)
         if abs(metric.deterministic_quality_score - expected_quality) > 1e-12:
             raise ValueError("deterministic quality score does not match checks")
+
+
+class AnalysisConfig(FrozenModel):
+    schema_version: Literal["1.0"] = "1.0"
+    analyzer_version: Literal["1.0"] = "1.0"
+    bootstrap_seed: int = Field(ge=0, le=2**63 - 1)
+    bootstrap_iterations: int = Field(default=10_000, ge=100, le=100_000)
+    confidence_level: float = Field(default=0.95, ge=0.95, le=0.95)
+    min_valid_relative_bootstrap_fraction: float = Field(
+        default=0.95,
+        ge=0.5,
+        le=1,
+    )
+
+
+class TaskConditionAggregate(FrozenModel):
+    task_id: Slug
+    domain_id: Slug
+    scenario: ExperimentScenario
+    condition: ExperimentCondition
+    population: AnalysisPopulation
+    planned_runs: PositiveInt
+    included_runs: int = Field(ge=0)
+    succeeded_runs: int = Field(ge=0)
+    schema_passes: int = Field(ge=0)
+    required_facts_total: int = Field(ge=0)
+    required_facts_covered: int = Field(ge=0)
+    personalization_total: int = Field(ge=0)
+    personalization_satisfied: int = Field(ge=0)
+    schema_pass_rate: float | None = Field(default=None, ge=0, le=1)
+    omission_rate: float | None = Field(default=None, ge=0, le=1)
+    adaptation_rate: float | None = Field(default=None, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def counts_and_rates_must_be_consistent(self) -> Self:
+        if self.succeeded_runs > self.planned_runs:
+            raise ValueError("succeeded runs cannot exceed planned runs")
+        expected_included = (
+            self.planned_runs
+            if self.population is AnalysisPopulation.INTENTION_TO_TREAT
+            else self.succeeded_runs
+        )
+        if self.included_runs != expected_included:
+            raise ValueError("included runs do not match analysis population")
+        if self.schema_passes > self.included_runs:
+            raise ValueError("schema passes cannot exceed included runs")
+        if self.required_facts_covered > self.required_facts_total:
+            raise ValueError("covered facts cannot exceed required facts")
+        if self.personalization_satisfied > self.personalization_total:
+            raise ValueError("satisfied constraints cannot exceed total constraints")
+        expected_schema = (
+            None
+            if self.included_runs == 0
+            else round(self.schema_passes / self.included_runs, 12)
+        )
+        expected_omission = (
+            None
+            if self.required_facts_total == 0
+            else round(
+                1 - self.required_facts_covered / self.required_facts_total,
+                12,
+            )
+        )
+        expected_adaptation = (
+            None
+            if self.personalization_total == 0
+            else round(
+                self.personalization_satisfied / self.personalization_total,
+                12,
+            )
+        )
+        if self.schema_pass_rate != expected_schema:
+            raise ValueError("schema pass rate does not match counts")
+        if self.omission_rate != expected_omission:
+            raise ValueError("omission rate does not match counts")
+        if self.adaptation_rate != expected_adaptation:
+            raise ValueError("adaptation rate does not match counts")
+        if self.included_runs == 0 and any(
+            (
+                self.required_facts_total,
+                self.required_facts_covered,
+                self.personalization_total,
+                self.personalization_satisfied,
+            )
+        ):
+            raise ValueError("empty aggregate cannot contain scoring counts")
+        if self.scenario is ExperimentScenario.CONSISTENCY:
+            if self.personalization_total or self.adaptation_rate is not None:
+                raise ValueError("consistency aggregate cannot contain adaptation")
+        elif self.included_runs and self.personalization_total == 0:
+            raise ValueError("adaptation aggregate requires personalization evidence")
+        return self
+
+
+class ConfidenceInterval(FrozenModel):
+    confidence_level: float = Field(default=0.95, ge=0.95, le=0.95)
+    lower: float | None = None
+    upper: float | None = None
+    requested_replicates: PositiveInt
+    valid_replicates: int = Field(ge=0)
+    invalid_replicates: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def bounds_must_match_valid_replicates(self) -> Self:
+        if self.valid_replicates + self.invalid_replicates != self.requested_replicates:
+            raise ValueError("bootstrap replicate counts do not add up")
+        if self.valid_replicates == 0:
+            if self.lower is not None or self.upper is not None:
+                raise ValueError("empty bootstrap interval cannot contain bounds")
+        elif self.lower is None or self.upper is None:
+            raise ValueError("valid bootstrap interval requires both bounds")
+        elif self.lower > self.upper:
+            raise ValueError("bootstrap interval lower bound exceeds upper bound")
+        return self
+
+
+class HypothesisResult(FrozenModel):
+    hypothesis: HypothesisName
+    population: AnalysisPopulation
+    paired_task_count: int = Field(ge=0)
+    effect_estimate: float | None = None
+    confidence_interval: ConfidenceInterval
+    absolute_difference: float | None = Field(default=None, ge=-1, le=1)
+    absolute_difference_interval: ConfidenceInterval | None = None
+    decision: HypothesisDecision
+
+    @model_validator(mode="after")
+    def result_shape_must_match_hypothesis_and_population(self) -> Self:
+        if self.paired_task_count == 0 and self.effect_estimate is not None:
+            raise ValueError("empty hypothesis result cannot contain an effect")
+        if self.hypothesis is HypothesisName.H2_KNOWLEDGE_OMISSION:
+            if self.paired_task_count and (
+                self.absolute_difference is None
+                or self.absolute_difference_interval is None
+            ):
+                raise ValueError("H2 requires an absolute omission difference")
+        elif (
+            self.absolute_difference is not None
+            or self.absolute_difference_interval is not None
+        ):
+            raise ValueError("auxiliary absolute difference is reserved for H2")
+        if self.population is AnalysisPopulation.SUCCEEDED_ONLY:
+            if self.decision is not HypothesisDecision.NOT_EVALUATED:
+                raise ValueError("succeeded-only sensitivity cannot decide hypotheses")
+        elif self.decision is HypothesisDecision.NOT_EVALUATED:
+            raise ValueError("primary ITT analysis requires a hypothesis decision")
+        return self
+
+
+class AnalysisSummary(FrozenModel):
+    schema_version: Literal["1.0"] = "1.0"
+    analyzer_version: Literal["1.0"] = "1.0"
+    experiment_id: Slug
+    dataset_checksum: Sha256
+    definition_checksum: Sha256
+    plan_checksum: Sha256
+    score_set_checksum: Sha256
+    task_count: PositiveInt
+    repetitions: int = Field(ge=1, le=20)
+    config: AnalysisConfig
+    config_checksum: Sha256
+    aggregates: Annotated[tuple[TaskConditionAggregate, ...], Field(min_length=1)]
+    hypotheses: Annotated[tuple[HypothesisResult, ...], Field(min_length=1)]
+
+    @model_validator(mode="after")
+    def analysis_evidence_must_be_unique_and_complete(self) -> Self:
+        if self.config_checksum != sha256_model(self.config):
+            raise ValueError("analysis config checksum does not match config")
+        aggregate_keys = [
+            (item.population, item.task_id, item.condition) for item in self.aggregates
+        ]
+        if len(aggregate_keys) != len(set(aggregate_keys)):
+            raise ValueError("analysis aggregates contain duplicate coordinates")
+        task_ids = {item.task_id for item in self.aggregates}
+        if len(task_ids) != self.task_count:
+            raise ValueError("analysis aggregate task count does not match declaration")
+        expected_aggregates = {
+            (population, task_id, condition)
+            for population in AnalysisPopulation
+            for task_id in task_ids
+            for condition in ExperimentCondition
+        }
+        if set(aggregate_keys) != expected_aggregates:
+            raise ValueError("analysis aggregate matrix is incomplete")
+        if any(item.planned_runs != self.repetitions for item in self.aggregates):
+            raise ValueError("analysis aggregate repetitions do not match declaration")
+        metadata_by_task = {
+            task_id: {
+                (item.domain_id, item.scenario)
+                for item in self.aggregates
+                if item.task_id == task_id
+            }
+            for task_id in task_ids
+        }
+        if any(len(metadata) != 1 for metadata in metadata_by_task.values()):
+            raise ValueError("analysis aggregate task metadata is inconsistent")
+        hypothesis_keys = [
+            (item.population, item.hypothesis) for item in self.hypotheses
+        ]
+        expected_hypotheses = {
+            (population, hypothesis)
+            for population in AnalysisPopulation
+            for hypothesis in HypothesisName
+        }
+        if set(hypothesis_keys) != expected_hypotheses or len(hypothesis_keys) != len(
+            expected_hypotheses
+        ):
+            raise ValueError("analysis must contain both populations for H1, H2 and H4")
+        hypotheses_by_key = {
+            (item.population, item.hypothesis): item for item in self.hypotheses
+        }
+        adaptation_task_count = sum(
+            next(iter(metadata))[1] is ExperimentScenario.ADAPTATION
+            for metadata in metadata_by_task.values()
+        )
+        if any(
+            hypotheses_by_key[
+                (AnalysisPopulation.INTENTION_TO_TREAT, hypothesis)
+            ].paired_task_count
+            != self.task_count
+            for hypothesis in (
+                HypothesisName.H1_SCHEMA_CONSISTENCY,
+                HypothesisName.H2_KNOWLEDGE_OMISSION,
+            )
+        ):
+            raise ValueError("ITT H1 and H2 must include every frozen task")
+        if (
+            hypotheses_by_key[
+                (
+                    AnalysisPopulation.INTENTION_TO_TREAT,
+                    HypothesisName.H4_PERSONALIZATION,
+                )
+            ].paired_task_count
+            != adaptation_task_count
+        ):
+            raise ValueError("ITT H4 must include every adaptation task")
+        return self
 
 
 class BuildSession(FrozenModel):

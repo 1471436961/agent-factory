@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.3 已实现，M5.4 已进入且 M5.4.2 确定性评分器已实现。
+- 状态：进行中；M5.1-M5.3 已实现，M5.4 已进入且 M5.4.3 任务级统计分析已实现。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
@@ -159,7 +159,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.2 已固定评分证据并实现离线确定性评分器。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把 fake gateway 结果当作模型质量证据。下一步是 M5.4.3：实现任务级配对聚合与确定性 bootstrap。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.3 已固定评分证据，实现离线确定性评分、task 配对聚合、bootstrap 区间和命题阈值判定。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集或 fake gateway 结果当作模型质量证据。下一步是 M5.4.4：输出 write-once 机器可读分析产物和可复算 Markdown 报告。
 
 ## 10. M5.2 实现证据
 
@@ -211,3 +211,15 @@ M5.4.1 定向门禁为 `93 passed`，`experiments` 分支覆盖率 92.75%；全�
 - provider 成功但 Schema 不通过仍保留评分；执行失败生成无检查明细的 `RunScoreRecord`，由后续 ITT 聚合映射为最差结果。
 
 M5.4.2 定向 matcher/loader/scoring 测试为 `38 passed`；完整实验门禁为 `108 passed`，`experiments` 分支覆盖率 93.03%，其中 `scoring.py` 为 96%；全量回归为 `517 passed`。统计聚合与命题判定尚未实现，因此这些分数不能形成 H1/H2/H4 结论。
+
+## 14. M5.4.3 任务级统计分析
+
+- `AnalysisConfig` 固定 analyzer version、bootstrap seed、10,000 次重复、95% 置信水平和 H2 至少 95% 有效相对 bootstrap 样本的要求。
+- `ExperimentAnalyzer` 在计算前要求 240 个计划项各有且只有一个 `RunScoreRecord`，逐项核对 experiment、plan、condition、task、repetition、execution order、scenario、rubric checksum 和 rubric 明细。
+- 每个 `task_id + condition` 先聚合 5 次重复。主要 intention-to-treat 分析保留全部执行失败：H1 按 Schema 未通过、H2 按 required facts 全遗漏、H4 按个性化约束全未满足计入；`succeeded-only` 只作为不产生正式判定的敏感性分析。
+- H1/H2 在 consistency 与 adaptation strata 内分别重采样，H4 只在 12 个 adaptation task 内重采样。每次仍抽取原 strata 数量的 task，5 次重复始终嵌套在 task 聚合中，不被当成独立样本。
+- Bootstrap 索引由 SHA-256 和 rejection sampling 确定性派生，不使用 Python PRNG；95% 区间显式使用 Type-7 分位数。相同评分集合即使输入顺序不同，也产生相同 `score_set_checksum` 和 `AnalysisSummary`。
+- H2 的相对遗漏降低计算为 `(mean_manual_omission - mean_factory_omission) / mean_manual_omission`；每个 bootstrap 样本的 MANUAL 分母为零时该样本无效。有效样本不足 95% 时正式结论为“证据不足”，但绝对遗漏率差及其区间仍保留。
+- `HypothesisResult` 只允许 ITT 返回“支持”“不支持”“证据不足”；成功样本敏感性固定为 `not-evaluated`，避免次要分析替代主要结论。
+
+M5.4.3 定向分析测试为 `16 passed`；完整实验门禁为 `124 passed`，`experiments` 分支覆盖率 93%，其中 `analysis.py` 为 99%；全量回归为 `533 passed`。Ruff format、Ruff lint 与全量 mypy strict 均通过。测试使用完整 240-run 合成评分集，只证明统计实现、失败映射和契约防线可重复，不构成任何正式 H1/H2/H4 实验结论。

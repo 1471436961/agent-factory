@@ -261,7 +261,7 @@ H5 的 expected steps 在运行前冻结。每一步必须同时匹配 event typ
 
 1. 先按 `task_id + condition` 聚合 5 次重复。
 2. H1/H2/H4 使用相同 task 的配对差。
-3. 使用按 task 分层的 10,000 次 bootstrap 报告 95% 区间。
+3. 使用以 task 为抽样单位、按 scenario 保持 strata 规模的 10,000 次 bootstrap 报告 95% 区间；H4 只包含 adaptation stratum。
 4. 同时报告绝对差、相对差和原始分母，不只给 p 值。
 5. 方差比较属于次要分析；若引入 Brown-Forsythe，依赖和实现必须在 M5.5 前冻结。
 6. 报告所有失败和缺失，不对失败样本做无说明的 complete-case 删除。
@@ -358,3 +358,15 @@ Schema 使用 `Draft202012Validator` 执行。违规记录只包含 RFC 6901 风
 loader 与评分器共用 `experiments/matching.py`。exact matcher 是可配置大小写的子字符串匹配；regex matcher 使用相同 flags 与 100ms timeout。timeout 是评分失败而不是“未命中”。personalization 声明 `target_field` 时只读取该字段，避免其他字段中的相同词造成假阳性；未声明时读取完整输出。
 
 M5.4.2 完整实验门禁为 `108 passed`，分支覆盖率 93.03%，`scoring.py` 覆盖率 96%；全量回归为 `517 passed`。该门禁使用合成 fixture 和离线 terminal run，不构成正式实验结果。
+
+## 17. M5.4.3 任务级聚合与确定性 Bootstrap
+
+`experiments/analysis.py` 只接受冻结 dataset、与其完全一致的 `ExecutionPlan` 和完整 `RunScoreRecord` 集合。分析前必须证明 240 个 `run_id` 各出现一次，并逐项核对 condition、task、repetition、execution order、scenario、plan checksum、rubric checksum 与 rubric 明细。评分集合按 execution order 规范化后计算 `score_set_checksum`；输入迭代顺序不进入分析身份。
+
+聚合产物为 `TaskConditionAggregate`。每个 task 的 5 次重复先合并为 Schema 通过率、required fact 遗漏率和适用的个性化满足率，再形成 MANUAL/FACTORY 配对。主要 population 为 `intention-to-treat`：执行失败仍进入固定分母并映射为三项最差结果。`succeeded-only` 允许某个 task-condition 无样本，此时 rate 为 null；只有两侧均存在成功样本的 task 才进入敏感性配对，且 `HypothesisResult.decision` 强制为 `not-evaluated`。
+
+H1 和 H2 分别在 consistency、adaptation strata 内按原 task 数有放回抽样，H4 只对 12 个 adaptation task 抽样。索引由 analysis seed、hypothesis、population、scenario、replicate、draw 和 nonce 的规范化 JSON 计算 SHA-256，再对前 64 位执行 rejection sampling，避免直接取模偏差。该算法不依赖 Python `random`、NumPy、SciPy 或 notebook。95% percentile interval 显式使用 Hyndman-Fan Type-7 线性插值，所有对外浮点结果保留 12 位小数。
+
+H2 同时报告绝对遗漏率差和相对遗漏率降低。相对值以成对 task 的平均 MANUAL 遗漏率为分母；分母为零的 bootstrap replicate 记为 invalid，而不是填充 0 或删除后不留痕。有效 replicate 少于请求数的 95%，或总体 MANUAL 遗漏率为零时，主要判定固定为“证据不足”，绝对差区间仍然输出。H1、H2、H4 的支持/不支持阈值直接读取冻结 `ExperimentDefinition.thresholds`，阈值之间的区间统一返回“证据不足”。
+
+M5.4.3 完整实验门禁为 `124 passed`，`experiments` 分支覆盖率 93%，`analysis.py` 覆盖率 99%；全量回归为 `533 passed`。这些测试使用完整坐标规模的合成评分证据，验证的是算法可重复性和错误拒绝逻辑，不是 Writer 模型质量结果。

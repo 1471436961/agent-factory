@@ -1,6 +1,8 @@
 """Repository-local validation experiment contracts and fixture loading."""
 
+from experiments.analysis import ExperimentAnalyzer
 from experiments.contracts import (
+    AnalysisSummary,
     AuditVerificationRecord,
     BuildSession,
     ExecutionManifest,
@@ -19,11 +21,13 @@ from experiments.planning import build_execution_plan, load_execution_plan
 from experiments.scoring import DeterministicScorer
 
 __all__ = [
+    "AnalysisSummary",
     "AuditVerificationRecord",
     "BuildSession",
     "DeterministicScorer",
     "ExecutionManifest",
     "ExecutionPlan",
+    "ExperimentAnalyzer",
     "ExperimentCondition",
     "ExperimentDefinition",
     "ExperimentExecutor",

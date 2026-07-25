@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.4 评分与分析流水线实现中，M5.4.2 确定性评分器已完成**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 已生成 240 项固定执行计划，并实现条件渲染、不可变产物、fake gateway、有限重试、断点恢复、可追溯评分证据契约和离线确定性评分器；尚未实现任务级聚合、bootstrap 与分析报告，未冻结正式模型、SDK、预算或价格快照，也未调用真实模型。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.4 评分与分析流水线实现中，M5.4.3 任务级统计分析已完成**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 已生成 240 项固定执行计划，并实现条件渲染、不可变产物、fake gateway、有限重试、断点恢复、可追溯评分、task 配对聚合、确定性 bootstrap 和 H1/H2/H4 阈值判定；尚未实现机器可读分析产物与 Markdown 报告导出，未冻结正式模型、SDK、预算或价格快照，也未调用真实模型。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
@@ -100,7 +100,7 @@ uv --cache-dir E:/Agent-Factory/.tmp/uv-cache run python -m scripts.local_alpha_
 
 ## M5 验证实验
 
-M5 将证据拆分为三类：240 次 Writer 生成只检验结构一致性、知识遗漏和读者适应性；单操作者构建时间只作为探索性工程案例；审计完整性由确定性链路验证。仓库级 `experiments` package 已实现严格契约、安全 fixture loader、240 项确定性执行计划、MANUAL/FACTORY 公平性校验、不可变 attempt journal、有限重试和恢复执行器。数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`，计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。该模块不进入运行时 wheel。
+M5 将证据拆分为三类：240 次 Writer 生成只检验结构一致性、知识遗漏和读者适应性；单操作者构建时间只作为探索性工程案例；审计完整性由确定性链路验证。仓库级 `experiments` package 已实现严格契约、安全 fixture loader、240 项确定性执行计划、MANUAL/FACTORY 公平性校验、不可变 attempt journal、有限重试、恢复执行器、离线评分器和 task 级配对分析器。主要分析采用 intention-to-treat，成功样本分析只作敏感性检查；10,000 次 bootstrap 使用 SHA-256 派生索引和 Type-7 分位数，不依赖 Python PRNG、NumPy 或 notebook。数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`，计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。该模块不进入运行时 wheel。
 
 ```bash
 uv run pytest -q tests/unit/experiments \
