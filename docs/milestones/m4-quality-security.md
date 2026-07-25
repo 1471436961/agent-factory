@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M4.1-M4.5 已完成本地实现，M4.6 待进入。
+- 状态：进行中；M4.6 本地退出候选已通过，提交、远程 CI 与项目 owner 验收待完成。
 - 开始时间：2026-07-24。
 - 进入依据：M3 已由项目 owner 验收并封存，退出候选提交 `d2edef7` 的 GitHub Actions CI #20 通过。
 - 规划依据：项目 owner 于 2026-07-24 确认 M4 的范围、工作包、风险、备选方案与退出标准。
@@ -292,8 +292,34 @@ M4.5 于 2026-07-25 完成以下本地实现：
 
 首次真实运行发现 Windows `CTRL_BREAK_EVENT` 在 Uvicorn 完整 application shutdown 后返回平台退出码 3。脚本没有放宽全部非零返回码，只在 Windows、返回码 3 且日志同时包含 `Application shutdown complete.` 与 `Finished server process` 时接受。第二次运行完成全部业务阶段后，成功清理暴露 `sqlite3.Connection` 上下文只提交/回滚但不关闭连接；修正为显式 `closing()`，并对唯一 `run-*` 子目录实施路径校验和有限清理重试。最终脚本完整重跑通过。
 
-依赖构建和安装可能访问 package index；安装后的应用、SDK 和 import 探针只使用 loopback，不调用真实模型。该结果证明本地制品可安装、启动和恢复，不证明公网安全、多进程 SQLite、高可用或 disaster recovery。M4.6 才会把真实进程 smoke 纳入最终 CI 并记录远程证据。
+依赖构建和安装可能访问 package index；安装后的应用、SDK 和 import 探针只使用 loopback，不调用真实模型。该结果证明本地制品可安装、启动和恢复，不证明公网安全、多进程 SQLite、高可用或 disaster recovery。M4.6 已把真实进程 smoke 纳入最终 CI，远程证据仍需在退出候选提交推送后记录。
 
-## 12. 阶段结论
+## 12. M4.6 本地退出候选证据
 
-M4.1-M4.4 已建立范围基线、契约快照、安全回归和事务故障证据；M4.5 已建立可重复的隔离制品、真实 Uvicorn、SDK 认证写入与 SQLite 重启恢复证据。M4.6 尚未进入，M4 也尚未完成最终 CI 与阶段退出验收。
+M4.6 于 2026-07-25 完成以下本地实现与验证：
+
+- `source_package_resources()` 从当前 `src/agent_factory/**/*.py` 动态推导 wheel 路径；新增生产模块却未进入 wheel 时，release step 会失败。001-006 migrations、metadata、extras 与 entry point 继续显式校验。
+- GitHub Actions 从 16 个步骤收敛为 14 个步骤，删除重复的内联 49 项清单和 extras Bash 安装，统一调用跨平台 `scripts.local_alpha_smoke`。
+- 安全回归、事务故障回归和全量 pytest 仍保持独立步骤；它们虽有执行重叠，但保留了安全与事务不变量的直接可见失败位置。
+- CI job timeout 从 15 分钟调整为 20 分钟；release step 仍限制单命令 240 秒、启动 30 秒和关闭 15 秒，不使用总 timeout 放宽掩盖挂起。
+- 本地按 CI 顺序重新执行静态检查、快照、定向测试、全量覆盖率和统一 release step，未修改生产 `src/`。
+
+本地退出候选门禁：
+
+| 门禁 | 结果 |
+| --- | --- |
+| Ruff format/check | 151 个文件通过 |
+| mypy strict | 151 个 source file 无问题 |
+| 契约快照 | 三份 SHA-256 与 M4.2 基线一致 |
+| Alpha 安全回归 | 12 项通过，2.55 秒 |
+| 事务故障回归 | 34 项通过，7.85 秒 |
+| 全量 pytest | 404 项通过，73.11 秒 |
+| Domain/Application/全项目 branch coverage | 96% / 94% / 92%，通过 90% / 85% / 80% 门槛 |
+| 统一 release step | fresh sdist/wheel、全部源码资源、minimal/extras、migration 1-6、两次 Uvicorn、SDK 重启恢复与 Token 扫描全部通过 |
+| CI workflow | PyYAML 可解析，共 14 个步骤，job timeout 20 分钟 |
+
+当前 `main` 在 M4.6 修改前已领先 `origin/main` 5 个 M4 提交。为让远程证据覆盖完整 M4，退出候选应在本地门禁通过后一次推送，并以该 push 的 head commit 和 GitHub Actions run 为准。M4 尚未封存：远程 workflow 必须通过，随后由项目 owner 人工确认退出。
+
+## 13. 阶段结论
+
+M4.1-M4.5 已建立范围基线、契约快照、安全回归、事务故障和隔离制品证据；M4.6 本地退出候选已通过 404 项测试、三档覆盖率与统一 release step。M4 仍处于进行中，等待退出候选提交、远程 GitHub Actions 和项目 owner 验收。

@@ -28,6 +28,7 @@ from scripts.local_alpha_smoke import (
     assert_sensitive_values_absent,
     discover_distributions,
     isolated_environment,
+    source_package_resources,
     verify_distributions,
 )
 
@@ -106,6 +107,31 @@ def test_distribution_verification_rejects_missing_resource_and_bad_entry_point(
     )
     with pytest.raises(SmokeFailure, match="invalid agent-factory-demo"):
         verify_distributions(wheel, sdist)
+
+
+def test_source_resources_are_derived_and_missing_module_fails_distribution(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "src" / "agent_factory"
+    (package / "nested").mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "nested" / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (package / "ignored.txt").write_text("not Python\n", encoding="utf-8")
+    resources = source_package_resources(package)
+    assert resources == frozenset(
+        {
+            "agent_factory/__init__.py",
+            "agent_factory/nested/module.py",
+        }
+    )
+
+    wheel, sdist = _write_distribution_pair(tmp_path)
+    with pytest.raises(SmokeFailure, match=r"nested/module\.py"):
+        verify_distributions(
+            wheel,
+            sdist,
+            expected_source_resources=resources,
+        )
 
 
 def test_distribution_discovery_requires_one_fresh_artifact_pair(

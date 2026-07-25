@@ -181,6 +181,8 @@ M4.5 已将上述流程固化为 `scripts.local_alpha_smoke`。编排器不导�
 8. minimal 与 optional extras 隔离安装；
 9. 独立 Uvicorn/loopback HTTP smoke。
 
+M4.6 将第 7-9 项收敛为同一个 `scripts.local_alpha_smoke` release step：从 `src/agent_factory/**/*.py` 动态推导完整 wheel 资源集合，fresh build 后分别安装 minimal 与 optional extras，再执行真实进程重启。GitHub Actions 保留快照、安全、事务和覆盖率独立步骤，便于定位失败；job timeout 为 20 分钟，脚本内部仍使用更短的命令、启动和关闭 timeout。
+
 外部漏洞数据库、第三方可用性和真实模型调用不进入默认阻断门禁。未来可建立独立定时依赖审计，但其失败必须包含版本、公告和处置结论，不能用不稳定网络结果替代可重复测试。
 
 ## 10. 证据边界

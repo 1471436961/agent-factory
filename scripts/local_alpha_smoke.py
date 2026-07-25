@@ -106,6 +106,25 @@ def discover_distributions(dist_dir: Path) -> tuple[Path, Path]:
     return wheel.resolve(), sdist.resolve()
 
 
+def source_package_resources(source_package_dir: Path) -> frozenset[str]:
+    """Derive every Python wheel path from the checked-out package source."""
+
+    source_package_dir = source_package_dir.resolve()
+    if (
+        source_package_dir.name != "agent_factory"
+        or not (source_package_dir / "__init__.py").is_file()
+    ):
+        raise SmokeFailure("source package must be the agent_factory package")
+    resources = frozenset(
+        path.relative_to(source_package_dir.parent).as_posix()
+        for path in source_package_dir.rglob("*.py")
+        if path.is_file()
+    )
+    if not resources:
+        raise SmokeFailure("source package contains no Python modules")
+    return resources
+
+
 def _wheel_metadata(archive: zipfile.ZipFile) -> Message:
     names = [
         name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
@@ -131,7 +150,12 @@ def _wheel_entry_points(archive: zipfile.ZipFile) -> configparser.ConfigParser:
     return parser
 
 
-def verify_distributions(wheel: Path, sdist: Path) -> DistributionArtifacts:
+def verify_distributions(
+    wheel: Path,
+    sdist: Path,
+    *,
+    expected_source_resources: frozenset[str] = frozenset(),
+) -> DistributionArtifacts:
     """Validate release metadata and package data without extracting archives."""
 
     with zipfile.ZipFile(wheel) as archive:
@@ -139,7 +163,8 @@ def verify_distributions(wheel: Path, sdist: Path) -> DistributionArtifacts:
         unsafe = [name for name in wheel_names if not _safe_archive_path(name)]
         if unsafe:
             raise SmokeFailure("wheel contains an unsafe archive path")
-        missing = EXPECTED_WHEEL_RESOURCES.difference(wheel_names)
+        required_resources = EXPECTED_WHEEL_RESOURCES.union(expected_source_resources)
+        missing = required_resources.difference(wheel_names)
         if missing:
             raise SmokeFailure(
                 "wheel is missing required resources: " + ", ".join(sorted(missing))
@@ -174,6 +199,7 @@ def verify_distributions(wheel: Path, sdist: Path) -> DistributionArtifacts:
         "pyproject.toml",
         "README.md",
         *EXPECTED_MIGRATIONS,
+        *expected_source_resources,
     }
     for suffix in expected_sdist_suffixes:
         if not any(name.endswith(suffix) for name in sdist_names):
@@ -748,7 +774,12 @@ def _build_and_verify(
         environment=process_environment,
         timeout=timeout,
     )
-    return verify_distributions(*discover_distributions(dist_dir))
+    return verify_distributions(
+        *discover_distributions(dist_dir),
+        expected_source_resources=source_package_resources(
+            project_root / "src" / "agent_factory"
+        ),
+    )
 
 
 def run_smoke(

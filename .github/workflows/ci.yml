@@ -17,7 +17,7 @@ jobs:
   quality:
     name: Python 3.11 quality gate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -84,76 +84,13 @@ jobs:
       - name: Enforce total coverage
         run: uv run coverage report --fail-under=80
 
-      - name: Build distributions
-        run: uv build
-
-      - name: Verify packaged application resources
-        run: >-
-          uv run python -c "import glob, zipfile;
-          wheel = glob.glob('dist/*.whl')[0];
-          names = zipfile.ZipFile(wheel).namelist();
-          expected = {
-            'agent_factory/domain/evaluation.py',
-            'agent_factory/domain/references.py',
-            'agent_factory/domain/skills.py',
-            'agent_factory/domain/services/evaluation.py',
-            'agent_factory/domain/services/degradation.py',
-            'agent_factory/domain/services/lifecycle.py',
-            'agent_factory/domain/services/skills.py',
-            'agent_factory/application/runtime.py',
-            'agent_factory/application/model_gateway.py',
-            'agent_factory/application/security.py',
-            'agent_factory/application/tool_contracts.py',
-            'agent_factory/application/tool_execution.py',
-            'agent_factory/demo.py',
-            'agent_factory/sdk/__init__.py',
-            'agent_factory/sdk/client.py',
-            'agent_factory/sdk/errors.py',
-            'agent_factory/sdk/operations.py',
-            'agent_factory/infrastructure/authentication.py',
-            'agent_factory/infrastructure/runtime/demo.py',
-            'agent_factory/infrastructure/runtime/model.py',
-            'agent_factory/infrastructure/runtime/openai_gateway.py',
-            'agent_factory/infrastructure/runtime/registry.py',
-            'agent_factory/interfaces/api/app.py',
-            'agent_factory/interfaces/api/contracts.py',
-            'agent_factory/interfaces/api/errors.py',
-            'agent_factory/interfaces/api/main.py',
-            'agent_factory/interfaces/api/middleware.py',
-            'agent_factory/interfaces/api/security_events.py',
-            'agent_factory/interfaces/api/routers/audit.py',
-            'agent_factory/interfaces/api/routers/evaluations.py',
-            'agent_factory/interfaces/api/routers/instances.py',
-            'agent_factory/interfaces/api/routers/knowledge.py',
-            'agent_factory/interfaces/api/routers/prototypes.py',
-            'agent_factory/interfaces/api/routers/skills.py',
-            'agent_factory/interfaces/factory_tools/__init__.py',
-            'agent_factory/interfaces/factory_tools/adapter.py',
-            'agent_factory/interfaces/factory_tools/contracts.py',
-            'agent_factory/interfaces/demo/__init__.py',
-            'agent_factory/interfaces/demo/contracts.py',
-            'agent_factory/interfaces/demo/fixtures.py',
-            'agent_factory/interfaces/demo/gradio_app.py',
-            'agent_factory/interfaces/demo/workflow.py',
-            'agent_factory/infrastructure/sqlite/governance_repositories.py',
-            'agent_factory/infrastructure/sqlite/repository_base.py',
-            'agent_factory/infrastructure/sqlite/runtime_repositories.py',
-            'agent_factory/infrastructure/sqlite/sql/001_initial.sql',
-            'agent_factory/infrastructure/sqlite/sql/002_persistence_contracts.sql',
-            'agent_factory/infrastructure/sqlite/sql/003_skill_governance.sql',
-            'agent_factory/infrastructure/sqlite/sql/004_instance_configuration_checksum.sql',
-            'agent_factory/infrastructure/sqlite/sql/005_task_outcome_integrity.sql',
-            'agent_factory/infrastructure/sqlite/sql/006_tool_call_records.sql'
-          };
-          assert expected <= set(names)"
-
-      - name: Install wheel extras in an isolated environment
+      - name: Verify isolated distribution and local process
         shell: bash
         run: |
-          wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
-          test -n "$wheel"
-          uv export --quiet --locked --extra demo --extra llm --no-dev --no-emit-project --output-file .tmp/wheel-smoke-requirements.txt
-          uv venv --python 3.11 .tmp/wheel-smoke
-          uv pip install --python .tmp/wheel-smoke/bin/python --requirement .tmp/wheel-smoke-requirements.txt
-          uv pip install --python .tmp/wheel-smoke/bin/python --no-deps "${wheel}[demo,llm]"
-          .tmp/wheel-smoke/bin/python -c "from importlib.metadata import distribution; import agent_factory.demo, gradio, openai; package = distribution('agent-factory'); extras = set(package.metadata.get_all('Provides-Extra') or ()); assert {'demo', 'llm'} <= extras; assert any(item.name == 'agent-factory-demo' and item.value == 'agent_factory.demo:main' for item in package.entry_points)"
+          cache_dir="$(uv cache dir)"
+          uv run python -u -m scripts.local_alpha_smoke \
+            --work-root .tmp/ci-local-alpha-smoke \
+            --uv-cache-dir "$cache_dir" \
+            --command-timeout 240 \
+            --startup-timeout 30 \
+            --shutdown-timeout 15

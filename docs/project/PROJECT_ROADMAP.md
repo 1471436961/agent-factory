@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前状态：M4.1-M4.5 已完成本地实现与门禁，M4.6 待进入。M4.2 已建立 OpenAPI 与稳定语义快照；M4.3-M4.4 已建立集中安全回归和 15 类写能力事务证据；M4.5 已从全新 wheel 的 minimal 隔离环境启动真实 Uvicorn，经已安装 SDK 完成认证写入，并在第二个进程中从同一 SQLite 恢复，同时验证 optional extras、001-006 migration 和 Token 日志边界。M4.2-M4.5 的远程证据待相关提交推送并在 M4.6 纳入最终 CI 后记录。阶段范围与证据见 [`docs/milestones/m4-quality-security.md`](../milestones/m4-quality-security.md)，工程门禁设计见 [`docs/design/security-regression-gates.md`](../design/security-regression-gates.md)，部署边界见 [`docs/deployment/local-alpha.md`](../deployment/local-alpha.md)。M3 接口、运行时与演示已于 2026-07-24 验收结束，退出候选提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 已通过。M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
+当前状态：M4.1-M4.5 已完成本地实现，M4.6 本地退出候选门禁已通过，提交、远程 GitHub Actions 与项目 owner 验收待完成。M4.2 已建立 OpenAPI 与稳定语义快照；M4.3-M4.4 已建立集中安全回归和 15 类写能力事务证据；M4.5-M4.6 已从全新 wheel 启动真实 Uvicorn，经已安装 SDK 完成认证写入和 SQLite 重启恢复，并将全部源码资源、minimal/extras、migration 与 Token 日志边界统一纳入 CI release step。阶段范围与本地证据见 [`docs/milestones/m4-quality-security.md`](../milestones/m4-quality-security.md)，工程门禁设计见 [`docs/design/security-regression-gates.md`](../design/security-regression-gates.md)，部署边界见 [`docs/deployment/local-alpha.md`](../deployment/local-alpha.md)。M3 接口、运行时与演示已于 2026-07-24 验收结束，退出候选提交 `d2edef7` 的 GitHub Actions [`CI #20`](https://github.com/1471436961/agent-factory/actions/runs/30079667277) 已通过。M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 
