@@ -1,0 +1,34 @@
+domain_id: velora-deploy
+knowledge_id: velora-deploy-guide
+version: 4.0.0
+name: Velora Deploy current release process
+content_path: knowledge/velora-deploy.md
+content_checksum: 1a971757c6168e509f0d41ead95658c731451b32daed7a18b02c7720ebe86eac
+synthetic: true
+facts:
+  - fact_id: stage-order
+    statement: Releases use validate, build, canary, and promote in order.
+    accepted_matchers:
+      - kind: exact
+        pattern: validate, build, canary, and promote in that order
+  - fact_id: canary-traffic
+    statement: Canary traffic is 15% of production traffic.
+    accepted_matchers:
+      - kind: exact
+        pattern: 15% of production traffic
+  - fact_id: health-window
+    statement: The canary health window lasts 8 minutes.
+    accepted_matchers:
+      - kind: exact
+        pattern: health window lasts 8 minutes
+  - fact_id: rollback-threshold
+    statement: Two consecutive failed probes trigger rollback.
+    accepted_matchers:
+      - kind: exact
+        pattern: Two consecutive failed health probes trigger automatic rollback
+  - fact_id: artifact-identity
+    statement: Immutable artifacts use a SHA-256 digest.
+    accepted_matchers:
+      - kind: exact
+        pattern: identified by a SHA-256 digest
+        case_sensitive: true

@@ -1,0 +1,42 @@
+schema_version: "1.0"
+experiment_id: writer-validation-v1
+title: Agent Factory Writer workflow validation dataset
+domain_ids:
+  - lumetra-cache
+  - nexora-events
+  - quoralis-ledger
+  - serevin-support
+  - tavrix-metrics
+  - velora-deploy
+conditions:
+  - manual-agent
+  - factory-agent
+repetitions: 5
+randomization_seed: 20260725
+expected_task_count: 24
+knowledge_files:
+  - knowledge/lumetra-cache.yaml
+  - knowledge/nexora-events.yaml
+  - knowledge/quoralis-ledger.yaml
+  - knowledge/serevin-support.yaml
+  - knowledge/tavrix-metrics.yaml
+  - knowledge/velora-deploy.yaml
+task_files:
+  - tasks/lumetra-cache.yaml
+  - tasks/nexora-events.yaml
+  - tasks/quoralis-ledger.yaml
+  - tasks/serevin-support.yaml
+  - tasks/tavrix-metrics.yaml
+  - tasks/velora-deploy.yaml
+rubric_files:
+  - rubrics/lumetra-cache.yaml
+  - rubrics/nexora-events.yaml
+  - rubrics/quoralis-ledger.yaml
+  - rubrics/serevin-support.yaml
+  - rubrics/tavrix-metrics.yaml
+  - rubrics/velora-deploy.yaml
+thresholds:
+  h1_support_min_absolute_difference: 0.10
+  h1_not_support_below: 0.05
+  h2_support_min_relative_reduction: 0.20
+  h4_noninferiority_margin: -0.05

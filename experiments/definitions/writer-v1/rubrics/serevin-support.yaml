@@ -1,0 +1,43 @@
+domain_id: serevin-support
+rubrics:
+  - rubric_id: serevin-priority-reference-rubric
+    task_id: serevin-priority-reference
+    required_fact_ids: [priority-range, p0-acknowledgement, p1-acknowledgement]
+    forbidden_matchers:
+      - {kind: exact, pattern: 15 minutes for P0 acknowledgement, case_sensitive: true}
+  - rubric_id: serevin-escalation-checklist-rubric
+    task_id: serevin-escalation-checklist
+    required_fact_ids: [p0-update-frequency, escalation-rule, retention-period]
+    forbidden_matchers:
+      - {kind: exact, pattern: retained records for 90 days}
+  - rubric_id: serevin-beginner-guide-rubric
+    task_id: serevin-beginner-guide
+    required_fact_ids: [p0-acknowledgement, p0-update-frequency]
+    forbidden_matchers:
+      - {kind: exact, pattern: 15 minutes for P0 acknowledgement, case_sensitive: true}
+    personalization_constraints:
+      - constraint_id: plain-language-opening
+        description: Summary begins with a plain-language signal.
+        expectation: present
+        matcher: {kind: regex, pattern: '^In plain language', case_sensitive: true}
+        target_field: summary
+      - constraint_id: avoid-sla-acronym
+        description: Beginner output avoids the SLA acronym.
+        expectation: absent
+        matcher: {kind: exact, pattern: SLA, case_sensitive: true}
+  - rubric_id: serevin-lead-brief-rubric
+    task_id: serevin-lead-brief
+    required_fact_ids: [p0-update-frequency, escalation-rule, retention-period]
+    forbidden_matchers:
+      - {kind: exact, pattern: retained records for 90 days}
+    personalization_constraints:
+      - constraint_id: risk-label
+        description: Lead summary explicitly labels risk.
+        expectation: present
+        matcher: {kind: exact, pattern: 'Risk:', case_sensitive: true}
+        target_field: summary
+      - constraint_id: escalation-action
+        description: Lead next action includes escalation.
+        expectation: present
+        matcher: {kind: exact, pattern: escalation}
+        target_field: next_action

@@ -1,0 +1,33 @@
+domain_id: lumetra-cache
+knowledge_id: lumetra-cache-guide
+version: 3.1.0
+name: Lumetra Cache current contract
+content_path: knowledge/lumetra-cache.md
+content_checksum: f936afa9b4f9d463153e23f30319b9bd337366f620a9835e47ec00385a278a4c
+synthetic: true
+facts:
+  - fact_id: regional-consistency
+    statement: Same-region reads provide read-after-write consistency.
+    accepted_matchers:
+      - kind: exact
+        pattern: read-after-write consistency
+  - fact_id: ttl-range
+    statement: TTL ranges from 30 seconds through 12 hours.
+    accepted_matchers:
+      - kind: regex
+        pattern: '30 seconds.{0,40}12 hours'
+  - fact_id: namespace-limit
+    statement: Namespace names are limited to 64 characters.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'at most 64 characters'
+  - fact_id: eviction-policy
+    statement: Capacity pressure uses LFU eviction.
+    accepted_matchers:
+      - kind: exact
+        pattern: least-frequently-used (LFU) eviction
+  - fact_id: purge-delay
+    statement: Namespace purge propagation can take 90 seconds.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'up to 90 seconds'

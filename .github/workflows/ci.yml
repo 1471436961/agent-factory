@@ -34,17 +34,17 @@ jobs:
         run: uv sync --locked --extra dev --extra test --extra llm --extra demo
 
       - name: Check formatting
-        run: uv run ruff format --check src tests scripts
+        run: uv run ruff format --check src tests scripts experiments
 
       - name: Lint
-        run: uv run ruff check src tests scripts
+        run: uv run ruff check src tests scripts experiments
 
       - name: Type check
         shell: bash
         run: |
           mkdir -p .tmp
           set +e
-          uv run mypy src tests scripts 2>&1 | tee .tmp/mypy.log
+          uv run mypy src tests scripts experiments 2>&1 | tee .tmp/mypy.log
           status=${PIPESTATUS[0]}
           if (( status != 0 )); then
             while IFS= read -r line; do
@@ -55,6 +55,13 @@ jobs:
 
       - name: Verify reviewed contract snapshots
         run: uv run python -m scripts.contract_snapshots --check
+
+      - name: Validate frozen M5 experiment fixtures
+        run: >-
+          uv run pytest -q tests/unit/experiments
+          --cov=experiments
+          --cov-report=term-missing
+          --cov-fail-under=90
 
       - name: Run Alpha security regression
         run: uv run pytest -q tests/security

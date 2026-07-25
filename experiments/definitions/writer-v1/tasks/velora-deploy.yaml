@@ -1,0 +1,56 @@
+domain_id: velora-deploy
+output_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    title: {type: string, minLength: 1}
+    summary: {type: string, minLength: 1}
+    key_points:
+      type: array
+      minItems: 2
+      maxItems: 6
+      items: {type: string, minLength: 1}
+    next_action: {type: string, minLength: 1}
+  required: [title, summary, key_points, next_action]
+  additionalProperties: false
+tasks:
+  - task_id: velora-release-reference
+    domain_id: velora-deploy
+    scenario: consistency
+    instruction: Create a current release reference covering stage order, canary traffic, and health window. Exclude version 3 values.
+    reader_profile: A release engineer who needs the exact deployment sequence.
+    knowledge:
+      knowledge_id: velora-deploy-guide
+      version: 4.0.0
+      checksum: 1a971757c6168e509f0d41ead95658c731451b32daed7a18b02c7720ebe86eac
+    rubric_id: velora-release-reference-rubric
+  - task_id: velora-rollback-checklist
+    domain_id: velora-deploy
+    scenario: consistency
+    instruction: Write a current rollback checklist covering failed probes, artifact identity, and canary traffic. Exclude version 3 values.
+    reader_profile: An on-call release operator responding to a failed canary.
+    knowledge:
+      knowledge_id: velora-deploy-guide
+      version: 4.0.0
+      checksum: 1a971757c6168e509f0d41ead95658c731451b32daed7a18b02c7720ebe86eac
+    rubric_id: velora-rollback-checklist-rubric
+  - task_id: velora-beginner-guide
+    domain_id: velora-deploy
+    scenario: adaptation
+    instruction: Explain canary traffic and the health window to a new developer. Begin the summary with "In plain language" and do not use the term "SHA-256". Exclude version 3 values.
+    reader_profile: A new developer learning progressive delivery.
+    knowledge:
+      knowledge_id: velora-deploy-guide
+      version: 4.0.0
+      checksum: 1a971757c6168e509f0d41ead95658c731451b32daed7a18b02c7720ebe86eac
+    rubric_id: velora-beginner-guide-rubric
+  - task_id: velora-lead-brief
+    domain_id: velora-deploy
+    scenario: adaptation
+    instruction: Brief a technical lead on canary and rollback risk. Include "Risk:" in the summary and mention rollback in next_action. Exclude version 3 values.
+    reader_profile: A technical lead reviewing release safety and rollback behavior.
+    knowledge:
+      knowledge_id: velora-deploy-guide
+      version: 4.0.0
+      checksum: 1a971757c6168e509f0d41ead95658c731451b32daed7a18b02c7720ebe86eac
+    rubric_id: velora-lead-brief-rubric

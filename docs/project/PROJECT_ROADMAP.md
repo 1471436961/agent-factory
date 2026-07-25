@@ -28,7 +28,7 @@
 
 ## 4. 当前状态
 
-当前状态：M5 已于 2026-07-25 经项目 owner 确认进入，当前执行 M5.1 实验协议设计。M5 已将主要 Writer 生成实验、单操作者构建案例和确定性审计验证拆分为三类证据；尚未实现实验数据模型，尚未冻结模型、任务集、预算或价格快照，也未执行真实模型调用。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)。M4 已于 2026-07-25 封存，退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过；该结论只覆盖本地 Alpha 的既定边界，不包含公网生产部署。M3 已于 2026-07-24 封存，M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
+当前状态：M5 已于 2026-07-25 经项目 owner 确认进入，M5.1 协议基线和 M5.2 实验契约与冻结 Writer fixture 已实现，M5.3 尚未进入。仓库级 `experiments` package 已提供严格模型、受限 YAML/Markdown loader、6 个虚构领域、24 个任务和 24 份 rubric；数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`。尚未冻结模型、预算或价格快照，尚未生成执行计划、实现正式执行器或调用真实模型。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)。M4 已于 2026-07-25 封存，退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过；该结论只覆盖本地 Alpha 的既定边界，不包含公网生产部署。M3 已于 2026-07-24 封存，M2 已于 2026-07-23 封存，M1 已于 2026-07-21 封存，M0 已于 2026-07-18 验收完成。
 
 ## 5. 最终展示物
 

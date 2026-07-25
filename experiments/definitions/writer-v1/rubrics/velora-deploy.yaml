@@ -1,0 +1,43 @@
+domain_id: velora-deploy
+rubrics:
+  - rubric_id: velora-release-reference-rubric
+    task_id: velora-release-reference
+    required_fact_ids: [stage-order, canary-traffic, health-window]
+    forbidden_matchers:
+      - {kind: exact, pattern: 25% of traffic}
+  - rubric_id: velora-rollback-checklist-rubric
+    task_id: velora-rollback-checklist
+    required_fact_ids: [rollback-threshold, artifact-identity, canary-traffic]
+    forbidden_matchers:
+      - {kind: exact, pattern: 5-minute health window}
+  - rubric_id: velora-beginner-guide-rubric
+    task_id: velora-beginner-guide
+    required_fact_ids: [canary-traffic, health-window]
+    forbidden_matchers:
+      - {kind: exact, pattern: 25% of traffic}
+    personalization_constraints:
+      - constraint_id: plain-language-opening
+        description: Summary begins with a plain-language signal.
+        expectation: present
+        matcher: {kind: regex, pattern: '^In plain language', case_sensitive: true}
+        target_field: summary
+      - constraint_id: avoid-digest-jargon
+        description: Beginner output avoids digest-algorithm jargon.
+        expectation: absent
+        matcher: {kind: exact, pattern: SHA-256, case_sensitive: true}
+  - rubric_id: velora-lead-brief-rubric
+    task_id: velora-lead-brief
+    required_fact_ids: [canary-traffic, health-window, rollback-threshold]
+    forbidden_matchers:
+      - {kind: exact, pattern: 5-minute health window}
+    personalization_constraints:
+      - constraint_id: risk-label
+        description: Lead summary explicitly labels risk.
+        expectation: present
+        matcher: {kind: exact, pattern: 'Risk:', case_sensitive: true}
+        target_field: summary
+      - constraint_id: rollback-action
+        description: Lead next action includes rollback.
+        expectation: present
+        matcher: {kind: exact, pattern: rollback}
+        target_field: next_action

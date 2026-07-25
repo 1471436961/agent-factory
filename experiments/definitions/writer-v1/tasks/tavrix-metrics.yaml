@@ -1,0 +1,56 @@
+domain_id: tavrix-metrics
+output_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    title: {type: string, minLength: 1}
+    summary: {type: string, minLength: 1}
+    key_points:
+      type: array
+      minItems: 2
+      maxItems: 6
+      items: {type: string, minLength: 1}
+    next_action: {type: string, minLength: 1}
+  required: [title, summary, key_points, next_action]
+  additionalProperties: false
+tasks:
+  - task_id: tavrix-ingestion-reference
+    domain_id: tavrix-metrics
+    scenario: consistency
+    instruction: Create a current ingestion reference covering endpoint, series limit, and label limit. Exclude all version 4 values.
+    reader_profile: An observability engineer implementing metric ingestion.
+    knowledge:
+      knowledge_id: tavrix-metrics-api
+      version: 5.0.0
+      checksum: 08e7e9e02a6c0f502ddd4106da221aeb6c463d31dbd3709f06b0af4b8b984d05
+    rubric_id: tavrix-ingestion-reference-rubric
+  - task_id: tavrix-retention-checklist
+    domain_id: tavrix-metrics
+    scenario: consistency
+    instruction: Write a current retention checklist covering raw samples, hourly aggregates, and timestamps. Exclude all version 4 values.
+    reader_profile: An on-call observability operator checking data availability.
+    knowledge:
+      knowledge_id: tavrix-metrics-api
+      version: 5.0.0
+      checksum: 08e7e9e02a6c0f502ddd4106da221aeb6c463d31dbd3709f06b0af4b8b984d05
+    rubric_id: tavrix-retention-checklist-rubric
+  - task_id: tavrix-beginner-guide
+    domain_id: tavrix-metrics
+    scenario: adaptation
+    instruction: Explain series and label limits to a new developer. Begin the summary with "In plain language" and do not use the term "cardinality". Exclude version 4 values.
+    reader_profile: A new developer sending application metrics for the first time.
+    knowledge:
+      knowledge_id: tavrix-metrics-api
+      version: 5.0.0
+      checksum: 08e7e9e02a6c0f502ddd4106da221aeb6c463d31dbd3709f06b0af4b8b984d05
+    rubric_id: tavrix-beginner-guide-rubric
+  - task_id: tavrix-lead-brief
+    domain_id: tavrix-metrics
+    scenario: adaptation
+    instruction: Brief a technical lead on ingestion and retention risk. Include "Risk:" in the summary and mention retention in next_action. Exclude version 4 values.
+    reader_profile: A technical lead reviewing observability cost and data risk.
+    knowledge:
+      knowledge_id: tavrix-metrics-api
+      version: 5.0.0
+      checksum: 08e7e9e02a6c0f502ddd4106da221aeb6c463d31dbd3709f06b0af4b8b984d05
+    rubric_id: tavrix-lead-brief-rubric

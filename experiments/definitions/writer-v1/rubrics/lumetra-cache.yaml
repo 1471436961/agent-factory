@@ -1,0 +1,43 @@
+domain_id: lumetra-cache
+rubrics:
+  - rubric_id: lumetra-integration-reference-rubric
+    task_id: lumetra-integration-reference
+    required_fact_ids: [regional-consistency, ttl-range, namespace-limit]
+    forbidden_matchers:
+      - {kind: exact, pattern: 24-hour TTL}
+  - rubric_id: lumetra-operations-checklist-rubric
+    task_id: lumetra-operations-checklist
+    required_fact_ids: [eviction-policy, purge-delay, ttl-range]
+    forbidden_matchers:
+      - {kind: exact, pattern: least-recently-used (LRU) eviction}
+  - rubric_id: lumetra-beginner-guide-rubric
+    task_id: lumetra-beginner-guide
+    required_fact_ids: [ttl-range, purge-delay]
+    forbidden_matchers:
+      - {kind: exact, pattern: 24-hour TTL}
+    personalization_constraints:
+      - constraint_id: plain-language-opening
+        description: Summary begins with a plain-language signal.
+        expectation: present
+        matcher: {kind: regex, pattern: '^In plain language', case_sensitive: true}
+        target_field: summary
+      - constraint_id: avoid-lfu-acronym
+        description: Beginner output avoids the LFU acronym.
+        expectation: absent
+        matcher: {kind: exact, pattern: LFU, case_sensitive: true}
+  - rubric_id: lumetra-lead-brief-rubric
+    task_id: lumetra-lead-brief
+    required_fact_ids: [regional-consistency, eviction-policy]
+    forbidden_matchers:
+      - {kind: exact, pattern: least-recently-used (LRU) eviction}
+    personalization_constraints:
+      - constraint_id: risk-label
+        description: Lead summary explicitly labels risk.
+        expectation: present
+        matcher: {kind: exact, pattern: 'Risk:', case_sensitive: true}
+        target_field: summary
+      - constraint_id: capacity-action
+        description: Lead next action addresses capacity.
+        expectation: present
+        matcher: {kind: exact, pattern: capacity}
+        target_field: next_action

@@ -1,0 +1,42 @@
+domain_id: serevin-support
+knowledge_id: serevin-support-policy
+version: 2.2.0
+name: Serevin Support current operations policy
+content_path: knowledge/serevin-support.md
+content_checksum: 66f7134ece78925fdfc951944ba4e4ef40f2d36415d3d611fdb35f4ec11322af
+synthetic: true
+facts:
+  - fact_id: priority-range
+    statement: Incident priorities are P0 through P3.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'P0, P1, P2, and P3'
+        case_sensitive: true
+  - fact_id: p0-acknowledgement
+    statement: P0 acknowledgement is required within 10 minutes.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'P0 incident requires acknowledgement within 10 minutes'
+        case_sensitive: true
+  - fact_id: p1-acknowledgement
+    statement: P1 acknowledgement is required within 45 minutes.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'P1 incident requires acknowledgement within 45 minutes'
+        case_sensitive: true
+  - fact_id: p0-update-frequency
+    statement: P0 customer updates are sent every 30 minutes.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'P0 customer updates must be sent every 30 minutes'
+        case_sensitive: true
+  - fact_id: escalation-rule
+    statement: Two consecutive missed updates trigger duty-manager escalation.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'Two consecutive missed customer updates trigger escalation'
+  - fact_id: retention-period
+    statement: Incident records are retained for 180 days.
+    accepted_matchers:
+      - kind: exact
+        pattern: retained for 180 days

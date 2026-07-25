@@ -1,0 +1,56 @@
+domain_id: serevin-support
+output_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    title: {type: string, minLength: 1}
+    summary: {type: string, minLength: 1}
+    key_points:
+      type: array
+      minItems: 2
+      maxItems: 6
+      items: {type: string, minLength: 1}
+    next_action: {type: string, minLength: 1}
+  required: [title, summary, key_points, next_action]
+  additionalProperties: false
+tasks:
+  - task_id: serevin-priority-reference
+    domain_id: serevin-support
+    scenario: consistency
+    instruction: Create a current incident-priority reference covering priority range and P0/P1 acknowledgement times. Exclude former-policy values.
+    reader_profile: A support engineer who needs exact response targets.
+    knowledge:
+      knowledge_id: serevin-support-policy
+      version: 2.2.0
+      checksum: 66f7134ece78925fdfc951944ba4e4ef40f2d36415d3d611fdb35f4ec11322af
+    rubric_id: serevin-priority-reference-rubric
+  - task_id: serevin-escalation-checklist
+    domain_id: serevin-support
+    scenario: consistency
+    instruction: Write a current P0 checklist covering customer-update frequency, escalation, and record retention. Exclude former-policy values.
+    reader_profile: A duty operator handling a live P0 incident.
+    knowledge:
+      knowledge_id: serevin-support-policy
+      version: 2.2.0
+      checksum: 66f7134ece78925fdfc951944ba4e4ef40f2d36415d3d611fdb35f4ec11322af
+    rubric_id: serevin-escalation-checklist-rubric
+  - task_id: serevin-beginner-guide
+    domain_id: serevin-support
+    scenario: adaptation
+    instruction: Explain P0 acknowledgement and customer updates to a new support engineer. Begin the summary with "In plain language" and do not use the term "SLA". Exclude former-policy values.
+    reader_profile: A new support engineer learning incident operations.
+    knowledge:
+      knowledge_id: serevin-support-policy
+      version: 2.2.0
+      checksum: 66f7134ece78925fdfc951944ba4e4ef40f2d36415d3d611fdb35f4ec11322af
+    rubric_id: serevin-beginner-guide-rubric
+  - task_id: serevin-lead-brief
+    domain_id: serevin-support
+    scenario: adaptation
+    instruction: Brief a support lead on missed updates and escalation. Include "Risk:" in the summary and mention escalation in next_action. Exclude former-policy values.
+    reader_profile: A support lead reviewing operational escalation risk.
+    knowledge:
+      knowledge_id: serevin-support-policy
+      version: 2.2.0
+      checksum: 66f7134ece78925fdfc951944ba4e4ef40f2d36415d3d611fdb35f4ec11322af
+    rubric_id: serevin-lead-brief-rubric

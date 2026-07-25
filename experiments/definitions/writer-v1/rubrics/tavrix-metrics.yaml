@@ -1,0 +1,43 @@
+domain_id: tavrix-metrics
+rubrics:
+  - rubric_id: tavrix-ingestion-reference-rubric
+    task_id: tavrix-ingestion-reference
+    required_fact_ids: [ingestion-endpoint, series-limit, label-limit]
+    forbidden_matchers:
+      - {kind: exact, pattern: 100 series per request}
+  - rubric_id: tavrix-retention-checklist-rubric
+    task_id: tavrix-retention-checklist
+    required_fact_ids: [raw-retention, aggregate-retention, timestamp-format]
+    forbidden_matchers:
+      - {kind: exact, pattern: retained raw samples for 7 days}
+  - rubric_id: tavrix-beginner-guide-rubric
+    task_id: tavrix-beginner-guide
+    required_fact_ids: [series-limit, label-limit]
+    forbidden_matchers:
+      - {kind: exact, pattern: 100 series per request}
+    personalization_constraints:
+      - constraint_id: plain-language-opening
+        description: Summary begins with a plain-language signal.
+        expectation: present
+        matcher: {kind: regex, pattern: '^In plain language', case_sensitive: true}
+        target_field: summary
+      - constraint_id: avoid-cardinality-jargon
+        description: Beginner output avoids cardinality jargon.
+        expectation: absent
+        matcher: {kind: exact, pattern: cardinality}
+  - rubric_id: tavrix-lead-brief-rubric
+    task_id: tavrix-lead-brief
+    required_fact_ids: [series-limit, raw-retention, aggregate-retention]
+    forbidden_matchers:
+      - {kind: exact, pattern: retained raw samples for 7 days}
+    personalization_constraints:
+      - constraint_id: risk-label
+        description: Lead summary explicitly labels risk.
+        expectation: present
+        matcher: {kind: exact, pattern: 'Risk:', case_sensitive: true}
+        target_field: summary
+      - constraint_id: retention-action
+        description: Lead next action includes retention.
+        expectation: present
+        matcher: {kind: exact, pattern: retention}
+        target_field: next_action

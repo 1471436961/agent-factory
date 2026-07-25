@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5 已进入，当前执行 M5.1 实验协议设计；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.2 实验契约与冻结 Writer fixture 已实现，M5.3 尚未进入；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4016,81 +4016,80 @@ H1、H2、H4 的阈值在首次正式运行前写入实验配置并冻结，不�
 
 ### 13.2 实验模型
 
-以下类型是 M5.2 的目标规格，M5.1 尚未在 `src/` 中实现。M5.2 设计评审必须进一步冻结枚举、规范化序列化、checksum 和失败 run 表达，不能把本节示例误述为现有运行能力。
+M5.2 已在仓库级 [`experiments/contracts.py`](../experiments/contracts.py) 实现严格模型。该 package 属于研究与复算基础设施，不进入 `src/agent_factory`、运行时 wheel、Container、REST 或 SDK。完整字段和校验以源码为准，核心关系如下：
 
 ```python
-from enum import StrEnum
-from pydantic import Field
+class KnowledgeFixture(FrozenModel):
+    domain_id: Slug
+    knowledge_id: Slug
+    version: SemVer
+    name: str
+    content_path: ArtifactPath
+    content_checksum: Sha256
+    synthetic: Literal[True] = True
+    facts: tuple[FactDefinition, ...]
 
 
-class ExperimentCondition(StrEnum):
-    MANUAL = "manual-agent"
-    FACTORY = "factory-agent"
-
-
-class ExperimentScenario(StrEnum):
-    CONSISTENCY = "consistency"
-    ADAPTATION = "adaptation"
-
-
-class GenerationConfig(FrozenModel):
-    provider: str
-    model: str
-    temperature: float = Field(ge=0, le=2)
-    max_output_tokens: int = Field(gt=0, le=16_384)
-    seed: int | None = None
-
-
-class ExperimentTask(FrozenModel):
+class ExperimentTaskInput(FrozenModel):
     task_id: Slug
+    domain_id: Slug
     scenario: ExperimentScenario
     instruction: str
     reader_profile: str
-    required_facts: tuple[str, ...]
-    forbidden_facts: tuple[str, ...] = ()
-    personalization_constraints: tuple[str, ...]
+    knowledge: ExperimentKnowledgeRef
+    rubric_id: Slug
+
+
+class ExperimentTask(ExperimentTaskInput):
     output_schema: JsonObject
-    knowledge_id: Slug
-    knowledge_version: SemVer
+
+
+class RunAttempt(FrozenModel):
+    attempt_number: int
+    status: AttemptStatus
+    provider_request_id: str | None
+    response: JsonObject | None
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    error_code: str | None
+    started_at: AwareDatetime
+    completed_at: AwareDatetime
 
 
 class ExperimentRun(FrozenModel):
     run_id: UUID
     experiment_id: Slug
+    plan_checksum: Sha256
     condition: ExperimentCondition
     task_id: Slug
-    repetition: int = Field(ge=1)
-    execution_order: int = Field(ge=1)
+    repetition: int
+    execution_order: PositiveInt
     generation: GenerationConfig
-    prompt_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
-    knowledge_checksum: str = Field(pattern=r"^[a-f0-9]{64}$")
-    agent_spec_checksum: str | None = Field(
-        default=None, pattern=r"^[a-f0-9]{64}$"
-    )
-    status: str
-    output_text: str | None = None
+    invocation: JsonObject
+    prompt_hash: Sha256
+    knowledge_checksum: Sha256
+    agent_spec_checksum: Sha256 | None
+    status: RunStatus
+    attempts: tuple[RunAttempt, ...]
+    output_text: str | None
     structured_output: JsonObject | None = None
-    latency_ms: int | None = Field(default=None, ge=0)
-    prompt_tokens: int | None = Field(default=None, ge=0)
-    completion_tokens: int | None = Field(default=None, ge=0)
-    started_at: datetime
-    completed_at: datetime
-    provider_request_ids: tuple[str, ...] = ()
-    error_code: str | None = None
+    started_at: AwareDatetime
+    completed_at: AwareDatetime
 
 
 class MetricRecord(FrozenModel):
     run_id: UUID
-    schema_passed: bool
-    required_facts_total: int = Field(ge=0)
-    required_facts_covered: int = Field(ge=0)
-    personalization_total: int = Field(ge=0)
-    personalization_satisfied: int = Field(ge=0)
-    deterministic_quality_score: float = Field(ge=0, le=1)
-    human_quality_score: float | None = Field(default=None, ge=1, le=5)
+    run_status: RunStatus
+    schema_passed: bool | None
+    required_facts_total: int | None
+    required_facts_covered: int | None
+    personalization_total: int | None
+    personalization_satisfied: int | None
+    deterministic_quality_score: float | None
+    human_quality_score: float | None
 ```
 
-原始请求、原始响应、失败 attempt 和供应商 request ID 写入 `experiments/runs/{experiment_id}/`，每个 run 使用独立 JSON 文件；汇总表使用 CSV，字段名与 `MetricRecord` 一致。原始 run 不保存凭据且写入后不可覆盖；评分、人工评审和报告写入独立派生目录。
+`RunAttempt` 强制成功记录具有响应且无错误，失败记录具有错误且无响应；`ExperimentRun` 强制终态与最后一次 attempt 一致，`budget-stopped` 不得伪造供应商调用或最终输出；`MetricRecord` 只允许成功 run 携带确定性或人工质量分数。M5.2 只实现这些契约，原始请求、响应和失败 attempt 的原子写入、拒绝覆盖与恢复属于 M5.3。
 
 ### 13.3 实验规模与分组
 
@@ -4390,10 +4389,15 @@ agent-factory/
 │   ├── regression/
 │   └── fixtures/
 ├── experiments/
-│   ├── experiment.yaml
-│   ├── tasks/
-│   ├── runs/
-│   └── analysis/
+│   ├── contracts.py
+│   ├── loader.py
+│   ├── definitions/writer-v1/
+│   │   ├── dataset.yaml
+│   │   ├── knowledge/
+│   │   ├── tasks/
+│   │   └── rubrics/
+│   ├── runs/          # M5.3，默认不进入 Git
+│   └── analysis/      # M5.4
 ├── pyproject.toml
 ├── README.md
 └── .env.example

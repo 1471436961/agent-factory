@@ -1,0 +1,56 @@
+domain_id: quoralis-ledger
+output_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    title: {type: string, minLength: 1}
+    summary: {type: string, minLength: 1}
+    key_points:
+      type: array
+      minItems: 2
+      maxItems: 6
+      items: {type: string, minLength: 1}
+    next_action: {type: string, minLength: 1}
+  required: [title, summary, key_points, next_action]
+  additionalProperties: false
+tasks:
+  - task_id: quoralis-amount-reference
+    domain_id: quoralis-ledger
+    scenario: consistency
+    instruction: Create a current amount and settlement reference covering integer micros, conversion, and settlement time. Exclude preview behavior.
+    reader_profile: An integration engineer implementing ledger requests.
+    knowledge:
+      knowledge_id: quoralis-ledger-api
+      version: 1.4.0
+      checksum: 8d7372e3c1a32f90287053aa957a68de6725a0cdc2512fdb1d9c4944318b85e7
+    rubric_id: quoralis-amount-reference-rubric
+  - task_id: quoralis-correction-checklist
+    domain_id: quoralis-ledger
+    scenario: consistency
+    instruction: Write a current checklist covering idempotency retention, correction rules, and amount units. Exclude preview behavior.
+    reader_profile: A financial-platform operator reviewing safe write behavior.
+    knowledge:
+      knowledge_id: quoralis-ledger-api
+      version: 1.4.0
+      checksum: 8d7372e3c1a32f90287053aa957a68de6725a0cdc2512fdb1d9c4944318b85e7
+    rubric_id: quoralis-correction-checklist-rubric
+  - task_id: quoralis-beginner-guide
+    domain_id: quoralis-ledger
+    scenario: adaptation
+    instruction: Explain amount units and corrections to a new developer. Begin the summary with "In plain language" and do not use the term "idempotency". Exclude preview behavior.
+    reader_profile: A new developer unfamiliar with accounting APIs.
+    knowledge:
+      knowledge_id: quoralis-ledger-api
+      version: 1.4.0
+      checksum: 8d7372e3c1a32f90287053aa957a68de6725a0cdc2512fdb1d9c4944318b85e7
+    rubric_id: quoralis-beginner-guide-rubric
+  - task_id: quoralis-business-brief
+    domain_id: quoralis-ledger
+    scenario: adaptation
+    instruction: Brief a business owner on idempotency and correction safety. Include "Operational impact" in the summary and do not mention "02:00 UTC". Exclude preview behavior.
+    reader_profile: A business owner assessing financial-processing risk.
+    knowledge:
+      knowledge_id: quoralis-ledger-api
+      version: 1.4.0
+      checksum: 8d7372e3c1a32f90287053aa957a68de6725a0cdc2512fdb1d9c4944318b85e7
+    rubric_id: quoralis-business-brief-rubric

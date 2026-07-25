@@ -1,0 +1,42 @@
+domain_id: quoralis-ledger
+rubrics:
+  - rubric_id: quoralis-amount-reference-rubric
+    task_id: quoralis-amount-reference
+    required_fact_ids: [amount-unit, micros-conversion, settlement-time]
+    forbidden_matchers:
+      - {kind: exact, pattern: decimal amount strings}
+  - rubric_id: quoralis-correction-checklist-rubric
+    task_id: quoralis-correction-checklist
+    required_fact_ids: [idempotency-retention, correction-rule, amount-unit]
+    forbidden_matchers:
+      - {kind: exact, pattern: retained idempotency keys for 24 hours}
+  - rubric_id: quoralis-beginner-guide-rubric
+    task_id: quoralis-beginner-guide
+    required_fact_ids: [amount-unit, micros-conversion, correction-rule]
+    forbidden_matchers:
+      - {kind: exact, pattern: decimal amount strings}
+    personalization_constraints:
+      - constraint_id: plain-language-opening
+        description: Summary begins with a plain-language signal.
+        expectation: present
+        matcher: {kind: regex, pattern: '^In plain language', case_sensitive: true}
+        target_field: summary
+      - constraint_id: avoid-idempotency-jargon
+        description: Beginner output avoids the idempotency term.
+        expectation: absent
+        matcher: {kind: exact, pattern: idempotency}
+  - rubric_id: quoralis-business-brief-rubric
+    task_id: quoralis-business-brief
+    required_fact_ids: [idempotency-retention, correction-rule]
+    forbidden_matchers:
+      - {kind: exact, pattern: retained idempotency keys for 24 hours}
+    personalization_constraints:
+      - constraint_id: operational-impact
+        description: Business summary names operational impact.
+        expectation: present
+        matcher: {kind: exact, pattern: Operational impact, case_sensitive: true}
+        target_field: summary
+      - constraint_id: omit-settlement-clock
+        description: Business output omits the settlement clock detail.
+        expectation: absent
+        matcher: {kind: exact, pattern: '02:00 UTC', case_sensitive: true}

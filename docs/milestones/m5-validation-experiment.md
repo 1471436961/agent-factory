@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中，当前处于 M5.1 实验协议设计。
+- 状态：进行中；M5.1 与 M5.2 已实现，M5.3 尚未进入。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：尚未实现实验数据模型，尚未冻结模型、任务集、预算或价格快照，也未执行真实模型调用。
+- 当前限制：尚未生成执行计划或实现执行器，尚未冻结模型、预算或价格快照，也未执行真实模型调用。
 
 ## 2. 阶段目标
 
@@ -78,7 +78,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - 建立 24 个任务、合成知识包、输出 Schema、事实词表和适应性规则。
 - 为模型校验、任务完整性和知识字节一致性建立单元测试。
 
-退出条件：离线测试能证明任务、知识、rubric 和条件输入满足预注册约束。
+退出条件：离线测试能证明任务、知识和 rubric 满足预注册约束；MANUAL/FACTORY 最终输入渲染与字节级公平性由 M5.3 实现和验证。
 
 ### M5.3 执行器与不可变原始产物
 
@@ -146,7 +146,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 - [x] M5 范围、证据拆分和工作包经项目 owner 确认。
 - [x] M5.1 阶段文档与实验协议建立。
-- [ ] M5.2 实验模型、24 个任务和冻结 rubric 通过离线测试。
+- [x] M5.2 实验模型、24 个任务和冻结 rubric 通过离线测试。
 - [ ] M5.3 执行计划、不可变产物和恢复机制通过故障测试。
 - [ ] M5.4 评分与分析可由 fixture 完整复算。
 - [ ] M5.5 pilot 完成，正式配置、预算和 manifest 经人工冻结。
@@ -156,4 +156,18 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5 已进入，但当前只完成实验设计基线。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能根据协议文本预判工厂工作流更优。下一步是 M5.2：把任务、知识、rubric 和实验记录实现为可校验的 Pydantic 模型及冻结 fixture。
+M5.1-M5.2 已建立实验设计基线、严格契约和冻结 Writer fixture。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能根据 fixture 自洽性预判工厂工作流更优。下一步是 M5.3：生成固定执行计划，并实现不可覆盖 run 产物、失败 attempt、有限重试和断点恢复。
+
+## 10. M5.2 实现证据
+
+M5.2 将实验基础设施放在仓库级 `experiments` package，而不是 `src/agent_factory`。研究与复算代码因此可以复用项目的 `FrozenModel` 和规范化 checksum，但不会进入 Agent Factory 运行时 wheel、Container、REST 或 SDK。
+
+- `experiments/contracts.py` 实现定义、知识、任务、rubric、计划、run/attempt、指标、构建记录和审计验证契约。
+- `experiments/loader.py` 使用 `yaml.safe_load()`、UTF-8 与文件大小限制、路径 containment、原始知识字节 SHA-256 和跨文件引用校验。
+- `experiments/definitions/writer-v1/` 固定 6 个虚构领域，每个领域包含 2 个一致性任务与 2 个适应性任务，共 24 个任务和 24 份 rubric。
+- 每份知识同时包含当前事实和明确标注的 legacy distractor；required fact matcher 必须在知识中有证据，forbidden matcher 必须对应实际 distractor。
+- 数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`，复制到不同根目录后保持一致。
+- Ruff 与 mypy strict 已纳入 `experiments`；CI 增加独立 90% 分支覆盖率门禁。
+- `uv build` 成功生成 sdist 与 wheel；wheel 共 95 个条目且不存在 `experiments/` 条目，研究基础设施未进入运行时分发包。
+
+本地定向门禁：`44 passed`，`experiments` 分支覆盖率 92.29%。全量回归为 `453 passed`，生产代码总覆盖率 92%，其中 domain 96%、application 94%；Ruff format、Ruff lint、mypy strict 和既有契约快照检查均通过。反例覆盖知识篡改、非 UTF-8、危险 YAML tag、路径逃逸、缺失文件、无效 JSON Schema、引用错位、未知 fact、matcher 无证据、matcher 超时、场景矩阵错误、失败 run 伪装成功和审计完整率造假。该证据只证明 fixture 和契约结构自洽，不代表任务具有外部效度，也不构成任何模型质量结果。

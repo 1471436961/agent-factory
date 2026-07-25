@@ -1,0 +1,35 @@
+domain_id: nexora-events
+knowledge_id: nexora-events-api
+version: 2.0.0
+name: Nexora Events current API contract
+content_path: knowledge/nexora-events.md
+content_checksum: facbf8ec462fa6c1b0da21845eb8ee531950a034212913bb933093bfe8711923
+synthetic: true
+facts:
+  - fact_id: ingestion-endpoint
+    statement: Batches use POST /v2/events.
+    accepted_matchers:
+      - kind: exact
+        pattern: POST /v2/events
+        case_sensitive: true
+  - fact_id: batch-limit
+    statement: A batch contains no more than 80 events.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'at most 80 events'
+  - fact_id: retry-schedule
+    statement: Retries occur after 10, 30, and 120 seconds.
+    accepted_matchers:
+      - kind: regex
+        pattern: '10 seconds, 30 seconds, and 120 seconds'
+  - fact_id: duplicate-key
+    statement: X-Nexora-Event-ID is the duplicate-protection key.
+    accepted_matchers:
+      - kind: exact
+        pattern: X-Nexora-Event-ID
+        case_sensitive: true
+  - fact_id: duplicate-retention
+    statement: Duplicate-protection keys are retained for 36 hours.
+    accepted_matchers:
+      - kind: exact
+        pattern: retained for 36 hours

@@ -1,0 +1,56 @@
+domain_id: lumetra-cache
+output_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    title: {type: string, minLength: 1}
+    summary: {type: string, minLength: 1}
+    key_points:
+      type: array
+      minItems: 2
+      maxItems: 6
+      items: {type: string, minLength: 1}
+    next_action: {type: string, minLength: 1}
+  required: [title, summary, key_points, next_action]
+  additionalProperties: false
+tasks:
+  - task_id: lumetra-integration-reference
+    domain_id: lumetra-cache
+    scenario: consistency
+    instruction: Create a current integration reference covering consistency, TTL, and namespace limits. Exclude all legacy settings.
+    reader_profile: An implementation engineer who needs exact current limits.
+    knowledge:
+      knowledge_id: lumetra-cache-guide
+      version: 3.1.0
+      checksum: f936afa9b4f9d463153e23f30319b9bd337366f620a9835e47ec00385a278a4c
+    rubric_id: lumetra-integration-reference-rubric
+  - task_id: lumetra-operations-checklist
+    domain_id: lumetra-cache
+    scenario: consistency
+    instruction: Write an operations checklist covering eviction, purge propagation, and TTL. Exclude all legacy settings.
+    reader_profile: An on-call operator checking current cache behavior.
+    knowledge:
+      knowledge_id: lumetra-cache-guide
+      version: 3.1.0
+      checksum: f936afa9b4f9d463153e23f30319b9bd337366f620a9835e47ec00385a278a4c
+    rubric_id: lumetra-operations-checklist-rubric
+  - task_id: lumetra-beginner-guide
+    domain_id: lumetra-cache
+    scenario: adaptation
+    instruction: Explain TTL and purge delay to a new developer. Begin the summary with "In plain language" and do not use the term "LFU". Exclude legacy settings.
+    reader_profile: A new developer without distributed-cache experience.
+    knowledge:
+      knowledge_id: lumetra-cache-guide
+      version: 3.1.0
+      checksum: f936afa9b4f9d463153e23f30319b9bd337366f620a9835e47ec00385a278a4c
+    rubric_id: lumetra-beginner-guide-rubric
+  - task_id: lumetra-lead-brief
+    domain_id: lumetra-cache
+    scenario: adaptation
+    instruction: Brief a technical lead on consistency and eviction. Include "Risk:" in the summary and mention capacity in next_action. Exclude legacy settings.
+    reader_profile: A technical lead evaluating cache correctness and capacity risk.
+    knowledge:
+      knowledge_id: lumetra-cache-guide
+      version: 3.1.0
+      checksum: f936afa9b4f9d463153e23f30319b9bd337366f620a9835e47ec00385a278a4c
+    rubric_id: lumetra-lead-brief-rubric

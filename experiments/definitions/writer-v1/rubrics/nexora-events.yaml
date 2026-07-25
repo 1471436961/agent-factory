@@ -1,0 +1,43 @@
+domain_id: nexora-events
+rubrics:
+  - rubric_id: nexora-integration-reference-rubric
+    task_id: nexora-integration-reference
+    required_fact_ids: [ingestion-endpoint, batch-limit, duplicate-key]
+    forbidden_matchers:
+      - {kind: exact, pattern: 100 events per batch}
+  - rubric_id: nexora-delivery-checklist-rubric
+    task_id: nexora-delivery-checklist
+    required_fact_ids: [retry-schedule, duplicate-retention, batch-limit]
+    forbidden_matchers:
+      - {kind: exact, pattern: 60-second retry}
+  - rubric_id: nexora-beginner-guide-rubric
+    task_id: nexora-beginner-guide
+    required_fact_ids: [ingestion-endpoint, batch-limit]
+    forbidden_matchers:
+      - {kind: exact, pattern: 100 events per batch}
+    personalization_constraints:
+      - constraint_id: practical-opening
+        description: Beginner summary begins with an applied framing.
+        expectation: present
+        matcher: {kind: regex, pattern: '^In practice', case_sensitive: true}
+        target_field: summary
+      - constraint_id: avoid-dedup-jargon
+        description: Beginner output avoids deduplication-window jargon.
+        expectation: absent
+        matcher: {kind: exact, pattern: deduplication window}
+  - rubric_id: nexora-lead-brief-rubric
+    task_id: nexora-lead-brief
+    required_fact_ids: [retry-schedule, duplicate-key, duplicate-retention]
+    forbidden_matchers:
+      - {kind: exact, pattern: 60-second retry}
+    personalization_constraints:
+      - constraint_id: risk-label
+        description: Lead summary explicitly labels risk.
+        expectation: present
+        matcher: {kind: exact, pattern: 'Risk:', case_sensitive: true}
+        target_field: summary
+      - constraint_id: monitoring-action
+        description: Lead next action includes monitoring.
+        expectation: present
+        matcher: {kind: exact, pattern: monitoring}
+        target_field: next_action

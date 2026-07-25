@@ -1,0 +1,56 @@
+domain_id: nexora-events
+output_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    title: {type: string, minLength: 1}
+    summary: {type: string, minLength: 1}
+    key_points:
+      type: array
+      minItems: 2
+      maxItems: 6
+      items: {type: string, minLength: 1}
+    next_action: {type: string, minLength: 1}
+  required: [title, summary, key_points, next_action]
+  additionalProperties: false
+tasks:
+  - task_id: nexora-integration-reference
+    domain_id: nexora-events
+    scenario: consistency
+    instruction: Create a current integration reference covering endpoint, batch limit, and duplicate key. Exclude all legacy values.
+    reader_profile: An implementation engineer who needs exact current API values.
+    knowledge:
+      knowledge_id: nexora-events-api
+      version: 2.0.0
+      checksum: facbf8ec462fa6c1b0da21845eb8ee531950a034212913bb933093bfe8711923
+    rubric_id: nexora-integration-reference-rubric
+  - task_id: nexora-delivery-checklist
+    domain_id: nexora-events
+    scenario: consistency
+    instruction: Write a delivery checklist covering retry schedule, duplicate retention, and batch limit. Exclude all legacy values.
+    reader_profile: An on-call engineer checking delivery behavior.
+    knowledge:
+      knowledge_id: nexora-events-api
+      version: 2.0.0
+      checksum: facbf8ec462fa6c1b0da21845eb8ee531950a034212913bb933093bfe8711923
+    rubric_id: nexora-delivery-checklist-rubric
+  - task_id: nexora-beginner-guide
+    domain_id: nexora-events
+    scenario: adaptation
+    instruction: Explain the endpoint and batch limit to a new developer. Begin the summary with "In practice" and do not use the phrase "deduplication window". Exclude legacy values.
+    reader_profile: A new developer integrating an event producer for the first time.
+    knowledge:
+      knowledge_id: nexora-events-api
+      version: 2.0.0
+      checksum: facbf8ec462fa6c1b0da21845eb8ee531950a034212913bb933093bfe8711923
+    rubric_id: nexora-beginner-guide-rubric
+  - task_id: nexora-lead-brief
+    domain_id: nexora-events
+    scenario: adaptation
+    instruction: Brief a technical lead on retry and duplicate protection. Include "Risk:" in the summary and mention monitoring in next_action. Exclude legacy values.
+    reader_profile: A technical lead reviewing delivery reliability and operational risk.
+    knowledge:
+      knowledge_id: nexora-events-api
+      version: 2.0.0
+      checksum: facbf8ec462fa6c1b0da21845eb8ee531950a034212913bb933093bfe8711923
+    rubric_id: nexora-lead-brief-rubric

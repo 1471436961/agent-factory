@@ -287,9 +287,9 @@ H5 的 expected steps 在运行前冻结。每一步必须同时匹配 event typ
 - 5 次重复不是 5 个独立任务，错误地按 run 推断会夸大样本量。
 - 无第二评分者时，人工评分的可靠性未知。
 
-## 13. M5.1 到 M5.2 的接口
+## 13. M5.2 契约与 fixture 落地
 
-M5.1 只冻结上述协议，不新增生产模型、不发起真实请求。M5.2 必须先实现并测试以下最小对象，再讨论执行器：
+M5.2 已在仓库级 `experiments` package 实现并测试以下对象：
 
 - `ExperimentDefinition`
 - `ExperimentTask`
@@ -301,4 +301,10 @@ M5.1 只冻结上述协议，不新增生产模型、不发起真实请求。M5.
 - `BuildSession`
 - `AuditVerificationRecord`
 
-字段、枚举、序列化和 checksum 规则将在 M5.2 设计评审后落盘；不能把本协议中的名称视为已经存在的代码能力。
+具体字段和跨字段校验以 `experiments/contracts.py` 为唯一代码真相源。全部模型继承现有 `FrozenModel`，拒绝额外字段并使用规范化 JSON checksum。知识正文是例外：它不进入会去除字符串首尾空白的 Pydantic 模型，而由 `LoadedExperimentDataset.knowledge_bytes` 以只读原始字节保存并直接计算 SHA-256。
+
+`experiments/loader.py` 只接受 fixture 根目录内的相对路径，使用 `yaml.safe_load()`，限制 YAML 为 256 KiB、知识正文为 128 KiB，并验证 UTF-8、JSON Schema Draft 2020-12、知识 checksum、事实 matcher、rubric 引用和每领域 `2 consistency + 2 adaptation` 矩阵。
+
+冻结 fixture 位于 `experiments/definitions/writer-v1/`，包含 6 份知识、24 个任务和 24 份 rubric，dataset checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`。该 checksum 不包含绝对路径，因此相同字节复制到其他工作目录仍得到同一值。
+
+M5.2 只定义了 `ExecutionPlan`、`ExperimentRun` 等产物契约，没有实现计划生成、模型调用、run 文件写入或恢复。上述行为属于 M5.3；当前不得把“模型存在”表述为“执行能力已经存在”。

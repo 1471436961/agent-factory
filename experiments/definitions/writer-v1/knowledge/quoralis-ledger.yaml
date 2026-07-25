@@ -1,0 +1,34 @@
+domain_id: quoralis-ledger
+knowledge_id: quoralis-ledger-api
+version: 1.4.0
+name: Quoralis Ledger current API contract
+content_path: knowledge/quoralis-ledger.md
+content_checksum: 8d7372e3c1a32f90287053aa957a68de6725a0cdc2512fdb1d9c4944318b85e7
+synthetic: true
+facts:
+  - fact_id: amount-unit
+    statement: Monetary amounts use integer micros.
+    accepted_matchers:
+      - kind: exact
+        pattern: integer micros
+  - fact_id: micros-conversion
+    statement: One currency unit equals 1,000,000 micros.
+    accepted_matchers:
+      - kind: exact
+        pattern: 1,000,000 micros
+  - fact_id: idempotency-retention
+    statement: Idempotency keys are retained for 48 hours.
+    accepted_matchers:
+      - kind: exact
+        pattern: retained for 48 hours
+  - fact_id: settlement-time
+    statement: Daily settlement starts at 02:00 UTC.
+    accepted_matchers:
+      - kind: exact
+        pattern: 02:00 UTC
+        case_sensitive: true
+  - fact_id: correction-rule
+    statement: Posted entries are corrected with a separate reversal entry.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'corrections require a separate reversal entry'

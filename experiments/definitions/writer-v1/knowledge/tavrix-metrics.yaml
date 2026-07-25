@@ -1,0 +1,40 @@
+domain_id: tavrix-metrics
+knowledge_id: tavrix-metrics-api
+version: 5.0.0
+name: Tavrix Metrics current ingestion contract
+content_path: knowledge/tavrix-metrics.md
+content_checksum: 08e7e9e02a6c0f502ddd4106da221aeb6c463d31dbd3709f06b0af4b8b984d05
+synthetic: true
+facts:
+  - fact_id: ingestion-endpoint
+    statement: Metric batches use POST /v5/series.
+    accepted_matchers:
+      - kind: exact
+        pattern: POST /v5/series
+        case_sensitive: true
+  - fact_id: series-limit
+    statement: A request contains no more than 50 metric series.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'at most 50 metric series'
+  - fact_id: label-limit
+    statement: A series contains no more than 12 labels.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'at most 12 labels'
+  - fact_id: raw-retention
+    statement: Raw samples are retained for 14 days.
+    accepted_matchers:
+      - kind: exact
+        pattern: retained for 14 days
+  - fact_id: aggregate-retention
+    statement: Hourly aggregates are retained for 400 days.
+    accepted_matchers:
+      - kind: exact
+        pattern: retained for 400 days
+  - fact_id: timestamp-format
+    statement: Timestamps are Unix milliseconds in UTC.
+    accepted_matchers:
+      - kind: exact
+        pattern: Unix milliseconds in UTC
+        case_sensitive: true
