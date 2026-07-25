@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.4 评分与分析流水线实现中，M5.4.3 任务级统计分析已完成；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.4 评分与分析流水线实现中，M5.4.4 可验证报告产物已完成；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4102,6 +4102,8 @@ M5.4.2 的 `DeterministicScorer` 根据冻结 dataset 解析 task、rubric 与 k
 
 M5.4.3 新增 `AnalysisConfig`、`TaskConditionAggregate`、`ConfidenceInterval`、`HypothesisResult` 和 `AnalysisSummary`。`ExperimentAnalyzer` 要求完整评分集合与冻结计划一一对应，先按 `task_id + condition` 聚合 5 次重复，再执行 task 级 MANUAL/FACTORY 配对。主要 intention-to-treat population 将执行失败映射为 Schema 未通过、required facts 全遗漏和个性化全不满足；`succeeded-only` 只输出敏感性效应，不允许产生正式命题判定。分析产物同时绑定 dataset、definition、plan、score set 和 analysis config checksum。
 
+M5.4.4 新增 `AnalysisArtifactFile`、`AnalysisArtifactManifest` 与 `AnalysisReportPublisher`。发布路径为 `analysis/<experiment_id>/<sha256_model(summary)>/`；其中 `summary.json` 是机器事实源，`metrics.csv` 与 `report.md` 是确定性派生展示。三个数据文件先通过 `ArtifactStore` write-once 发布，`artifact-manifest.json` 最后发布并记录文件媒体类型、长度和 SHA-256。验证时必须重新读取 summary、重算 analysis checksum，并逐字节重渲染 CSV/Markdown，不能只相信 manifest 中的摘要。
+
 ### 13.3 实验规模与分组
 
 - 任务：6 个虚构领域，每个领域 2 个一致性任务和 2 个适应性任务，共 24 个。
@@ -4230,7 +4232,7 @@ H5 使用独立确定性验证记录。验证器必须从 Prototype、Knowledge�
 
 结论分为“支持”“不支持”“证据不足”，不使用“证明框架更优”这类超出实验范围的表述。分析实现必须是可测试的 Python 模块，notebook 不能成为唯一计算来源。M5.5 冻结 provider、模型、价格快照、请求/token/成本上限后，仍须由项目 owner 明确批准，M5.6 才能执行真实调用；默认测试和 CI 始终使用 fake gateway。
 
-当前 `experiments/analysis.py` 已实现上述主要指标。Bootstrap 不使用 Python PRNG，而是对 seed、命题、population、scenario、replicate 和 draw 计算 SHA-256，并用 rejection sampling 生成无直接取模偏差的 task 索引。H2 的 MANUAL 遗漏率零分母会显式计入 invalid replicate；有效比例低于 95% 时结论为“证据不足”，同时保留绝对遗漏率差区间。该实现尚未读取真实模型数据，也尚未生成 M5.4.4 的 write-once 报告产物。
+当前 `experiments/analysis.py` 已实现上述主要指标。Bootstrap 不使用 Python PRNG，而是对 seed、命题、population、scenario、replicate 和 draw 计算 SHA-256，并用 rejection sampling 生成无直接取模偏差的 task 索引。H2 的 MANUAL 遗漏率零分母会显式计入 invalid replicate；有效比例低于 95% 时结论为“证据不足”，同时保留绝对遗漏率差区间。`experiments/reporting.py` 已实现 content-addressed、manifest-last 的 write-once 报告 package，但尚未实现从 terminal run 自动发现、评分、分析到发布的一键 M5.4.5 编排，也尚未读取真实模型数据。
 
 
 ---

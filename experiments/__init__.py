@@ -2,6 +2,7 @@
 
 from experiments.analysis import ExperimentAnalyzer
 from experiments.contracts import (
+    AnalysisArtifactManifest,
     AnalysisSummary,
     AuditVerificationRecord,
     BuildSession,
@@ -18,9 +19,12 @@ from experiments.contracts import (
 from experiments.executor import ExperimentExecutor
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
 from experiments.planning import build_execution_plan, load_execution_plan
+from experiments.reporting import AnalysisReportPublisher
 from experiments.scoring import DeterministicScorer
 
 __all__ = [
+    "AnalysisArtifactManifest",
+    "AnalysisReportPublisher",
     "AnalysisSummary",
     "AuditVerificationRecord",
     "BuildSession",

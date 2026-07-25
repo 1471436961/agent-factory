@@ -983,6 +983,37 @@ class AnalysisSummary(FrozenModel):
         return self
 
 
+class AnalysisArtifactFile(FrozenModel):
+    path: ArtifactPath
+    media_type: Literal["application/json", "text/csv", "text/markdown"]
+    content_checksum: Sha256
+    byte_size: PositiveInt
+
+
+class AnalysisArtifactManifest(FrozenModel):
+    schema_version: Literal["1.0"] = "1.0"
+    experiment_id: Slug
+    analysis_checksum: Sha256
+    files: Annotated[
+        tuple[AnalysisArtifactFile, ...],
+        Field(min_length=3, max_length=3),
+    ]
+
+    @model_validator(mode="after")
+    def files_must_match_canonical_report_package(self) -> Self:
+        identities = tuple((item.path, item.media_type) for item in self.files)
+        expected = (
+            ("summary.json", "application/json"),
+            ("metrics.csv", "text/csv"),
+            ("report.md", "text/markdown"),
+        )
+        if identities != expected:
+            raise ValueError(
+                "analysis artifact files must use canonical order and types"
+            )
+        return self
+
+
 class BuildSession(FrozenModel):
     session_id: UUID
     condition: ExperimentCondition

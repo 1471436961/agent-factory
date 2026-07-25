@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.3 已实现，M5.4 已进入且 M5.4.3 任务级统计分析已实现。
+- 状态：进行中；M5.1-M5.3 已实现，M5.4 已进入且 M5.4.4 可验证报告产物已实现。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
@@ -159,7 +159,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.3 已固定评分证据，实现离线确定性评分、task 配对聚合、bootstrap 区间和命题阈值判定。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集或 fake gateway 结果当作模型质量证据。下一步是 M5.4.4：输出 write-once 机器可读分析产物和可复算 Markdown 报告。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.4 已实现离线评分、task 配对分析和可验证报告发布。仓库尚无正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是 M5.4.5：把 terminal run 发现、完整评分、分析和报告发布串成可重复执行的离线命令。
 
 ## 10. M5.2 实现证据
 
@@ -223,3 +223,14 @@ M5.4.2 定向 matcher/loader/scoring 测试为 `38 passed`；完整实验门禁�
 - `HypothesisResult` 只允许 ITT 返回“支持”“不支持”“证据不足”；成功样本敏感性固定为 `not-evaluated`，避免次要分析替代主要结论。
 
 M5.4.3 定向分析测试为 `16 passed`；完整实验门禁为 `124 passed`，`experiments` 分支覆盖率 93%，其中 `analysis.py` 为 99%；全量回归为 `533 passed`。Ruff format、Ruff lint 与全量 mypy strict 均通过。测试使用完整 240-run 合成评分集，只证明统计实现、失败映射和契约防线可重复，不构成任何正式 H1/H2/H4 实验结论。
+
+## 15. M5.4.4 可验证报告产物
+
+- `AnalysisArtifactManifest` 固定 `summary.json`、`metrics.csv`、`report.md` 的规范顺序、媒体类型、SHA-256 和字节数；manifest 自身是 package 完整发布标志。
+- `AnalysisReportPublisher` 使用 `sha256_model(AnalysisSummary)` 形成 content-addressed 路径 `analysis/<experiment_id>/<analysis_checksum>/`。不同 score set 或 analysis config 不会争用同一目录。
+- 发布器先在内存中确定全部字节，再通过既有 `ArtifactStore` 依次发布 JSON、CSV、Markdown，最后发布 `artifact-manifest.json`。manifest 前中断会留下可恢复的未提交 package；重试只补齐缺失文件。
+- `summary.json` 是机器事实源。CSV 使用固定 17 列和稳定的 population/task/condition 顺序；Markdown 只展示身份、执行完整性、ITT 结果、成功样本敏感性与复算边界，不保存原始响应、Prompt 正文、凭据或人工评分。
+- verifier 同时检查 manifest 路径身份、每个文件的长度和 SHA-256、summary 的 analysis checksum，并从 summary 重渲染 CSV 与 Markdown 逐字节比较。即使展示文件和 manifest 被同步改写，派生内容不一致仍会被发现。
+- 多文件发布不是单次文件系统事务，完整性依赖 manifest-last 协议。本地 checksum 不能防止管理员同时改写 summary、展示文件与 manifest；正式归档仍需要外部 checksum 清单、只读权限或对象锁。
+
+M5.4.4 定向报告测试为 `11 passed`；完整实验门禁为 `135 passed`，`experiments` 分支覆盖率 93%，其中 `reporting.py` 为 100%；全量回归为 `544 passed`。Ruff format、Ruff lint 与全量 mypy strict 均通过。测试覆盖幂等重放、同身份冲突、manifest-last 中断恢复、digest 篡改、manifest 身份错位、summary 身份错位、同步篡改后的重新渲染校验和 24 task / 96 aggregate 输出规模。这些产物均由合成 `AnalysisSummary` 生成，不是正式实验报告。

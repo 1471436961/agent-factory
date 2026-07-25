@@ -181,9 +181,11 @@ experiments/
 │   └── <experiment_id>/
 └── analysis/
     └── <experiment_id>/
-        ├── metrics.csv
-        ├── summary.json
-        └── report.md
+        └── <analysis_checksum>/
+            ├── summary.json
+            ├── metrics.csv
+            ├── report.md
+            └── artifact-manifest.json
 ```
 
 规则：
@@ -195,6 +197,7 @@ experiments/
 5. API key、Authorization header 和其他凭据禁止进入任何产物。
 6. 本地 store 要求临时文件和目标位于支持 hard link 的同一文件系统；对象存储或跨文件系统部署需实现新的 write-once backend。
 7. “不可变”指 ArtifactStore API 不覆盖既有路径，不代表本地文件具备数字签名或防管理员篡改能力；正式归档需要只读权限、外部 checksum 清单或对象锁提供更强防篡改证据。
+8. 分析 package 先发布三份数据文件，最后发布 `artifact-manifest.json`；消费者只把具有有效 manifest 的目录视为完整 package。中断后使用相同 summary 重试，不删除已发布文件。
 
 ## 8. 重试、恢复与成本停止
 
@@ -370,3 +373,15 @@ H1 和 H2 分别在 consistency、adaptation strata 内按原 task 数有放回�
 H2 同时报告绝对遗漏率差和相对遗漏率降低。相对值以成对 task 的平均 MANUAL 遗漏率为分母；分母为零的 bootstrap replicate 记为 invalid，而不是填充 0 或删除后不留痕。有效 replicate 少于请求数的 95%，或总体 MANUAL 遗漏率为零时，主要判定固定为“证据不足”，绝对差区间仍然输出。H1、H2、H4 的支持/不支持阈值直接读取冻结 `ExperimentDefinition.thresholds`，阈值之间的区间统一返回“证据不足”。
 
 M5.4.3 完整实验门禁为 `124 passed`，`experiments` 分支覆盖率 93%，`analysis.py` 覆盖率 99%；全量回归为 `533 passed`。这些测试使用完整坐标规模的合成评分证据，验证的是算法可重复性和错误拒绝逻辑，不是 Writer 模型质量结果。
+
+## 18. M5.4.4 确定性报告与 Manifest-last 发布
+
+`experiments/reporting.py` 将一个已经验证的 `AnalysisSummary` 映射为 content-addressed package。package 身份是 `sha256_model(summary)`，路径为 `analysis/<experiment_id>/<analysis_checksum>/`。发布器不读取 terminal run、不重新评分、不访问网络、时钟或模型；输入变化会产生新的 package 路径，输入不变则逐字节幂等重放。
+
+`summary.json` 使用项目规范化 JSON，是唯一机器事实源。`metrics.csv` 固定 17 列，每个 `population + task + condition` 一行；空的非适用 rate 输出为空字段，不写 `N/A`。`report.md` 展示分析 checksum、数据集/计划/score set/config 身份、两组计划与失败数、ITT 的 H1/H2/H4、成功样本敏感性和证据边界。报告模板为 ASCII 英文，避免 Python 源码编码和标点 lint 差异；实验协议与解释文档继续使用中文。
+
+发布顺序是 `summary.json -> metrics.csv -> report.md -> artifact-manifest.json`。前三个文件均成功后，manifest 才作为 commit marker 发布；它按固定顺序记录每个文件的媒体类型、字节数和 SHA-256。崩溃若发生在 manifest 之前，目录不被视为完整，使用相同输入重试可幂等补齐。多文件并不具备单事务原子性，这一协议提供的是可检测、可恢复的提交边界。
+
+验证器先核对 manifest 与 package 路径的 experiment/analysis 身份，再核对三个文件的长度与 checksum，并读取规范化 `AnalysisSummary` 重算 analysis checksum。最后重新渲染 CSV 和 Markdown 并逐字节比较。因此，仅同步改写展示文件和 manifest 仍不能伪装成由 summary 生成的展示结果；若管理员同时修改所有文件和 summary，本地 package 仍缺少外部签名提供的防篡改保证。
+
+M5.4.4 完整实验门禁为 `135 passed`，`experiments` 分支覆盖率 93%，`reporting.py` 覆盖率 100%；全量回归为 `544 passed`。当前尚无从 terminal run 到 report 的一键 CLI，也没有正式模型数据；M5.4.5 将补齐离线复算编排。
