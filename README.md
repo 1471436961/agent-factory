@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M4.4 已完成本地实现**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M4.1 已冻结范围和起始基线，M4.2 已建立 OpenAPI 与 Writer 稳定语义快照，M4.3 已建立 API 与默认 Runtime 的集中安全回归，M4.4 已建立 15 类写能力证据矩阵以及事务、并发和 migration 故障证据。M4 聚焦当前 Alpha 的安全、回归与发布门禁，不包含公网生产部署能力。
+当前仓库处于 **Alpha / M4.5 已完成本地实现**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M4.1-M4.4 已建立范围基线、契约快照、安全回归和事务故障证据，M4.5 已证明隔离 wheel 可经真实 loopback Uvicorn、已安装 SDK 和同一 SQLite 完成认证写入与重启恢复。M4 聚焦当前 Alpha 的安全、回归与发布门禁，不包含公网生产部署能力。
 
 ## 核心边界
 
@@ -88,6 +88,16 @@ uv run pytest -q \
 
 该证据不模拟断电、磁盘损坏或外部工具副作用回滚，也不能外推到 PostgreSQL 或分布式事务。
 
+## 本地制品 Smoke
+
+M4.5 从全新 sdist/wheel 创建 minimal 与 optional extras 两套隔离环境，并从工作区外启动两次真实 Uvicorn 进程：
+
+```powershell
+uv --cache-dir E:/Agent-Factory/.tmp/uv-cache run python -m scripts.local_alpha_smoke --work-root E:/Agent-Factory/.tmp/local-alpha-smoke --uv-cache-dir E:/Agent-Factory/.tmp/uv-cache
+```
+
+验收包含 wheel 资源、001-006 migration、entry point、SDK 认证写入、进程重启恢复和 Token 日志扫描。唯一受支持的拓扑及阻断项见[本地 Alpha 部署说明](docs/deployment/local-alpha.md)。
+
 ## Python SDK
 
 SDK 复用 REST DTO，通过异步 HTTP 调用服务，不直接访问 Controller 或数据库：
@@ -128,6 +138,7 @@ async with AgentFactoryClient(
 - [Gradio 演示设计说明](docs/design/gradio-demo.md)
 - [Alpha 安全、回归与发布门禁设计说明](docs/design/security-regression-gates.md)
 - [M4.4 事务与并发故障证据](docs/design/transaction-fault-evidence.md)
+- [本地 Alpha 部署说明](docs/deployment/local-alpha.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)
 

@@ -161,9 +161,11 @@ M4.4 使用真实文件型 SQLite 验证 revision 写路径的四个持久化阶
 7. 经 loopback TCP 轮询 readiness，使用 SDK 完成认证读取或最小写操作。
 8. 正常停止、重启并读取持久化事实，最后强制清理残留进程。
 
-smoke 必须限制启动时长、请求时长和总时长；日志扫描使用测试 Token 原文和已知敏感 fixture。它不访问外部网络，也不验证 TLS、反向代理或公网地址。
+smoke 必须限制启动时长、请求时长和总时长；日志扫描使用测试 Token 原文和已知敏感 fixture。依赖构建与安装可能访问 package index，安装后的应用进程、SDK 探针和 extras import 只访问 loopback，不调用模型或其他外部服务。该证据不验证 TLS、反向代理或公网地址。
 
 本地 C 盘空间不足时，隔离环境、build、pytest 临时目录和 uv cache 必须显式放在仓库的 `.tmp` 或其他 E 盘目录，不新增 C 盘依赖安装。
+
+M4.5 已将上述流程固化为 `scripts.local_alpha_smoke`。编排器不导入 `agent_factory`；它构建全新制品，分别安装 minimal 与 `demo,llm` 环境，从工作区外启动两次 wheel-only Uvicorn，并使用隔离 SDK 证明认证写入与 SQLite 重启恢复。唯一受支持的部署拓扑、Windows 停止语义和数据备份边界见 [`本地 Alpha 部署说明`](../deployment/local-alpha.md)。
 
 ## 9. CI 门禁
 

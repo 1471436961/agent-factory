@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M4.1-M4.4 已完成本地实现，M4.5 待进入。
+- 状态：进行中；M4.1-M4.5 已完成本地实现，M4.6 待进入。
 - 开始时间：2026-07-24。
 - 进入依据：M3 已由项目 owner 验收并封存，退出候选提交 `d2edef7` 的 GitHub Actions CI #20 通过。
 - 规划依据：项目 owner 于 2026-07-24 确认 M4 的范围、工作包、风险、备选方案与退出标准。
@@ -134,11 +134,11 @@ M4 不增加 Agent 生产或技能治理能力，而是验证 M1-M3 已实现能
 - [x] 全部写操作具备幂等/审计/事务证据矩阵。
 - [x] 关键写路径故障注入后不留部分状态。
 - [x] migration 从空库升级并在失败时不记录虚假版本。
-- [ ] wheel 包含代码、001-006 migration、extras 和入口。
-- [ ] 安装后的 wheel 能经独立 Uvicorn/loopback HTTP 启动和重启恢复。
-- [ ] domain/application/全项目 branch coverage 不低于 90%/85%/80%。
+- [x] wheel 包含代码、001-006 migration、extras 和入口。
+- [x] 安装后的 wheel 能经独立 Uvicorn/loopback HTTP 启动和重启恢复。
+- [x] domain/application/全项目 branch coverage 不低于 90%/85%/80%。
 - [ ] Ruff、mypy strict、全部 pytest、构建、隔离安装和 GitHub Actions 通过。
-- [ ] README 与部署文档明确不支持公网生产部署。
+- [x] README 与部署文档明确不支持公网生产部署。
 
 ## 7. M4.1 起始基线
 
@@ -263,6 +263,37 @@ M4.4 于 2026-07-25 完成以下本地实现：
 
 受限沙箱中的 build 因无法访问 PyPI 解析 `hatchling` 而失败；获批联网后仍使用 E 盘 uv cache 成功构建。全量 pytest 使用获批的沙箱外 E 盘 basetemp，避免已知的 session cleanup 权限假失败。远程 GitHub Actions 仍需待提交推送后记录，不能由本地结果代替。
 
-## 11. 阶段结论
+## 11. M4.5 发布制品与本地部署证据
 
-M4.1 已冻结阶段范围、风险边界、退出标准和起始基线；M4.2 已建立公共契约与稳定语义回归快照；M4.3 已建立当前 API 和默认 Runtime 的集中安全回归；M4.4 已建立 15 类写能力证据矩阵以及事务、并发和 migration 故障证据。M4.5 尚未进入，M4 也尚未通过隔离制品与本地部署退出验收。
+M4.5 于 2026-07-25 完成以下本地实现：
+
+- 新增 `scripts/local_alpha_smoke.py`。编排器只依赖标准库，不导入工作区 `agent_factory`，所有构建、环境、数据库、日志和 uv cache 均显式位于 E 盘项目 `.tmp`。
+- 每次运行在唯一目录构建全新 sdist/wheel，拒绝多个陈旧制品，并检查 archive 路径安全、metadata、`demo`/`llm` extras、`agent-factory-demo` entry point 和 001-006 migrations。
+- minimal 环境从 `uv.lock` 安装基础依赖，再以 `--no-deps` 安装 wheel；隔离探针证明 `agent_factory` 来自该环境，且 `gradio`、`openai` 不存在。
+- Uvicorn 从工作区外目录以 `python -I` 启动，只绑定随机 loopback 端口；已安装 SDK 完成 readiness 和 Prototype 注册。
+- 第一个进程完成 application shutdown 后，第二个进程使用同一 SQLite 启动；SDK 读取到同一 Published Prototype，数据库 migration history 恰好为 1-6。
+- optional 环境独立安装 `demo,llm` lock 依赖及 `wheel[demo,llm]`，验证 Gradio、官方 OpenAI SDK 和 console entry point。
+- 两次 Uvicorn 日志均扫描随机原始 Token；成功 run 自动安全清理，失败 run 留在 E 盘用于诊断，进程始终有 timeout 与 kill 兜底。
+- 新增 [`本地 Alpha 部署说明`](../deployment/local-alpha.md)，冻结单机、单 Uvicorn、单 SQLite、loopback-only 拓扑及公网部署阻断项。
+
+定向证据：
+
+| 门禁 | 可复现命令 | 结果 |
+| --- | --- | --- |
+| 脚本单元测试 | `uv run pytest -q tests/unit/scripts/test_local_alpha_smoke.py` | 26 项通过，0.49 秒 |
+| 隔离制品 smoke | `uv run python -m scripts.local_alpha_smoke --work-root E:\Agent-Factory\.tmp\local-alpha-smoke --uv-cache-dir E:\Agent-Factory\.tmp\uv-cache` | 通过；wheel `1.0.0a1`，migration 1-6，Prototype 重启恢复 |
+| 进程与临时目录 | 完成后检查 Python command line 与 work root | 无 Uvicorn 残留；成功 run 已清理 |
+| Ruff format/check | `uv run ruff format --check src tests scripts`；`uv run ruff check src tests scripts` | 151 个文件通过 |
+| mypy strict | `uv run mypy src tests scripts` | 151 个 source file 无问题 |
+| 契约快照 | `uv run python -m scripts.contract_snapshots --check` | 三份 SHA-256 与 M4.2 基线一致 |
+| 全量 pytest | `uv run pytest -q --cov --cov-report=term-missing` | 403 项通过，75.09 秒 |
+| Domain/Application/全项目 branch coverage | 三档 `coverage report --fail-under` | 96% / 94% / 92%，通过 90% / 85% / 80% 门槛 |
+| sdist/wheel | `uv --cache-dir E:\Agent-Factory\.tmp\uv-cache build` | `agent_factory-1.0.0a1` 构建成功；001-006 migration 存在，`scripts`/`tests` 未进入 wheel |
+
+首次真实运行发现 Windows `CTRL_BREAK_EVENT` 在 Uvicorn 完整 application shutdown 后返回平台退出码 3。脚本没有放宽全部非零返回码，只在 Windows、返回码 3 且日志同时包含 `Application shutdown complete.` 与 `Finished server process` 时接受。第二次运行完成全部业务阶段后，成功清理暴露 `sqlite3.Connection` 上下文只提交/回滚但不关闭连接；修正为显式 `closing()`，并对唯一 `run-*` 子目录实施路径校验和有限清理重试。最终脚本完整重跑通过。
+
+依赖构建和安装可能访问 package index；安装后的应用、SDK 和 import 探针只使用 loopback，不调用真实模型。该结果证明本地制品可安装、启动和恢复，不证明公网安全、多进程 SQLite、高可用或 disaster recovery。M4.6 才会把真实进程 smoke 纳入最终 CI 并记录远程证据。
+
+## 12. 阶段结论
+
+M4.1-M4.4 已建立范围基线、契约快照、安全回归和事务故障证据；M4.5 已建立可重复的隔离制品、真实 Uvicorn、SDK 认证写入与 SQLite 重启恢复证据。M4.6 尚未进入，M4 也尚未完成最终 CI 与阶段退出验收。
