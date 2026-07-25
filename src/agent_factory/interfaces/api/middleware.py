@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import deque
 from http import HTTPStatus
 from uuid import UUID
@@ -11,6 +12,8 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from agent_factory.application.ports import CorrelationContext, IdGenerator
 from agent_factory.interfaces.api.errors import error_response
+
+_CONTENT_LENGTH_PATTERN = re.compile(r"^[0-9]+$")
 
 
 class RequestContextMiddleware:
@@ -51,7 +54,7 @@ class RequestContextMiddleware:
                 await self._send_error(
                     scope,
                     receive,
-                    send,
+                    self._protected_send(send, correlation_id),
                     status_code=HTTPStatus.BAD_REQUEST,
                     code="INVALID_CORRELATION_ID",
                     message="X-Correlation-ID must be a UUID",
@@ -59,23 +62,31 @@ class RequestContextMiddleware:
                 )
                 return
 
-        content_length = headers.get("content-length")
-        if content_length is not None:
-            try:
-                declared_size = int(content_length)
-            except ValueError:
+        protected_send = self._protected_send(send, correlation_id)
+        content_lengths = headers.getlist("content-length")
+        if content_lengths:
+            content_length = content_lengths[0]
+            if len(content_lengths) != 1 or not _CONTENT_LENGTH_PATTERN.fullmatch(
+                content_length
+            ):
                 await self._send_error(
                     scope,
                     receive,
-                    send,
+                    protected_send,
                     status_code=HTTPStatus.BAD_REQUEST,
                     code="INVALID_CONTENT_LENGTH",
-                    message="Content-Length must be an integer",
+                    message="Content-Length must be one non-negative decimal integer",
                     correlation_id=correlation_id,
                 )
                 return
+            declared_size = int(content_length)
             if declared_size > self._max_request_bytes:
-                await self._send_too_large(scope, receive, send, correlation_id)
+                await self._send_too_large(
+                    scope,
+                    receive,
+                    protected_send,
+                    correlation_id,
+                )
                 return
 
         state = scope.setdefault("state", {})
@@ -92,16 +103,21 @@ class RequestContextMiddleware:
                     return buffered_messages.popleft()
                 return {"type": "http.disconnect"}
 
-            async def correlated_send(message: Message) -> None:
-                if message["type"] == "http.response.start":
-                    MutableHeaders(scope=message)["X-Correlation-ID"] = str(
-                        correlation_id
-                    )
-                await send(message)
-
-            await self._app(scope, replay_receive, correlated_send)
+            await self._app(scope, replay_receive, protected_send)
         finally:
             self._correlation_context.reset(token)
+
+    @staticmethod
+    def _protected_send(send: Send, correlation_id: UUID) -> Send:
+        async def send_with_security_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers["X-Correlation-ID"] = str(correlation_id)
+                headers["Cache-Control"] = "no-store"
+                headers["X-Content-Type-Options"] = "nosniff"
+            await send(message)
+
+        return send_with_security_headers
 
     async def _receive_bounded(
         self,

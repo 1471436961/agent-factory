@@ -56,6 +56,9 @@ jobs:
       - name: Verify reviewed contract snapshots
         run: uv run python -m scripts.contract_snapshots --check
 
+      - name: Run Alpha security regression
+        run: uv run pytest -q tests/security
+
       - name: Test and collect branch coverage
         run: uv run pytest -q --cov --cov-report=term-missing
 
@@ -110,6 +113,7 @@ jobs:
             'agent_factory/interfaces/api/errors.py',
             'agent_factory/interfaces/api/main.py',
             'agent_factory/interfaces/api/middleware.py',
+            'agent_factory/interfaces/api/security_events.py',
             'agent_factory/interfaces/api/routers/audit.py',
             'agent_factory/interfaces/api/routers/evaluations.py',
             'agent_factory/interfaces/api/routers/instances.py',

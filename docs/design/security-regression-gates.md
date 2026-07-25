@@ -86,6 +86,8 @@ AgentSpec 和审计快照不得简单删除所有动态字段后比较“相似 
 
 M4 只增加结构化安全事件日志，不实现内存限流并将其包装成生产防护。公网限流需要共享状态、代理边界、真实客户端地址策略、告警与容量数据，进入 Productionization 里程碑后单独设计。
 
+认证与授权拒绝使用独立的 `agent_factory.security` logger。允许字段固定为事件名、correlation ID、拒绝类别和 `credential_present`；不得把 `Request`、Header、Principal、异常对象或请求体传给 logger。API 未知异常只记录 exception type，不记录 traceback，因为 Python traceback 会格式化可能含 Secret、Prompt、知识正文或工具参数的异常消息。该取舍降低本地诊断信息，后续只有在具备集中脱敏错误存储后才重新评估。
+
 ## 6. Runtime 与工具安全
 
 当前默认能力清单必须精确为固定只读 `document-search@1.0.0`。测试断言 Registry 没有动态注册接口，默认工具不持有文件、网络、shell 或外部写权限。
@@ -106,6 +108,20 @@ Executor 拒绝矩阵继续以以下顺序为权威：
 - 默认离线 Runtime 与 fake gateway 测试不创建外部 socket。
 
 如果未来注册文件工具，路径规范化、绝对路径、`..`、符号链接和工作区逃逸测试成为前置门禁。如果未来注册网络工具，loopback、link-local、RFC1918、IPv6、DNS rebinding 和重定向测试成为前置门禁。当前没有对应 handler，因此 M4 不宣称这些尚不存在的能力已经安全。
+
+### 6.1 M4.3 证据矩阵
+
+| 不变量 | 自动化证据 |
+| --- | --- |
+| 503/401/403 与 actor 单一来源在 Controller 前拒绝 | `tests/security/test_api_security.py` |
+| declared/chunked body 上限、非法或重复 Content-Length | `tests/security/test_api_security.py`、`tests/contract/test_rest_api.py` |
+| 成功、认证失败和中间件早期错误均携带安全 Header | `tests/security/test_api_security.py` |
+| Secret、Prompt、知识正文和工具参数不进入 API 响应、日志、审计或 repr | `tests/security/test_sensitive_data_boundaries.py` |
+| 默认 Registry 精确为一个只读工具且默认 handler 不创建 socket | `tests/security/test_runtime_capabilities.py` |
+| pre-execution 拒绝不调用 handler，记录与审计只保存摘要 | `tests/integration/test_tool_execution.py` |
+| Factory Tool 在参数校验前授权且错误不回显 arguments | `tests/unit/interfaces/factory_tools/test_adapter.py` |
+
+socket guard 只验证当前固定 `document-search` handler 经标准 Python socket 入口不访问网络，不是对任意未来代码的系统调用级沙箱证明。
 
 ## 7. 事务故障证据
 

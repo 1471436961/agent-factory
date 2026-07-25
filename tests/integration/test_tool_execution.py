@@ -313,6 +313,18 @@ async def test_pre_execution_rejections_are_persisted_and_redacted(
         with_tool=case != "not-granted",
     )
     call_id = uuid4()
+    executions = 0
+
+    async def counting_handler(
+        payload: FrozenModel,
+        context: ToolExecutionContext,
+    ) -> FrozenModel:
+        del payload, context
+        nonlocal executions
+        executions += 1
+        return DocumentSearchOutput()
+
+    executor = _executor_with_handler(setup, counting_handler)
     updates: dict[str, object] = {}
     if case == "invalid-input":
         updates["arguments"] = {
@@ -328,7 +340,7 @@ async def test_pre_execution_rejections_are_persisted_and_redacted(
 
     try:
         with pytest.raises(error_type):
-            await setup.container.tool_executor.execute(
+            await executor.execute(
                 _request(setup, call_id=call_id, **updates),
                 setup.context,
             )
@@ -338,6 +350,7 @@ async def test_pre_execution_rejections_are_persisted_and_redacted(
         assert record.status is ToolCallStatus.REJECTED
         assert record.error_code == error_code
         assert "DO-NOT-PERSIST" not in record.model_dump_json()
+        assert executions == 0
     finally:
         await setup.container.close()
 

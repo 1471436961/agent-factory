@@ -16,7 +16,8 @@ from agent_factory.application.security import (
     Principal,
 )
 from agent_factory.container import Container
-from agent_factory.interfaces.api.errors import ApiContractError
+from agent_factory.interfaces.api.errors import ApiContractError, correlation_id_for
+from agent_factory.interfaces.api.security_events import log_authentication_rejected
 
 CommandT = TypeVar("CommandT", bound=BaseModel)
 bearer_scheme = HTTPBearer(
@@ -57,19 +58,35 @@ def get_principal(
     ],
     authenticator: Annotated[Authenticator, Depends(get_authenticator)],
 ) -> Principal:
+    credential_present = "authorization" in request.headers
     if "x-actor-id" in request.headers:
+        log_authentication_rejected(
+            correlation_id=correlation_id_for(request),
+            category="actor_header_not_allowed",
+            credential_present=credential_present,
+        )
         raise ApiContractError(
             code="ACTOR_HEADER_NOT_ALLOWED",
             message="X-Actor-ID is not accepted; actor comes from authentication",
             status_code=HTTPStatus.BAD_REQUEST,
         )
     if not authenticator.ready:
+        log_authentication_rejected(
+            correlation_id=correlation_id_for(request),
+            category="authentication_not_configured",
+            credential_present=credential_present,
+        )
         raise ApiContractError(
             code="AUTHENTICATION_NOT_CONFIGURED",
             message="Authentication is not configured",
             status_code=HTTPStatus.SERVICE_UNAVAILABLE,
         )
     if credentials is None:
+        log_authentication_rejected(
+            correlation_id=correlation_id_for(request),
+            category="authentication_required",
+            credential_present=credential_present,
+        )
         raise ApiContractError(
             code="AUTHENTICATION_REQUIRED",
             message="Bearer authentication is required",
@@ -78,6 +95,11 @@ def get_principal(
         )
     principal = authenticator.authenticate(credentials.credentials)
     if principal is None:
+        log_authentication_rejected(
+            correlation_id=correlation_id_for(request),
+            category="authentication_failed",
+            credential_present=True,
+        )
         raise ApiContractError(
             code="AUTHENTICATION_FAILED",
             message="Bearer credential is invalid",

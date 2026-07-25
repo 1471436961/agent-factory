@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from agent_factory.domain.errors import FactoryError
 from agent_factory.interfaces.api.contracts import ErrorBody, ErrorResponse
+from agent_factory.interfaces.api.security_events import log_authorization_rejected
 
 logger = logging.getLogger("agent_factory.api")
 
@@ -149,6 +150,11 @@ def install_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: FactoryError,
     ) -> JSONResponse:
+        if exc.code == "AUTHORIZATION_DENIED":
+            log_authorization_rejected(
+                correlation_id=correlation_id_for(request),
+                error_code=exc.code,
+            )
         status_code = ERROR_STATUS_BY_CODE.get(exc.code)
         if status_code is None:
             logger.error(
@@ -226,9 +232,12 @@ def install_exception_handlers(app: FastAPI) -> None:
         exc: Exception,
     ) -> JSONResponse:
         correlation_id = correlation_id_for(request)
-        logger.exception(
+        logger.error(
             "unhandled_error",
-            extra={"correlation_id": str(correlation_id)},
+            extra={
+                "correlation_id": str(correlation_id),
+                "exception_type": type(exc).__name__,
+            },
         )
         return _internal_error(request, correlation_id=correlation_id)
 

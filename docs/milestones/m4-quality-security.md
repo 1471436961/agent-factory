@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M4.1-M4.2 已完成，M4.3 待项目 owner 确认后进入。
+- 状态：进行中；M4.1-M4.3 已完成本地实现，M4.4 待项目 owner 确认后进入。
 - 开始时间：2026-07-24。
 - 进入依据：M3 已由项目 owner 验收并封存，退出候选提交 `d2edef7` 的 GitHub Actions CI #20 通过。
 - 规划依据：项目 owner 于 2026-07-24 确认 M4 的范围、工作包、风险、备选方案与退出标准。
@@ -129,8 +129,8 @@ M4 不增加 Agent 生产或技能治理能力，而是验证 M1-M3 已实现能
 ## 6. 验收标准
 
 - [x] OpenAPI 与稳定语义快照可重复生成并由 CI 检查。
-- [ ] 当前认证、授权、请求和错误攻击面有集中安全回归测试。
-- [ ] 测试 Secret、Prompt、知识正文和工具参数不进入响应、日志或审计。
+- [x] 当前认证、授权、请求和错误攻击面有集中安全回归测试。
+- [x] 测试 Secret、Prompt、知识正文和工具参数不进入响应、日志或审计。
 - [ ] 全部写操作具备幂等/审计/事务证据矩阵。
 - [ ] 关键写路径故障注入后不留部分状态。
 - [ ] migration 从空库升级并在失败时不记录虚假版本。
@@ -199,6 +199,41 @@ M4.2 于 2026-07-24 完成以下交付：
 
 远程 GitHub Actions 需要在 M4.2 提交并推送后运行，因此当前只记录 CI 配置已接入，不把本地结果表述为远程 CI 通过。
 
-## 9. 阶段结论
+## 9. M4.3 API 与执行安全证据
 
-M4.1 已冻结阶段范围、风险边界、退出标准和起始基线；M4.2 已建立公共契约与稳定语义回归快照。M4.3 尚未进入；后续工作包必须逐项完成设计、实现、测试和项目 owner 评审。M4.2 完成不等于 M4 已通过安全或发布验收。
+M4.3 于 2026-07-25 完成以下本地实现：
+
+- `RequestContextMiddleware` 对所有响应强制设置 `Cache-Control: no-store`、`X-Content-Type-Options: nosniff` 和 correlation Header；`Content-Length` 必须是单个非负十进制整数，实际流式字节仍受同一上限约束。
+- `agent_factory.security` 只记录认证/授权拒绝的固定事件名、correlation ID、拒绝类别和凭据存在布尔值；认证失败不进入业务审计。
+- API 未知异常不再通过 traceback 格式化原始异常消息，只记录 exception type 与 correlation ID。
+- `tests/security` 集中覆盖 HTTP 拒绝矩阵、响应安全头、敏感信息跨制品扫描、固定只读 Registry 和默认 socket guard。
+- ToolExecutor 既有 pre-execution 拒绝矩阵增加 handler 调用次数断言，证明未授权、版本错误、身份错误、状态错误和非法输入均不会执行 handler。
+- GitHub Actions 增加独立 `tests/security` 步骤；wheel 资源清单包含 `security_events.py`。
+
+定向门禁：
+
+| 门禁 | 可复现命令 | 结果 |
+| --- | --- | --- |
+| M4.3 安全与工具定向测试 | `uv run pytest -q tests/security tests/integration/test_tool_execution.py` | 32 项通过 |
+| 定向 Ruff | `uv run ruff check src/agent_factory/interfaces/api tests/security tests/integration/test_tool_execution.py` | 通过 |
+| 定向 mypy strict | `uv run mypy src/agent_factory/interfaces/api tests/security tests/integration/test_tool_execution.py` | 通过 |
+
+当前无文件、shell 或网络工具，socket guard 只证明固定 `document-search` 默认路径没有创建外部连接，不能替代未来网络工具的 SSRF、防重定向或 DNS rebinding 设计。公网限流、TLS、OIDC、多租户和不可信代码沙箱仍不在 M4 范围。
+
+完整本地门禁：
+
+| 门禁 | 结果 |
+| --- | --- |
+| 契约快照 | 三份快照通过 `--check`，SHA-256 与 M4.2 基线一致 |
+| Ruff format/check | 145 个文件通过 |
+| mypy strict | 145 个 source file 无问题 |
+| 全量 pytest | 368 项通过，69.58 秒 |
+| Domain/Application/全项目 branch coverage | 96% / 94% / 92%，通过 90% / 85% / 80% 门槛 |
+| CI YAML | 可解析，独立安全回归步骤已接入 |
+| sdist/wheel | `agent_factory-1.0.0a1` 构建成功，wheel 包含 `security_events.py` |
+
+受限沙箱内的首次全量测试仍因 pytest 无权在 session finish 清理 E 盘 basetemp 而失败；在获批的沙箱外使用新的 E 盘目录重跑后 368 项全部通过。首次隔离构建因沙箱网络不可用而无法解析 hatchling；获批联网后使用 `E:\Agent-Factory\.tmp\uv-cache` 成功构建，未向 C 盘安装新依赖。远程 GitHub Actions 仍需待提交推送后记录，不能由本地结果代替。
+
+## 10. 阶段结论
+
+M4.1 已冻结阶段范围、风险边界、退出标准和起始基线；M4.2 已建立公共契约与稳定语义回归快照；M4.3 已建立当前 API 和默认 Runtime 的集中安全回归。M4.4 尚未进入，M4 也尚未通过事务、制品和部署退出验收。

@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M4.2 已实现，M4.3 待进入
+**当前阶段**：Alpha / M4.3 已完成本地实现，M4.4 待进入
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -2952,7 +2952,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 M3.1 已删除 `X-Actor-ID` 的身份作用。静态 Bearer 适配器只在接口边界生成一个配置驱动的 `Principal`，actor 统一取自 `Principal.subject`；缺失配置时 ready 与业务路由 fail-closed。它不支持多用户目录、Token 轮换、撤销、过期或第三方身份，因此当前服务仍不得直接暴露到不可信网络。
 
-`RequestContextMiddleware` 在进入 FastAPI 前以 `max_request_bytes` 为上限缓冲并回放请求体，确保声明长度和 chunked body 都不能绕过限制；超限请求不进入 Controller。它还严格校验或生成 `X-Correlation-ID`，写入 `ContextVar`，并在 `finally` 中 reset。
+`RequestContextMiddleware` 在进入 FastAPI 前以 `max_request_bytes` 为上限缓冲并回放请求体，确保声明长度和 chunked body 都不能绕过限制；超限请求不进入 Controller。`Content-Length` 必须是单个非负十进制整数，重复值、负数、正号、小数和空值均返回 `400 INVALID_CONTENT_LENGTH`。它还严格校验或生成 `X-Correlation-ID`，写入 `ContextVar`，并在 `finally` 中 reset；全部成功与失败响应强制覆盖 `Cache-Control: no-store` 和 `X-Content-Type-Options: nosniff`。
 
 ### 10.3 原型、实例和知识路由
 
@@ -3346,7 +3346,7 @@ def error_response(
     )
 ```
 
-handler 分别处理 `FactoryError`、接口契约错误、`RequestValidationError`、404/405 和未知异常。Pydantic 错误只返回 `location`、`message`、`type`，不回显原始 input。500 响应不得包含异常字符串、堆栈、SQL、文件路径或密钥；服务端日志以 correlation ID 关联原始异常。`RepositoryError` 在基础设施层转换为 `REPOSITORY_UNAVAILABLE`。
+handler 分别处理 `FactoryError`、接口契约错误、`RequestValidationError`、404/405 和未知异常。Pydantic 错误只返回 `location`、`message`、`type`，不回显原始 input。500 响应不得包含异常字符串、堆栈、SQL、文件路径或密钥；服务端只记录固定事件、correlation ID 和 exception type，不调用会格式化原始异常消息的 `logger.exception()`。`RepositoryError` 在基础设施层转换为 `REPOSITORY_UNAVAILABLE`。
 
 ### 10.7 路由装配
 
@@ -3650,6 +3650,8 @@ finally:
 
 日志、审计和指标职责分离：日志用于排错，审计用于业务追溯，指标用于聚合监控。OpenTelemetry 插槽包装 controller 与 repository 调用；Alpha 可先实现结构化日志，但 span 名称预先固定为 `agent_factory.{operation}`。
 
+M4.3 增加独立的 `agent_factory.security` 事件流。认证与授权拒绝只记录固定事件名、correlation ID、拒绝类别和 `credential_present` 布尔值，不记录 Authorization Header、Token、请求体、Principal 对象或候选摘要；认证失败不进入业务审计表。当前为避免 traceback 携带异常文本，未知 API 异常日志牺牲了原始堆栈，后续只有在具备集中脱敏错误存储后才重新评估。
+
 
 ---
 
@@ -3662,7 +3664,7 @@ finally:
 | 单元 | `tests/unit` | 无 | Pydantic、policy、DAG、纯函数 | 全通过 |
 | 集成 | `tests/integration` | 临时 SQLite | UoW、仓储、完整生产链 | 全通过 |
 | API | `tests/contract` | ASGI app | 路由、错误响应、OpenAPI | 全通过 |
-| 安全 | `tests/security` | 假工具 | 越权、路径、SSRF、敏感日志 | 全通过 |
+| 安全 | `tests/security` | ASGI、固定只读工具 | 认证、越权、脱敏、能力清单、默认离线 | 全通过 |
 | 回归 | `tests/regression` | 固定 fixture | AgentSpec 与审计快照 | 显式审批后才可更新 |
 
 覆盖率门槛：`domain >= 90%`、`application >= 85%`、项目总分支覆盖率 `>= 80%`。基础设施中的错误转换和事务回滚必须覆盖，不能用 `pragma: no cover` 跳过。
@@ -3975,7 +3977,9 @@ M4.2 已生成 `docs/generated/openapi-v1.json`、固定 Writer AgentSpec 与六
 
 - 未配置认证时 fail-closed；缺失或错误凭据返回 401；权限不足返回 403，且均不进入 Controller 或工具 handler。
 - 请求体、Header 和 Pydantic DTO 边界拒绝超限、非法或未知字段，错误 envelope 不回显凭据和原始输入。
+- 所有 HTTP 响应携带 `Cache-Control: no-store` 和 `X-Content-Type-Options: nosniff`；重复或非十进制 `Content-Length` 被拒绝。
 - 默认 `ToolRegistry` 只包含固定只读 `document-search`；未授权、版本不符或非法参数均不调用 handler。
+- 默认 `document-search` 路径在 socket guard 下执行，不能创建外部连接；该结论不外推到尚未注册的网络工具。
 - handler 超时后返回 `TOOL_TIMEOUT`，调用记录状态为 `timed-out`。
 - 日志与业务审计中不得出现测试 API key、Bearer Token、Prompt 全文、知识正文或工具参数/结果正文。
 - 同一 `Idempotency-Key` 重放只产生一个实例和一组审计事件。
@@ -3984,6 +3988,7 @@ M4.2 已生成 `docs/generated/openapi-v1.json`、固定 Writer AgentSpec 与六
 ### 12.9 测试命令
 
 ```bash
+uv run pytest -q tests/security
 uv run pytest -q --cov --cov-report=term-missing
 uv run coverage report --include="src/agent_factory/domain/*" --fail-under=90
 uv run coverage report --include="src/agent_factory/application/*" --fail-under=85

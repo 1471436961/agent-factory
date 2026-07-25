@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M4.2 已完成**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M4.1 已冻结范围和起始基线，M4.2 已建立 OpenAPI 与 Writer 稳定语义快照。M4 聚焦当前 Alpha 的安全、回归与发布门禁，不包含公网生产部署能力。
+当前仓库处于 **Alpha / M4.3 已完成本地实现**。M1 核心生产链、M2 技能治理及 M3 接口、受限运行时与演示已经项目 owner 验收并封存；M4.1 已冻结范围和起始基线，M4.2 已建立 OpenAPI 与 Writer 稳定语义快照，M4.3 已建立 API 与默认 Runtime 的集中安全回归。M4 聚焦当前 Alpha 的安全、回归与发布门禁，不包含公网生产部署能力。
 
 ## 核心边界
 
@@ -64,6 +64,16 @@ uv run python -m scripts.contract_snapshots --check
 ```bash
 uv run python -m scripts.contract_snapshots --write
 ```
+
+## Alpha 安全回归
+
+M4.3 集中验证当前真实攻击面，包括认证与授权拒绝、actor 单一来源、请求体和 Header 边界、响应安全头、敏感内容脱敏，以及固定只读工具的默认离线能力：
+
+```bash
+uv run pytest -q tests/security
+```
+
+这些测试只证明当前本地 Alpha 的固定边界，不代表已经实现 OAuth/OIDC、公网限流、TLS、租户隔离、网络/文件工具安全或不可信代码沙箱。
 
 ## Python SDK
 
