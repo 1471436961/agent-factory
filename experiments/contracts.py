@@ -37,6 +37,17 @@ ArtifactPath = Annotated[
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$",
     ),
 ]
+FreezeArtifactPath = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=256,
+        pattern=(
+            r"^(?:[A-Za-z0-9][A-Za-z0-9._/-]*|"
+            r"\.tmp/[A-Za-z0-9][A-Za-z0-9._/-]*)$"
+        ),
+    ),
+]
 GitCommit = Annotated[str, Field(pattern=r"^[a-f0-9]{40,64}$")]
 HttpsUrl = Annotated[
     str,
@@ -814,7 +825,7 @@ class AnalysisConfig(FrozenModel):
 
 
 class FrozenArtifact(FrozenModel):
-    path: ArtifactPath
+    path: FreezeArtifactPath
     byte_size: PositiveInt
     content_checksum: Sha256
 
@@ -888,12 +899,60 @@ class PilotEvidenceRef(FrozenModel):
     report_checksum: Sha256
 
 
+class FreezeCandidateSpec(FrozenModel):
+    """Reviewed inputs from which machine-observed freeze evidence is derived."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    purpose: ExperimentPurpose
+    freeze_id: Slug
+    experiment_id: Slug
+    definition_checksum: Sha256
+    execution_manifest: ExecutionManifest
+    analysis_config: AnalysisConfig
+    provider: ProviderSnapshot
+    pricing: PriceSnapshot
+    cost_budget: CostBudget
+    pilot_evidence: PilotEvidenceRef | None = None
+    inventory_paths: Annotated[
+        tuple[FreezeArtifactPath, ...],
+        Field(min_length=1, max_length=1_000),
+    ]
+    created_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def candidate_sources_must_be_consistent(self) -> Self:
+        generation = self.execution_manifest.generation
+        if (
+            self.experiment_id != self.execution_manifest.experiment_id
+            or self.provider.provider != generation.provider
+            or self.provider.model != generation.model
+            or self.provider.sdk_version != generation.sdk_version
+            or self.pricing.provider != self.provider.provider
+            or self.pricing.model != self.provider.model
+        ):
+            raise ValueError("freeze candidate source identities do not match")
+        paths = list(self.inventory_paths)
+        if len(paths) != len(set(paths)) or paths != sorted(paths):
+            raise ValueError("freeze candidate inventory must be unique and sorted")
+        if "uv.lock" not in paths:
+            raise ValueError("freeze candidate inventory must include uv.lock")
+        if self.purpose is ExperimentPurpose.PILOT:
+            if self.pilot_evidence is not None:
+                raise ValueError("pilot candidate cannot reference pilot evidence")
+        elif self.pilot_evidence is None:
+            raise ValueError("formal candidate requires pilot evidence")
+        elif self.pilot_evidence.experiment_id == self.experiment_id:
+            raise ValueError("pilot and formal experiment IDs must differ")
+        return self
+
+
 class FrozenExperimentManifest(FrozenModel):
     schema_version: Literal["1.0"] = "1.0"
     purpose: ExperimentPurpose
     freeze_id: Slug
     experiment_id: Slug
     definition_checksum: Sha256
+    candidate_spec_path: FreezeArtifactPath
     execution_manifest: ExecutionManifest
     analysis_config: AnalysisConfig
     analysis_config_checksum: Sha256
@@ -940,6 +999,8 @@ class FrozenExperimentManifest(FrozenModel):
             or lockfiles[0].content_checksum != self.source.lockfile_checksum
         ):
             raise ValueError("frozen files do not bind the declared lockfile")
+        if self.candidate_spec_path not in paths:
+            raise ValueError("frozen files do not bind the candidate spec")
 
     def _validate_pilot_boundary(self) -> None:
         if self.purpose is ExperimentPurpose.PILOT:

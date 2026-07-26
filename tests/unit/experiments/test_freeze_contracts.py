@@ -72,6 +72,7 @@ def _manifest() -> FrozenExperimentManifest:
         freeze_id="writer-pilot-freeze-v1",
         experiment_id="writer-pilot-v1",
         definition_checksum="5" * 64,
+        candidate_spec_path="experiments/definitions/writer-pilot-v1/freeze-candidate.json",
         execution_manifest=_execution_manifest(),
         analysis_config=analysis,
         analysis_config_checksum=sha256_model(analysis),
@@ -103,6 +104,11 @@ def _manifest() -> FrozenExperimentManifest:
                 path="experiments/definitions/writer-pilot-v1/dataset.yaml",
                 byte_size=100,
                 content_checksum="7" * 64,
+            ),
+            FrozenArtifact(
+                path=("experiments/definitions/writer-pilot-v1/freeze-candidate.json"),
+                byte_size=150,
+                content_checksum="8" * 64,
             ),
             FrozenArtifact(
                 path="uv.lock",

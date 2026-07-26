@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.1 冻结和成本契约已实现；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.2 冻结候选生成与离线验证已实现；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4156,6 +4156,8 @@ coordinates.sort(
 M5.3 的 write-once journal 路径为 `requests/<run_id>.json`、`attempts/<run_id>/<NNN>-started.json`、`<NNN>-completed.json` 和 `terminal/<run_id>.json`。调用 gateway 前先写 intent；恢复时若只有 intent，则生成 `RESULT_UNKNOWN_AFTER_INTERRUPTION` 失败 attempt。该设计防止结果被静默丢弃或重复计入，但在 provider 不支持幂等键时，不能保证中断后的再次外部调用不会重复计费。当前执行器只支持 `concurrency=1`，technical manifest 也不替代 M5.5 对模型、SDK、价格和货币成本的正式冻结。
 
 M5.5.1 使用外层 `FrozenExperimentManifest` 补充正式冻结身份，不修改既有 technical manifest 和 journal schema。它内联 technical manifest 与 analysis config，并绑定 source commit、干净工作树声明、CPython/SDK、lockfile、Provider/模型、官方价格来源、微美元成本预算和有序文件清单。Pilot 与 formal 通过 `ExperimentPurpose` 区分；formal 必须引用不同 experiment ID 的 Pilot 证据。金额不使用 float，估算成本由冻结 token 数和每百万 token 的整数微美元单价重算。当前契约尚不读取文件、Git 或价格网站，也不代表已完成人工审批。
+
+M5.5.2 的 `FreezeCandidateBuilder` 只接受规范 JSON `FreezeCandidateSpec`，机器派生 Git commit、CPython/SDK 精确版本、`uv.lock` 与全部输入文件的字节数和 SHA-256。清单必须覆盖 dataset、知识声明与正文、任务、rubric、MANUAL condition、执行计划、候选 spec 和 lockfile；额外文件须显式列出，不自动扫描仓库。构建前后读取两次相同且干净的 Git 快照，防止采集期间源码变化；路径逃逸、符号链接、空文件、单文件 2 MiB 和总计 32 MiB 越界均拒绝。`verify_freeze_manifest()` 总是复核 Manifest 自 checksum、dataset/plan/execution identity 和文件字节；默认再校验当前 commit、工作树、Python 与 SDK，content-only 模式不声称当前环境可执行。该机制不验证价格网页真实性，不能抵御本地管理员同步改写全部文件和 checksum，也不替代项目 owner 的批准或外部只读归档。
 
 ### 13.5 指标计算
 

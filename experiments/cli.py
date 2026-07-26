@@ -22,6 +22,13 @@ from experiments.contracts import (
     RenderedInvocation,
 )
 from experiments.executor import ExperimentExecutor
+from experiments.freezing import (
+    FreezeCandidateBuilder,
+    load_freeze_candidate_spec,
+    load_frozen_experiment_manifest,
+    publish_freeze_candidate,
+    verify_freeze_manifest,
+)
 from experiments.gateway import FakeExperimentGateway
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
 from experiments.pipeline import OfflineAnalysisPipeline
@@ -39,6 +46,7 @@ from experiments.rendering import (
 )
 
 DEFAULT_DEFINITION_ROOT = Path(__file__).parent / "definitions" / "writer-v1"
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 _SMOKE_NAMESPACE = UUID("c9506518-07c6-5a4f-84ef-6cfd74ae3848")
 
 
@@ -108,6 +116,28 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--output-root", type=Path, required=True)
     analyze.add_argument("--bootstrap-seed", type=int)
     analyze.add_argument("--bootstrap-iterations", type=int, default=10_000)
+
+    freeze = subcommands.add_parser(
+        "freeze-candidate",
+        help="derive an offline freeze candidate from reviewed local inputs",
+    )
+    _add_definition_root(freeze)
+    freeze.add_argument("--plan", type=Path)
+    freeze.add_argument("--spec", type=Path, required=True)
+    freeze.add_argument("--output", type=Path)
+
+    verify_freeze = subcommands.add_parser(
+        "verify-freeze",
+        help="verify frozen files and the current local execution environment",
+    )
+    _add_definition_root(verify_freeze)
+    verify_freeze.add_argument("--plan", type=Path)
+    verify_freeze.add_argument("--manifest", type=Path, required=True)
+    verify_freeze.add_argument(
+        "--content-only",
+        action="store_true",
+        help="verify portable content evidence without claiming environment readiness",
+    )
     return parser
 
 
@@ -151,6 +181,48 @@ def main(argv: list[str] | None = None) -> int:
             f"runs={result.score_manifest.run_count} "
             f"score_set_sha256={result.score_manifest.score_set_checksum} "
             f"analysis_sha256={result.analysis_manifest.analysis_checksum}"
+        )
+        return 0
+    if args.command == "freeze-candidate":
+        candidate = load_freeze_candidate_spec(args.spec.resolve())
+        manifest = FreezeCandidateBuilder(REPOSITORY_ROOT).build(
+            candidate=candidate,
+            candidate_spec_path=args.spec,
+            plan_path=plan_path,
+            dataset=dataset,
+            plan=plan,
+        )
+        output = (
+            args.output
+            or REPOSITORY_ROOT / ".tmp" / "m5-freeze" / f"{candidate.freeze_id}.json"
+        ).resolve()
+        created = publish_freeze_candidate(
+            manifest,
+            repository_root=REPOSITORY_ROOT,
+            output_path=output,
+        )
+        action = "created" if created else "verified"
+        print(
+            f"{action} freeze candidate {output} "
+            f"sha256={manifest.manifest_checksum} "
+            f"commit={manifest.source.source_commit} files={len(manifest.files)} "
+            f"hard_cost_usd_micros={manifest.cost_budget.hard_cost_limit_usd_micros}"
+        )
+        return 0
+    if args.command == "verify-freeze":
+        manifest = load_frozen_experiment_manifest(args.manifest.resolve())
+        verify_freeze_manifest(
+            manifest,
+            repository_root=REPOSITORY_ROOT,
+            dataset=dataset,
+            plan=plan,
+            plan_path=plan_path,
+            verify_environment=not args.content_only,
+        )
+        scope = "content-only" if args.content_only else "content-and-environment"
+        print(
+            f"verified freeze {args.manifest.resolve()} scope={scope} "
+            f"sha256={manifest.manifest_checksum}"
         )
         return 0
     return asyncio.run(

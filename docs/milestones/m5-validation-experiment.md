@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5 已进入且 M5.5.1 冻结和成本契约已实现。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5 已进入且 M5.5.2 冻结候选生成与离线验证已实现。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：已实现离线执行器但未接入真实 provider；尚未冻结正式模型、SDK、预算或价格快照，也未执行真实模型调用。
+- 当前限制：已实现离线执行器与冻结候选机制但未接入真实 provider；尚未选择真实模型、核验官方价格、运行 Pilot 或执行真实模型调用。
 
 ## 2. 阶段目标
 
@@ -159,7 +159,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。M5.5.1 已建立 Pilot/正式身份、源码、Provider、价格、成本和文件清单契约，但尚未生成冻结候选或运行 Pilot。仓库没有正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是 M5.5.2：实现冻结候选生成和离线验证。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。M5.5.1-M5.5.2 已建立冻结契约、候选生成和本地验证机制，但尚未选择真实模型与官方价格，也未生成获批候选或运行 Pilot。仓库没有正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是准备与人工评审 Pilot 配置，再执行受预算约束的 Pilot；任何真实调用仍需项目 owner 明确批准。
 
 ## 10. M5.2 实现证据
 
@@ -256,3 +256,16 @@ M5.4.5 的 CI 同构 experiment 门禁为 `149 passed`，`experiments` 分支覆
 M5.5.1 没有选择真实模型或价格，没有读取 API key，也没有网络或模型调用。单元测试中的 Provider、模型、价格 URL 和 checksum 均为合成值，不构成冻结候选。
 
 M5.5.1 的 CI 同构 experiment 门禁为 `158 passed`，`experiments` 分支覆盖率 93.30%，其中扩展后的 `contracts.py` 为 92%；全仓回归为 `567 passed`。Ruff format、Ruff lint 和全量 mypy strict 均通过。
+
+## 18. M5.5.2 冻结候选生成与离线验证
+
+- `FreezeCandidateSpec` 仅保存人工评审输入；source commit、CPython/SDK 版本、文件 checksum、analysis checksum 和 Manifest checksum 均由机器派生。
+- `FreezeCandidateBuilder` 强制绑定 dataset、知识声明与正文、task、rubric、MANUAL condition、execution plan、candidate spec 和 `uv.lock`。清单显式排序、去重，可增加文件但不能漏掉必需输入。
+- `SubprocessGitSnapshotReader` 使用无 shell 的只读 Git 命令采集仓库根、HEAD 和 porcelain status；文件读取前后快照必须相同且干净，避免 check-then-read 竞态。
+- 文件解析执行路径 containment、逐级符号链接拒绝、2 MiB 单文件与 32 MiB 总量上限；候选以 canonical JSON write-once 发布到仓库外或 `.tmp/`。
+- verifier 将内容证据与当前环境证据分层：两者都验证 Manifest 自 checksum、dataset/plan/execution identity 和文件字节；默认模式额外要求当前 Git commit、干净工作树、CPython 和 SDK 与冻结值一致，`--content-only` 不声称执行环境已就绪。
+- CLI 新增 `freeze-candidate` 和 `verify-freeze`，均没有 API key、provider 调用、live switch 或网络配置。
+
+M5.5.2 没有选择真实模型或官方价格，没有读取 API key、访问价格 URL 或执行模型调用。测试使用合成 Provider、模型、价格和 fake Git/environment reader，因此只证明冻结机制的结构和失败防线，不构成 Pilot 或正式冻结证据。候选 checksum 也不是数字签名，正式证据仍需 owner 审批与外部只读归档。
+
+M5.5.2 的 CI 同构 experiment 门禁为 `173 passed`，`experiments` 分支覆盖率 92.59%，其中 `freezing.py` 为 90%、`cli.py` 为 98%；全仓回归为 `582 passed`。Ruff format、Ruff lint、全量 mypy strict 和既有契约快照检查均通过。

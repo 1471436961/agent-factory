@@ -411,3 +411,37 @@ M5.5.1 将冻结证据建模为 `FrozenExperimentManifest`，而不是继续扩�
 文件 inventory 必须按路径排序、去重，并且唯一 `uv.lock` 条目的 checksum 必须与 `SourceSnapshot` 一致。M5.5.1 的 Pydantic 模型只验证已提交字段之间的关系，不读取 Git、文件系统或官方价格页面，也不自行验证自引用 `manifest_checksum`；这些 I/O 和 checksum 责任由 M5.5.2 的候选生成器与 verifier 承担。
 
 M5.5.1 的 CI 同构 experiment 门禁为 `158 passed`，分支覆盖率 93.30%；全仓回归为 `567 passed`。所有价格、Provider 和模型输入均为测试合成值，无网络或真实模型调用。
+
+## 21. M5.5.2 冻结候选生成与验证
+
+`FreezeCandidateSpec` 是人工评审输入，不允许调用方填写 Git commit、Python 环境、文件 checksum、analysis config checksum 或最终 Manifest checksum。它使用有界、规范化、末尾换行的 JSON；`created_at` 也来自评审 spec，而不是构建时读取时钟，因此相同输入、源码和环境产生逐字节相同候选。spec 中的文件清单必须排序、去重并显式包含自身与 `uv.lock`。
+
+`FreezeCandidateBuilder` 依次校验 dataset、execution plan、technical manifest、condition bundle、definition checksum、provider/model/SDK 与预算关系，再要求清单覆盖 dataset、知识声明及正文、task、rubric、MANUAL prompt、plan、spec 和 lockfile。构建器不使用 glob 自动决定证据范围；显式清单可以增加经评审的输入，但不能漏掉已知必需项。每个文件按仓库相对 POSIX 路径读取一次，拒绝路径逃逸、符号链接、空文件、超过 2 MiB 的单文件和超过 32 MiB 的总清单。
+
+```text
+规范 Candidate Spec + Dataset + Plan
+                │
+                ▼
+    校验身份、预算与必需文件集合
+                │
+                ▼
+       Git clean snapshot（读取前）
+                │
+                ▼
+     读取文件字节并计算 size/SHA-256
+                │
+                ▼
+       Git clean snapshot（读取后）
+                │  两次必须完全相同
+                ▼
+  采集 CPython/SDK → 计算 Manifest checksum
+                │
+                ▼
+       write-once canonical JSON candidate
+```
+
+Git 通过参数数组、`shell=False`、10 秒 timeout 和输出大小上限读取，不执行任何仓库写操作。候选输出位于仓库外或被 Git 忽略的 `.tmp/`，避免生成行为本身污染被冻结工作树。`freeze-candidate` 负责生成，`verify-freeze` 默认同时执行内容和当前环境校验；显式 `--content-only` 只验证可移植文件证据，不检查当前 Git/Python/SDK，输出中必须标明该较弱范围。
+
+M5.5.2 只实现机制并使用合成 Provider、模型和价格做离线测试。它不访问价格来源 URL，不读取 API key，不执行 provider 请求，也不生成获得批准的真实冻结候选。Manifest checksum 只能发现非同步篡改，不能提供签名真实性；正式冻结仍需后续 pilot 证据、项目 owner 审批与外部只读归档。
+
+M5.5.2 的 CI 同构 experiment 门禁为 `173 passed`，`experiments` 分支覆盖率 92.59%，其中 `freezing.py` 为 90%、`cli.py` 为 98%；全仓回归为 `582 passed`。Ruff format、Ruff lint、全量 mypy strict 和既有契约快照检查均通过。测试没有网络请求或真实模型调用。
