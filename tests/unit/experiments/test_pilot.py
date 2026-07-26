@@ -31,13 +31,14 @@ FORMAL_ROOT = REPOSITORY_ROOT / "experiments" / "definitions" / "writer-v1"
 PILOT_PLAN_PATH = PILOT_ROOT / "execution-plan.json"
 FORMAL_PLAN_PATH = FORMAL_ROOT / "execution-plan.json"
 CANDIDATE_PATH = PILOT_ROOT / "freeze-candidate.json"
-FROZEN_MANIFEST_PATH = (
+FINAL_MANIFEST_PATH = (
     REPOSITORY_ROOT
     / "experiments"
     / "evidence"
     / "writer-pilot-v1"
     / "freeze-manifest.json"
 )
+HISTORICAL_MANIFEST_PATH = FINAL_MANIFEST_PATH.with_name("freeze-manifest-m5.5.5.json")
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,8 +189,8 @@ def test_pilot_candidate_binds_reviewed_model_price_and_complete_inputs() -> Non
 
 
 def test_archived_pilot_freeze_manifest_retains_historical_identity() -> None:
-    manifest_bytes = FROZEN_MANIFEST_PATH.read_bytes()
-    manifest = load_frozen_experiment_manifest(FROZEN_MANIFEST_PATH)
+    manifest_bytes = HISTORICAL_MANIFEST_PATH.read_bytes()
+    manifest = load_frozen_experiment_manifest(HISTORICAL_MANIFEST_PATH)
 
     assert hashlib.sha256(manifest_bytes).hexdigest() == (
         "a3216e6b292126c5041ab701c1864c53e56ba15faac3d33ecd55c69d3a59d7b2"
@@ -202,6 +203,32 @@ def test_archived_pilot_freeze_manifest_retains_historical_identity() -> None:
     assert "experiments/pilot_launcher.py" not in {
         artifact.path for artifact in manifest.files
     }
+
+
+def test_final_pilot_freeze_manifest_binds_executable_launcher_source() -> None:
+    pilot_dataset, pilot_plan, _, _, _ = _inputs()
+    manifest_bytes = FINAL_MANIFEST_PATH.read_bytes()
+    manifest = load_frozen_experiment_manifest(FINAL_MANIFEST_PATH)
+
+    assert hashlib.sha256(manifest_bytes).hexdigest() == (
+        "994f0d46557adeea77703849b0eb3978abe3d9fe89a1741c01b802ffcd2d2740"
+    )
+    assert manifest.manifest_checksum == (
+        "6514a01799af9b6585f4ff009ad11c887439a324200771d0cae479f28f630d22"
+    )
+    assert manifest.source.source_commit == ("d3c19beb75587b5cc9963c05832c918694dfa9e1")
+    assert len(manifest.files) == 62
+    assert "experiments/pilot_launcher.py" in {
+        artifact.path for artifact in manifest.files
+    }
+    verify_freeze_manifest(
+        manifest,
+        repository_root=REPOSITORY_ROOT,
+        dataset=pilot_dataset,
+        plan=pilot_plan,
+        plan_path=PILOT_PLAN_PATH,
+        verify_environment=False,
+    )
 
 
 def test_pilot_preflight_rejects_formal_identity_overlap() -> None:

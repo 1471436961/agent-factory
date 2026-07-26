@@ -38,6 +38,7 @@ MANIFEST_PATH = (
     / "writer-pilot-v1"
     / "freeze-manifest.json"
 )
+HISTORICAL_MANIFEST_PATH = MANIFEST_PATH.with_name("freeze-manifest-m5.5.5.json")
 SECRET = "sk-test-must-never-enter-artifacts"
 
 
@@ -128,6 +129,7 @@ class _StaticInvocationPreparer:
 def _request(
     output_root: Path,
     *,
+    manifest_path: Path = MANIFEST_PATH,
     allow_live: bool = True,
     confirmed_experiment_id: str = "writer-pilot-v1",
     confirmed_hard_cost_usd_micros: int = 51_815,
@@ -135,7 +137,7 @@ def _request(
     return PilotLaunchRequest(
         definition_root=PILOT_ROOT,
         plan_path=PILOT_ROOT / "execution-plan.json",
-        manifest_path=MANIFEST_PATH,
+        manifest_path=manifest_path,
         formal_definition_root=FORMAL_ROOT,
         formal_plan_path=FORMAL_ROOT / "execution-plan.json",
         output_root=output_root,
@@ -228,7 +230,10 @@ async def test_historical_manifest_is_rejected_before_key_read(tmp_path: Path) -
 
     with pytest.raises(FreezeError):
         await run_live_pilot(
-            _request(tmp_path / "runs"),
+            _request(
+                tmp_path / "runs",
+                manifest_path=HISTORICAL_MANIFEST_PATH,
+            ),
             repository_root=REPOSITORY_ROOT,
             dependencies=dependencies,
         )

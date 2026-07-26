@@ -297,7 +297,7 @@ M5.5.4 的 31 项定向测试全部使用 fake client，并额外检查本地锁
 - source commit 固定为 `5a5d58cb42b62e3d2e10a060fea72d4ae0a97498`。生成前后 Git porcelain 均为空，Manifest 记录 `working_tree_clean=true`。
 - 运行环境固定为 CPython `3.11.15`、OpenAI SDK `2.46.0`；`uv.lock` checksum 为 `2abf80af28081e5fabd22f3bc44df6a867a1d2e56ed598eac34325ef4dd83828`。
 - Manifest 绑定 61 项文件、8 个预期请求、最多 16 次请求和 51,815 微美元硬上限。内部 Manifest checksum 为 `2673435ce2623c7c5bfaeb4a011c72f0558ef557c3506bba6685d114357bb6af`。
-- 默认 `content-and-environment` 与 `--content-only` 验证均在干净 source commit 上通过。验证后的原始字节归档为 [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json)，文件 SHA-256 为 `a3216e6b292126c5041ab701c1864c53e56ba15faac3d33ecd55c69d3a59d7b2`。
+- 默认 `content-and-environment` 与 `--content-only` 验证均在干净 source commit 上通过。验证后的原始字节现保留为 [`freeze-manifest-m5.5.5.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.5.json)，文件 SHA-256 为 `a3216e6b292126c5041ab701c1864c53e56ba15faac3d33ecd55c69d3a59d7b2`。
 - 归档提交位于 source commit 之后，因此日常 CI 只做 content-only 验证；需要再次声明环境一致时必须 checkout source commit。该关系由文档显式保留，不通过修改 Manifest 伪装成同一提交。
 
 M5.5.5 未读取 API key、未实例化真实 client、未发起 provider 请求，也未产生费用。CI 同构 experiment 门禁为 `212 passed`，总分支覆盖率 `93.04%`；全仓回归为 `622 passed`。Ruff format、Ruff lint、全量 mypy strict、契约快照、Pilot 预算预检和归档 Manifest content-only 验证均通过。Manifest checksum 和 Git 历史能够发现普通漂移，但不是数字签名，不能抵御具有仓库写权限者同步改写全部证据。最终审计同时确认 source commit 尚无受控 live CLI；本 Manifest 不得用于真实执行授权，launcher 实现后必须重新冻结并再次提交 owner 评审。
@@ -312,3 +312,13 @@ M5.5.5 未读取 API key、未实例化真实 client、未发起 provider 请求
 - M5.5.5 的 61 项 Manifest 继续作为历史执行前证据，其 source commit 不包含 launcher。tracked candidate 已将 `experiments/pilot_launcher.py` 纳入新 inventory；M5.5.6 提交后必须在 clean HEAD 重新生成最终 Manifest，旧归档不能用于费用授权。
 
 本工作包没有读取真实 API key、没有网络或模型调用，也没有产生费用。所有 live 路径测试均使用本地 fake client；CI 同构 experiment 门禁为 `225 passed`，总分支覆盖率 `92.34%`，`pilot_launcher.py` 为 `87%`；全仓回归为 `634 passed`，全量 mypy strict 检查 `193` 个源文件通过，Ruff 与契约快照门禁保持通过。
+
+## 23. M5.5.7 最终 Pilot Manifest 生成与归档
+
+- 最终 freeze 在干净 source commit `d3c19beb75587b5cc9963c05832c918694dfa9e1` 上生成。生成前 Git porcelain 为空，Manifest 记录 CPython `3.11.15`、OpenAI SDK `2.46.0` 和 `uv.lock` checksum `2abf80af28081e5fabd22f3bc44df6a867a1d2e56ed598eac34325ef4dd83828`。
+- 62 项 inventory 包含 `experiments/pilot_launcher.py`、OpenAI gateway、executor、冻结与评分源码、Pilot/Formal fixture、`pyproject.toml` 和 `uv.lock`。预算仍固定为 8 次预期请求、最多 16 次请求及 51,815 微美元硬上限。
+- Manifest 先写入 Git 忽略的 `.tmp/m5.5.7-freeze/`。在任何 tracked 文件变化前，`content-and-environment` 与 `--content-only` 验证均通过；内部 Manifest checksum 为 `6514a01799af9b6585f4ff009ad11c887439a324200771d0cae479f28f630d22`，原始 JSON 文件 SHA-256 为 `994f0d46557adeea77703849b0eb3978abe3d9fe89a1741c01b802ffcd2d2740`。
+- M5.5.5 原始字节移至 [`freeze-manifest-m5.5.5.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.5.json)；新的 canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 指向包含 launcher 的最终证据。两份文件分别由回归测试固定，历史证据没有被重写成新身份。
+- Manifest 不能把归档后的自身提交纳入 inventory，因此归档提交的 HEAD 必然晚于 source commit。日常 CI 对 canonical 文件执行 content-only 验证；需要再次声明环境级一致性时必须 checkout `d3c19be`。
+
+M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费用。最终 Manifest 只证明受控 launcher、输入、环境声明和预算边界已经冻结，不等于项目 owner 已批准真实 Pilot，也不证明模型可用性、计费行为或输出质量。CI 同构 experiment 门禁为 `226 passed`，总分支覆盖率 `92.34%`；全仓回归为 `635 passed`。Ruff format、Ruff lint、全量 mypy strict（`193` 个源文件）、契约快照、Pilot 预算预检和 canonical Manifest content-only 验证均通过。

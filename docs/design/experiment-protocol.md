@@ -454,7 +454,7 @@ Pilot 不是从 24 个正式任务中抽样。`writer-pilot-v1` 使用 2 个新�
 
 评审候选固定 OpenAI Responses API、`gpt-4.1-mini-2025-04-14`、OpenAI SDK `2.46.0`、`temperature=0`、`max_output_tokens=1024`、60 秒 timeout、最多 2 次 attempt 和单并发。价格于 2026-07-26 从 [OpenAI GPT-4.1 mini 官方模型页](https://developers.openai.com/api/docs/models/gpt-4.1-mini)核验：每百万 token 输入 400,000 微美元、缓存输入 100,000 微美元、输出 1,600,000 微美元。预算始终按未缓存输入计算。
 
-预期一次 attempt 对应 8 次请求、32,000 prompt token、8,192 completion token 和 25,908 微美元；最坏两次 attempt 对应 16 次请求、64,000 prompt token、16,384 completion token 和 51,815 微美元。tracked `freeze-candidate.json` 固定这些人工评审输入及 61 项显式 inventory，但不伪造 source commit 或文件 checksum。只有工作包提交后，`freeze-candidate` 才能在干净工作树上派生真正的 `FrozenExperimentManifest`。
+预期一次 attempt 对应 8 次请求、32,000 prompt token、8,192 completion token 和 25,908 微美元；最坏两次 attempt 对应 16 次请求、64,000 prompt token、16,384 completion token 和 51,815 微美元。M5.5.3 当时的 tracked `freeze-candidate.json` 固定这些人工评审输入及 60 项显式 inventory，但不伪造 source commit 或文件 checksum。只有工作包提交后，`freeze-candidate` 才能在干净工作树上派生真正的 `FrozenExperimentManifest`。
 
 Pilot 候选使用以下纯离线命令预检；它没有 API key 参数、live switch 或 provider client：
 
@@ -478,7 +478,7 @@ M5.5.4 没有新增 live CLI，没有读取环境变量或 API key，也没有�
 
 freeze 必须在任何归档或文档修改前，从干净 commit 生成。M5.5.5 使用 source commit `5a5d58cb42b62e3d2e10a060fea72d4ae0a97498`，先输出到 Git 忽略的 `.tmp/m5-freeze/`，随后在工作树仍干净时依次执行默认 `content-and-environment` 验证与 `--content-only` 验证。默认验证额外检查当前 HEAD、porcelain status、CPython `3.11.15` 和 OpenAI SDK `2.46.0`；content-only 验证只检查 Manifest 自身份、dataset/plan/execution identity、候选字段和 61 项实际文件字节。
 
-通过验证的原始字节不经重新序列化，归档为 [`experiments/evidence/writer-pilot-v1/freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json)。内部 `manifest_checksum` 为 `2673435ce2623c7c5bfaeb4a011c72f0558ef557c3506bba6685d114357bb6af`，整个 JSON 文件的 SHA-256 为 `a3216e6b292126c5041ab701c1864c53e56ba15faac3d33ecd55c69d3a59d7b2`。前者排除 `manifest_checksum` 字段后计算结构身份，后者覆盖最终落盘字节；回归测试固定两者、source commit 和 inventory 数量，并执行 content-only verifier。
+通过验证的原始字节不经重新序列化，现保留为 [`experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.5.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.5.json)。内部 `manifest_checksum` 为 `2673435ce2623c7c5bfaeb4a011c72f0558ef557c3506bba6685d114357bb6af`，整个 JSON 文件的 SHA-256 为 `a3216e6b292126c5041ab701c1864c53e56ba15faac3d33ecd55c69d3a59d7b2`。前者排除 `manifest_checksum` 字段后计算结构身份，后者覆盖最终落盘字节；回归测试固定两者、source commit 和 inventory 数量。
 
 Manifest 不能把自身作为被哈希输入，因此归档证据必然位于 source commit 之后的提交。归档后的当前 HEAD 不应冒充冻结执行环境：默认 verifier 因 commit 或工作树不匹配而拒绝属于正确行为；需要环境级复核时必须 checkout source commit，归档提交日常只运行 content-only 验证。本地 Git 历史提供 Alpha 追溯，但不能替代签名、外部只读归档或对象锁。
 
@@ -525,3 +525,28 @@ Dataset + Plan + FrozenExperimentManifest
 启动器对实际已记录 usage 使用冻结单价重新计算保守微美元费用，同时保留 request/token/费用硬上限。provider 不提供幂等键时，intent 已写但 completion 未落盘的窗口仍可能重复计费；现有恢复语义会记录 `RESULT_UNKNOWN_AFTER_INTERRUPTION`，并由最多两次 attempt 与总预算限制风险，不能宣称 exactly-once 外部调用。
 
 M5.5.6 的 tests 以真实 `FactoryController` 和 live 标记的 fake gateway 验证 2 个 domain、12 条审计事件、8 个坐标、重放零新增请求、Key 读取顺序、路径拒绝、异常关闭和 secret 不落盘。CI 同构 experiment 门禁为 `225 passed`、总分支覆盖率 `92.34%`；全仓回归为 `634 passed`。这些结果只证明 launcher 的工程约束，不证明真实 API、计费或模型质量。M5.5.5 归档保持历史不变；launcher 提交后必须重新冻结，才可进入真实 Pilot 审批。
+
+## 26. M5.5.7 最终 Pilot Manifest 与双归档
+
+M5.5.7 先提交 launcher，再以 clean source commit `d3c19beb75587b5cc9963c05832c918694dfa9e1` 构建最终 Manifest。生成与两种验证全部发生在 `.tmp/m5.5.7-freeze/`，此时 tracked 工作树没有变化：默认 verifier 同时核对 HEAD、porcelain、CPython `3.11.15`、OpenAI SDK `2.46.0` 和 62 项文件；content-only verifier 独立复核 Manifest、dataset、plan、execution identity 及文件字节。两者均通过后才复制已经验证的原始 JSON 字节。
+
+```text
+clean d3c19be + 62-item inventory
+                │
+                ▼
+        build under ignored .tmp
+                │
+                ▼
+ content-and-environment + content-only
+                │
+                ▼
+ archive exact bytes, never re-serialize
+        ┌───────┴────────┐
+        ▼                ▼
+ historical M5.5.5   canonical final
+ 61 files, no CLI    62 files, launcher
+```
+
+canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 的内部 checksum 为 `6514a01799af9b6585f4ff009ad11c887439a324200771d0cae479f28f630d22`，文件 SHA-256 为 `994f0d46557adeea77703849b0eb3978abe3d9fe89a1741c01b802ffcd2d2740`。M5.5.5 文件以原始字节保存在 [`freeze-manifest-m5.5.5.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.5.json)，旧 checksum、source commit 和 61 项 inventory 保持不变。稳定 canonical 路径只指向可执行 launcher 的冻结证据，减少真实运行时误选历史文件的机会。
+
+归档提交不能与 Manifest 的 source commit 相同，这是自引用证据的结构性结果，不是漂移。日常测试对最终文件执行 content-only 验证；环境级复核必须 checkout `d3c19be`。Git checksum 链可以发现普通改动，但不是数字签名或外部对象锁。M5.5.7 不读取 API key、不创建真实 client，也不调用 provider；最终 Manifest 是进入费用审批的必要条件，不是审批本身。最终离线门禁为 `226 passed`、实验 package 分支覆盖率 `92.34%`，全仓回归为 `635 passed`；Ruff、mypy strict、契约快照、预算预检和 canonical content-only verifier 均通过。

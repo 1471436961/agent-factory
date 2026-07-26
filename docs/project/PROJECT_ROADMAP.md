@@ -28,9 +28,9 @@
 
 ## 4. 当前状态
 
-当前状态：M5.1-M5.4 已实现，M5.5.6 受控 Pilot launcher 已完成本地实现。`experiments` package 已提供冻结 Writer/Pilot fixture、确定性执行计划、MANUAL/FACTORY 公平渲染、不可变 journal、OpenAI Responses gateway、离线评分分析和可验证报告；launcher 进一步要求完整 Manifest 环境验证、Pilot/Formal 隔离、显式 live/experiment/费用确认、安全输出根和真实 `FactoryController` preparation 后才读取 `OPENAI_API_KEY`。正式数据集/计划 checksum 为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e` / `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`；Pilot 为 `4651ae511935d2c9e1312b67fcb568669e4ea993f37059939249e9e83255d9aa` / `ed7a237fd48280e6fcefda742a6336f70cf58170362800e5897ab7db43eb480d`。M5.5.5 历史 Manifest 绑定 source commit `5a5d58cb42b62e3d2e10a060fea72d4ae0a97498`、61 项输入和 `$0.051815` 硬上限，但不含 launcher，不能用于执行。当前尚未读取真实 API key、调用模型或产生费用。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)。
+当前状态：M5.1-M5.4 已实现，M5.5.7 最终 Pilot Manifest 已完成本地归档。`experiments` package 已提供冻结 Writer/Pilot fixture、确定性执行计划、MANUAL/FACTORY 公平渲染、不可变 journal、OpenAI Responses gateway、离线评分分析、可验证报告和受控 live launcher。最终 Manifest 绑定 source commit `d3c19beb75587b5cc9963c05832c918694dfa9e1`、CPython `3.11.15`、OpenAI SDK `2.46.0`、62 项输入和 `$0.051815` 硬上限；其内部 checksum 为 `6514a01799af9b6585f4ff009ad11c887439a324200771d0cae479f28f630d22`。M5.5.5 的 61 项旧 Manifest 已移至独立历史文件，不能用于执行。正式数据集/计划 checksum 为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e` / `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`；Pilot 为 `4651ae511935d2c9e1312b67fcb568669e4ea993f37059939249e9e83255d9aa` / `ed7a237fd48280e6fcefda742a6336f70cf58170362800e5897ab7db43eb480d`。当前尚未读取真实 API key、调用模型或产生费用。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)。
 
-执行边界：下一步先提交 M5.5.6，再从该 clean commit 生成并验证新的最终 Pilot Manifest。只有新的 Manifest、项目 owner 对固定模型和最多 `$0.051815` 费用的独立批准同时成立，才允许启动 8-run 真实 Pilot。
+执行边界：最终 Manifest 已满足源码、环境声明、计划和预算冻结前置条件。下一步必须由项目 owner 独立确认固定模型 `gpt-4.1-mini-2025-04-14`、完整 8-run Pilot 和最多 `$0.051815` 费用；未获得该批准前不得读取真实 API key 或启动 provider 调用。
 
 ## 5. 最终展示物
 

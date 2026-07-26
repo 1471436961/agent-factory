@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.6 受控 Pilot launcher 已实现**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。M5.5.1-M5.5.6 进一步实现独立 8-run Pilot、预算预检、OpenAI Responses gateway、执行前 Manifest 和只接受完整冻结证据与显式费用确认的 live CLI。M5.5.5 归档仍是未包含 launcher 的历史检查点，不能授权执行；下一步必须提交当前代码并在 clean commit 上重新冻结。仓库尚未读取真实 API key、调用模型或产生费用，也没有 Pilot/正式实验质量结论。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.7 最终 Pilot Manifest 已归档**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。M5.5.1-M5.5.7 进一步实现独立 8-run Pilot、预算预检、OpenAI Responses gateway、受控 live CLI，以及绑定 launcher source commit `d3c19beb75587b5cc9963c05832c918694dfa9e1` 和 62 项输入的最终 Manifest。M5.5.5 的旧 Manifest 继续作为历史检查点保留，不能授权执行。仓库尚未读取真实 API key、调用模型或产生费用，也没有 Pilot/正式实验质量结论；真实 Pilot 仍需要项目 owner 对固定模型和最多 `$0.051815` 费用作独立批准。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
