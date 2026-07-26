@@ -39,6 +39,7 @@ FINAL_MANIFEST_PATH = (
     / "freeze-manifest.json"
 )
 HISTORICAL_MANIFEST_PATH = FINAL_MANIFEST_PATH.with_name("freeze-manifest-m5.5.5.json")
+M557_MANIFEST_PATH = FINAL_MANIFEST_PATH.with_name("freeze-manifest-m5.5.7.json")
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +156,13 @@ def test_pilot_candidate_binds_reviewed_model_price_and_complete_inputs() -> Non
         for path in (REPOSITORY_ROOT / "experiments").glob("*.py")
     }
     assert top_level_experiment_sources <= set(candidate.inventory_paths)
+    production_runtime_sources = {
+        path.relative_to(REPOSITORY_ROOT).as_posix()
+        for path in (REPOSITORY_ROOT / "src" / "agent_factory").rglob("*")
+        if path.is_file() and path.suffix in {".py", ".sql"}
+    }
+    assert len(production_runtime_sources) == 91
+    assert production_runtime_sources <= set(candidate.inventory_paths)
     assert "experiments/definitions/writer-v1/execution-plan.json" in (
         candidate.inventory_paths
     )
@@ -205,10 +213,9 @@ def test_archived_pilot_freeze_manifest_retains_historical_identity() -> None:
     }
 
 
-def test_final_pilot_freeze_manifest_binds_executable_launcher_source() -> None:
-    pilot_dataset, pilot_plan, _, _, _ = _inputs()
-    manifest_bytes = FINAL_MANIFEST_PATH.read_bytes()
-    manifest = load_frozen_experiment_manifest(FINAL_MANIFEST_PATH)
+def test_m557_manifest_retains_pre_closure_identity() -> None:
+    manifest_bytes = M557_MANIFEST_PATH.read_bytes()
+    manifest = load_frozen_experiment_manifest(M557_MANIFEST_PATH)
 
     assert hashlib.sha256(manifest_bytes).hexdigest() == (
         "994f0d46557adeea77703849b0eb3978abe3d9fe89a1741c01b802ffcd2d2740"
@@ -221,13 +228,8 @@ def test_final_pilot_freeze_manifest_binds_executable_launcher_source() -> None:
     assert "experiments/pilot_launcher.py" in {
         artifact.path for artifact in manifest.files
     }
-    verify_freeze_manifest(
-        manifest,
-        repository_root=REPOSITORY_ROOT,
-        dataset=pilot_dataset,
-        plan=pilot_plan,
-        plan_path=PILOT_PLAN_PATH,
-        verify_environment=False,
+    assert not any(
+        artifact.path.startswith("src/agent_factory/") for artifact in manifest.files
     )
 
 

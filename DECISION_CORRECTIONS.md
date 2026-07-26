@@ -196,3 +196,25 @@
    - 最终修正：H1/H2/H4 由主要 Writer 生成实验检验；H3 降级为单操作者探索性构建案例；H5 改为确定性审计链验证。正式知识使用虚构合成材料，两组实际可见知识正文必须字节级一致；pilot 不进入正式数据；没有第二名独立评分者时不计算 Cohen's kappa。正式调用只在模型、版本、价格和成本上限冻结并经 owner 明确批准后执行。
    - 证据：[`docs/milestones/m5-validation-experiment.md`](docs/milestones/m5-validation-experiment.md)、[`docs/design/experiment-protocol.md`](docs/design/experiment-protocol.md)、[`docs/architecture.md`](docs/architecture.md) 第十三章。
    - 对后续路线的影响：M5 拆分为协议、模型与任务、执行器、分析、pilot 冻结、正式执行和复算报告七个工作包；CI 永远使用 fake gateway，M5.6 不会因前置代码完成而自动触发真实模型调用。实验结论只能解释冻结模型和 Writer workflow bundle，消融或跨模型验证必须使用新的 experiment ID 独立开展。
+
+1. **M5.5 Pilot 冻结从实验源码扩展为完整生产依赖闭环**
+
+   - 日期：2026-07-26
+   - 里程碑：M5.5 收尾评审
+   - 原判断：冻结 Pilot fixture、全部 `experiments/*.py`、`pyproject.toml` 和 `uv.lock` 即可证明受控 launcher 的执行输入没有漂移。
+   - 原判断的不足：`experiments/pilot_launcher.py` 会调用真实 `FactoryController`、领域服务、SQLite Repository 和 migration 来生成 FACTORY 条件的 `AgentSpec`，但 M5.5.7 的 62 项 inventory 没有包含任何 `src/agent_factory` 文件。生产代码即使变化，旧 Manifest 仍可能通过 content-only 校验，无法证明 AgentSpec 生成逻辑与冻结时一致。
+   - 人工 review 结论：真实付费 Pilot 前必须闭合生产依赖证据；不能只冻结直接 import 的文件，也不能通过放宽环境 verifier 绕过缺口。
+   - 最终修正：Pilot candidate 显式纳入 `src/agent_factory` 下全部 85 个 Python 文件和 6 个 migration SQL，测试从文件系统重新枚举这 91 项输入并要求全部出现在 inventory。M5.5.7 Manifest 保留为历史证据，修正源码进入 clean commit 后重新生成 canonical Manifest。
+   - 证据：`experiments/pilot_launcher.py` 的 `agent_factory` imports；`tests/unit/experiments/test_pilot.py` 的 production inventory 断言；新旧 Manifest 的 source commit、inventory 和 checksum 回归测试。
+   - 对后续路线的影响：任何生产 package 或 migration 新增都会使候选完整性测试失败；真实 Pilot 只能使用包含完整生产依赖的新 Manifest。正式 M5.6 Manifest 沿用同一闭环，不把旧 M5.5.7 文件作为费用授权依据。
+
+1. **M5.5 收尾操作从新增子里程碑修正为原阶段退出任务**
+
+   - 日期：2026-07-26
+   - 里程碑：M5.5 收尾评审
+   - 原判断：把生产源码补冻、重新归档、真实 Pilot、Pilot review 和正式冻结继续编号为 M5.5.8-M5.5.11。
+   - 原判断的不足：原始 M5.5 规划只有 M5.5.1-M5.5.6；把缺陷修复、付费审批点和退出动作都升级为新子里程碑，会造成阶段范围不断生长，也掩盖 M5.5 尚未满足原退出条件这一事实。
+   - 人工 review 结论：不新增 M5.5.8-M5.5.11。剩余工作统一称为“M5.5 收尾”，只包含冻结缺口修复、8-run Pilot 及评审、正式配置冻结与 owner 审批。
+   - 最终修正：保留已有 Git 历史和证据章节，不再扩张工作包编号；项目状态按 M5.5 原始退出条件判断，真实 240-run 仍属于 M5.6。
+   - 证据：`docs/milestones/m5-validation-experiment.md` 第 5、8 节；项目 owner 对新增编号的人工 review 结论。
+   - 对后续路线的影响：实现步骤和审批检查点不再自动获得里程碑编号；M5.5 只有在 Pilot 完成、正式 Manifest 冻结且 owner 明确批准后才能勾选完成。
