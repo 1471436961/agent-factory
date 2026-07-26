@@ -147,7 +147,13 @@ def test_pilot_candidate_binds_reviewed_model_price_and_complete_inputs() -> Non
     assert candidate.execution_manifest.generation.concurrency == 1
     assert candidate.execution_manifest.limits.max_provider_requests == 16
     assert "experiments/pilot.py" in candidate.inventory_paths
+    assert "experiments/pilot_launcher.py" in candidate.inventory_paths
     assert "experiments/openai_gateway.py" in candidate.inventory_paths
+    top_level_experiment_sources = {
+        path.relative_to(REPOSITORY_ROOT).as_posix()
+        for path in (REPOSITORY_ROOT / "experiments").glob("*.py")
+    }
+    assert top_level_experiment_sources <= set(candidate.inventory_paths)
     assert "experiments/definitions/writer-v1/execution-plan.json" in (
         candidate.inventory_paths
     )
@@ -181,9 +187,7 @@ def test_pilot_candidate_binds_reviewed_model_price_and_complete_inputs() -> Non
     )
 
 
-def test_archived_pilot_freeze_manifest_portably_verifies() -> None:
-    pilot_dataset = load_experiment_dataset(PILOT_ROOT)
-    pilot_plan = load_execution_plan(PILOT_PLAN_PATH, pilot_dataset)
+def test_archived_pilot_freeze_manifest_retains_historical_identity() -> None:
     manifest_bytes = FROZEN_MANIFEST_PATH.read_bytes()
     manifest = load_frozen_experiment_manifest(FROZEN_MANIFEST_PATH)
 
@@ -195,14 +199,9 @@ def test_archived_pilot_freeze_manifest_portably_verifies() -> None:
     )
     assert manifest.source.source_commit == ("5a5d58cb42b62e3d2e10a060fea72d4ae0a97498")
     assert len(manifest.files) == 61
-    verify_freeze_manifest(
-        manifest,
-        repository_root=REPOSITORY_ROOT,
-        dataset=pilot_dataset,
-        plan=pilot_plan,
-        plan_path=PILOT_PLAN_PATH,
-        verify_environment=False,
-    )
+    assert "experiments/pilot_launcher.py" not in {
+        artifact.path for artifact in manifest.files
+    }
 
 
 def test_pilot_preflight_rejects_formal_identity_overlap() -> None:

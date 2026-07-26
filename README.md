@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.3 Pilot 配置与离线预检已实现**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 已生成 240 项固定执行计划，并实现条件渲染、不可变产物、fake gateway、有限重试、断点恢复、只读 journal 校验、逐 run 可追溯评分、task 配对聚合、确定性 bootstrap、H1/H2/H4 阈值判定、评分 Manifest，以及 content-addressed 的 JSON/CSV/Markdown 报告包和一键离线复算命令；M5.5.1-M5.5.3 进一步实现冻结契约、Git/运行环境采集、有界文件清单、独立 8-run Pilot fixture、Pilot/Formal 身份隔离和确定性预算预检。离线候选配置使用 `gpt-4.1-mini-2025-04-14` 固定快照与 OpenAI SDK `2.46.0`，但尚未在 clean commit 上生成正式 freeze manifest，也未接入或调用真实 provider。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.6 受控 Pilot launcher 已实现**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。M5.5.1-M5.5.6 进一步实现独立 8-run Pilot、预算预检、OpenAI Responses gateway、执行前 Manifest 和只接受完整冻结证据与显式费用确认的 live CLI。M5.5.5 归档仍是未包含 launcher 的历史检查点，不能授权执行；下一步必须提交当前代码并在 clean commit 上重新冻结。仓库尚未读取真实 API key、调用模型或产生费用，也没有 Pilot/正式实验质量结论。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 

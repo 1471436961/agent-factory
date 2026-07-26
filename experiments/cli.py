@@ -1,18 +1,20 @@
-"""Offline-only command line entry points for M5 experiment workflows."""
+"""Command line entry points for offline M5 workflows and the gated Pilot."""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid5
 
 from agent_factory.domain.enums import InjectionMode
+from agent_factory.domain.errors import FactoryError
 from agent_factory.domain.models import AgentSpec, KnowledgeRef, PrototypeRef
 from agent_factory.domain.services.spec import checksum_agent_spec
-from experiments.artifacts import ArtifactStore
+from experiments.artifacts import ArtifactStore, ArtifactStoreError
 from experiments.contracts import (
     AnalysisConfig,
     ExecutionLimits,
@@ -24,14 +26,24 @@ from experiments.contracts import (
 from experiments.executor import ExperimentExecutor
 from experiments.freezing import (
     FreezeCandidateBuilder,
+    FreezeError,
     load_freeze_candidate_spec,
     load_frozen_experiment_manifest,
     publish_freeze_candidate,
     verify_freeze_manifest,
 )
 from experiments.gateway import FakeExperimentGateway
-from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
-from experiments.pilot import validate_pilot_preflight
+from experiments.loader import (
+    ExperimentFixtureError,
+    LoadedExperimentDataset,
+    load_experiment_dataset,
+)
+from experiments.pilot import PilotPreflightError, validate_pilot_preflight
+from experiments.pilot_launcher import (
+    PilotLaunchError,
+    PilotLaunchRequest,
+    run_live_pilot,
+)
 from experiments.pipeline import OfflineAnalysisPipeline
 from experiments.planning import (
     build_execution_manifest,
@@ -47,6 +59,9 @@ from experiments.rendering import (
 )
 
 DEFAULT_DEFINITION_ROOT = Path(__file__).parent / "definitions" / "writer-v1"
+DEFAULT_PILOT_DEFINITION_ROOT = (
+    Path(__file__).parent / "definitions" / "writer-pilot-v1"
+)
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 _SMOKE_NAMESPACE = UUID("c9506518-07c6-5a4f-84ef-6cfd74ae3848")
 
@@ -86,7 +101,7 @@ class _SyntheticSmokeProvider:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m experiments",
-        description="Offline M5 execution-plan and recovery tools.",
+        description="M5 offline tools and explicitly gated Pilot execution.",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
@@ -153,12 +168,77 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="verify portable content evidence without claiming environment readiness",
     )
+
+    live = subcommands.add_parser(
+        "run-pilot-live",
+        help="execute every run in one fully verified Pilot Manifest",
+    )
+    _add_definition_root(live, default=DEFAULT_PILOT_DEFINITION_ROOT)
+    live.add_argument("--plan", type=Path)
+    live.add_argument("--manifest", type=Path, required=True)
+    live.add_argument("--output-root", type=Path, required=True)
+    live.add_argument(
+        "--formal-definition-root",
+        type=Path,
+        default=DEFAULT_DEFINITION_ROOT,
+    )
+    live.add_argument("--formal-plan", type=Path)
+    live.add_argument("--allow-live", action="store_true")
+    live.add_argument("--confirm-experiment-id", required=True)
+    live.add_argument("--confirm-hard-cost-usd-micros", type=int, required=True)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     definition_root = args.definition_root.resolve()
+    if args.command == "run-pilot-live":
+        plan_path = (args.plan or definition_root / "execution-plan.json").resolve()
+        formal_root = args.formal_definition_root.resolve()
+        formal_plan = (
+            args.formal_plan or formal_root / "execution-plan.json"
+        ).resolve()
+        try:
+            summary = asyncio.run(
+                run_live_pilot(
+                    PilotLaunchRequest(
+                        definition_root=definition_root,
+                        plan_path=plan_path,
+                        manifest_path=args.manifest,
+                        formal_definition_root=formal_root,
+                        formal_plan_path=formal_plan,
+                        output_root=args.output_root,
+                        allow_live=args.allow_live,
+                        confirmed_experiment_id=args.confirm_experiment_id,
+                        confirmed_hard_cost_usd_micros=(
+                            args.confirm_hard_cost_usd_micros
+                        ),
+                    ),
+                    repository_root=REPOSITORY_ROOT,
+                )
+            )
+        except (
+            ArtifactStoreError,
+            ExperimentFixtureError,
+            FactoryError,
+            FreezeError,
+            PilotLaunchError,
+            PilotPreflightError,
+        ) as exc:
+            print(f"Pilot launch aborted: {exc}", file=sys.stderr)
+            return 2
+        print(
+            "Pilot execution complete: "
+            f"experiment={summary.experiment_id} runs={summary.run_count} "
+            f"statuses={dict(summary.status_counts)} "
+            f"attempts={summary.provider_attempts}/"
+            f"{summary.max_provider_requests} "
+            f"observed_tokens={summary.observed_prompt_tokens}+"
+            f"{summary.observed_completion_tokens} "
+            f"observed_cost_usd_micros={summary.observed_cost_usd_micros} "
+            f"hard_cost_usd_micros={summary.hard_cost_limit_usd_micros}"
+        )
+        return 0
     dataset = load_experiment_dataset(definition_root)
     if args.command == "plan":
         plan = build_execution_plan(dataset)
@@ -355,9 +435,13 @@ def _synthetic_spec(task: ExperimentTask) -> AgentSpec:
     return unsigned.model_copy(update={"spec_checksum": checksum_agent_spec(unsigned)})
 
 
-def _add_definition_root(parser: argparse.ArgumentParser) -> None:
+def _add_definition_root(
+    parser: argparse.ArgumentParser,
+    *,
+    default: Path = DEFAULT_DEFINITION_ROOT,
+) -> None:
     parser.add_argument(
         "--definition-root",
         type=Path,
-        default=DEFAULT_DEFINITION_ROOT,
+        default=default,
     )

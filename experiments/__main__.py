@@ -1,4 +1,4 @@
-"""Run the offline M5 experiment command line interface."""
+"""Run M5 offline tools or the explicitly gated live Pilot command."""
 
 from experiments.cli import main
 

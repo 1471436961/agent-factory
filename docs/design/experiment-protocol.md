@@ -209,7 +209,7 @@ experiments/
 - 发起每个新 attempt 前，按所有已落盘 intent 重建 request/prompt/completion token 的保守预算占用；可能突破上限时生成 `budget-stopped` 终态，不先请求后补记。
 - M5.3 的 execution manifest 是技术身份，不是 M5.5 正式冻结 manifest；当前预算也只有 request/token 上限，没有价格快照和货币成本上限。
 - 执行器当前只支持 `concurrency=1`。并发执行需要额外的全局预算协调和 attempt 租约，不能只提高配置数字。
-- 当前 CLI 只暴露 fake gateway。仓库虽已提供 OpenAI 实验 adapter，但没有 live CLI；未来 live 命令即使加入，也必须要求显式开关并经过 M5.5 人工审批，CI 和默认测试始终不得启用。
+- 默认 CLI 与 CI 不启用 live gateway。M5.5.6 的 `run-pilot-live` 仅在完整 Freeze Manifest 环境验证、显式 live 开关、实验 ID 和硬费用上限同时匹配后可到达 provider；默认测试始终使用 fake client。
 
 恢复保证的边界是“不会覆盖或重复计入本地结果”，不是“外部调用恰好一次”。若 provider 已接收请求而进程在 completion 落盘前中断，缺少 provider 幂等键时无法排除再次调用产生第二次计费；M5.3 通过 unknown 终态显式保留这种不确定性。
 
@@ -485,3 +485,43 @@ Manifest 不能把自身作为被哈希输入，因此归档证据必然位于 s
 最终审计确认 source commit 中只有 `run-fake` CLI，没有把 `OpenAIExperimentGateway`、归档 Manifest、显式 live 开关和输出目录装配成可复现命令。通过仓库外临时脚本执行会引入未冻结代码，不满足本实验的证据要求。因此本 Manifest 只承担执行前源码与配置检查点；M5.5 后续必须先实现受控 Pilot launcher，提交后重新生成 Manifest，旧 Manifest 保留为历史证据但不得用于费用授权。M5.5.5 不读取 API key、不调用 provider，也不请求项目 owner 批准真实 Pilot。
 
 M5.5.5 的 CI 同构 experiment 门禁为 `212 passed`，总分支覆盖率 `93.04%`；全仓回归为 `622 passed`。Ruff format、Ruff lint、全量 mypy strict、契约快照、Pilot 预算预检和归档 Manifest content-only 验证均通过。
+
+## 25. M5.5.6 受控 Pilot launcher 与准备证据
+
+`run-pilot-live` 是固定 Pilot 的窄入口，不是通用 provider runner。它没有 API key 参数和部分计划开关；调用方必须提供 Manifest 与输出根，并逐字确认 `writer-pilot-v1` 和 `51815` 微美元硬上限。启动器始终执行 Manifest 内联的全部 8 个计划坐标，模型、参数、重试、token 和请求上限均来自冻结 technical manifest，不接受 CLI 覆盖或 fallback。
+
+```text
+Dataset + Plan + FrozenExperimentManifest
+                  │
+                  ▼
+      content-and-environment verifier
+                  │
+                  ▼
+       Pilot/Formal isolation + budget
+                  │
+                  ▼
+      live / experiment / cost confirmations
+                  │
+                  ▼
+   safe output root + FactoryController prepare
+                  │
+                  ▼
+       validate all MANUAL/FACTORY pairs
+                  │
+                  ▼
+       read OPENAI_API_KEY → create client
+                  │
+                  ▼
+       recover or execute all eight runs
+                  │
+                  ▼
+             close client in finally
+```
+
+`PilotFactoryPreparation` 绑定 experiment、dataset 与 execution manifest checksum，并按 domain 保存 controller 导出的 `AgentSpec` 和完整审计事件。准备链固定为 published prototype、URI 型 synthetic knowledge package、clone、bind 和 export；冻结知识正文仍由 dataset loader 按原始字节提供给两组 renderer，避免 Pydantic 字符串规范化改变 Markdown checksum。preparation 使用 write-once canonical JSON；已有文件只可逐字重放，SQLite 只用于首次控制器事务与审计生成，不成为恢复时的第二真相源。
+
+输出根位于仓库内时必须处于 `.tmp/`，也可在仓库外；现存路径段中的符号链接被拒绝。factory preparation 使用 `_factory-preparation/` 前缀，与 evidence loader 只读取的 `<experiment_id>/` journal 分离。API key 只通过 `EnvironmentApiKeySource` 在全部离线门禁和工厂准备完成后读取，不进入 argparse、Pydantic 模型、日志或产物。
+
+启动器对实际已记录 usage 使用冻结单价重新计算保守微美元费用，同时保留 request/token/费用硬上限。provider 不提供幂等键时，intent 已写但 completion 未落盘的窗口仍可能重复计费；现有恢复语义会记录 `RESULT_UNKNOWN_AFTER_INTERRUPTION`，并由最多两次 attempt 与总预算限制风险，不能宣称 exactly-once 外部调用。
+
+M5.5.6 的 tests 以真实 `FactoryController` 和 live 标记的 fake gateway 验证 2 个 domain、12 条审计事件、8 个坐标、重放零新增请求、Key 读取顺序、路径拒绝、异常关闭和 secret 不落盘。CI 同构 experiment 门禁为 `225 passed`、总分支覆盖率 `92.34%`；全仓回归为 `634 passed`。这些结果只证明 launcher 的工程约束，不证明真实 API、计费或模型质量。M5.5.5 归档保持历史不变；launcher 提交后必须重新冻结，才可进入真实 Pilot 审批。

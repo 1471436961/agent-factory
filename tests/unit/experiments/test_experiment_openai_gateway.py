@@ -66,6 +66,10 @@ class _FakeResponses:
 class _FakeClient:
     def __init__(self, outcomes: list[object]) -> None:
         self.responses = _FakeResponses(outcomes)
+        self.closed = 0
+
+    async def close(self) -> None:
+        self.closed += 1
 
 
 class _FakeResponse:
@@ -199,6 +203,8 @@ async def test_gateway_maps_condition_format_and_normalizes_success(
         }
     else:
         assert response_format == {"type": "json_object"}
+    await gateway.close()
+    assert client.closed == 1
 
 
 @pytest.mark.asyncio

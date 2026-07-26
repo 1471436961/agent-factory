@@ -63,7 +63,11 @@ GatewayOutcome: TypeAlias = GatewaySuccess | GatewayFailure
 class ExperimentGateway(Protocol):
     """Perform one bounded provider request and retain raw evidence."""
 
-    is_live: bool
+    @property
+    def is_live(self) -> bool:
+        """Declare whether calls can leave the local process."""
+
+        ...
 
     async def generate(self, request: GatewayRequest) -> GatewayOutcome:
         """Return a normalized success or provider failure."""

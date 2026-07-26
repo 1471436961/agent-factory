@@ -2,7 +2,7 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5 已进入且 M5.5.5 Pilot freeze manifest 已生成、验证并归档。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5.6 受控 Pilot launcher 已实现，等待提交后重新冻结与人工执行审批。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
@@ -152,7 +152,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] M5.2 实验模型、24 个任务和冻结 rubric 通过离线测试。
 - [x] M5.3 执行计划、条件公平性、不可变产物和恢复机制通过离线故障测试。
 - [x] M5.4 评分与分析可由 fixture 完整复算。
-- [x] M5.5.1-M5.5.5 冻结契约、候选生成、独立 Pilot fixture、预算预检、OpenAI gateway 契约测试和 Pilot Manifest 归档完成。
+- [x] M5.5.1-M5.5.6 冻结契约、独立 Pilot、OpenAI gateway、执行前 Manifest 与受控 launcher 完成。
 - [ ] M5.5 pilot 完成，正式配置、预算和 manifest 经人工冻结。
 - [ ] M5.6 正式调用经人工批准并完整执行。
 - [ ] M5.7 报告、原始数据和复算证据完成。
@@ -160,7 +160,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。M5.5.1-M5.5.5 已建立冻结契约、候选生成、独立 Pilot fixture、预算预检、OpenAI gateway 契约测试和可追溯的执行前 Pilot Manifest。仓库仍没有 Pilot 或正式模型数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告、fake gateway 或 mock OpenAI 响应当作模型质量证据。下一步是实现只接受归档 Manifest、显式 live 开关和独立输出目录的受控 Pilot launcher；该代码提交后必须重新冻结，才能向项目 owner 请求最多 `$0.051815` 的真实 Pilot 审批。
+M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5.1-M5.5.6 已实现冻结契约、独立 Pilot、预算预检、OpenAI gateway、历史执行前 Manifest 和受控 live launcher。仓库仍没有 Pilot 或正式模型数据，不能声称 H1-H5 获得支持，也不能把 fake client、mock 响应或合成报告当作模型质量证据。下一步是提交 M5.5.6，在该 clean commit 上重新冻结，再由项目 owner 单独决定是否批准最多 `$0.051815` 的真实 Pilot。
 
 ## 10. M5.2 实现证据
 
@@ -287,7 +287,7 @@ M5.5.3 没有读取 API key、实例化 live gateway 或调用模型。定向测
 - `GatewayRequest.expected_output_schema` 由 executor 从冻结任务表注入，只用于本地共同验证，不进入 provider-visible invocation 或 `prompt_hash`。MANUAL 映射为 `json_object`，FACTORY 映射为 strict `json_schema`；两组输出最终都按同一个 Draft 2020-12 Schema 校验。
 - `OpenAIExperimentGateway` 使用官方 Responses API，发送冻结 model、instructions、task input、temperature、max output tokens 和 timeout，并设置 `store=False`。SDK 内建重试固定为零，避免绕过 executor 的 journal、attempt 和预算控制。
 - 成功结果保留 provider request ID、原始响应、输出正文、结构化对象和输入/输出 token；响应与错误 body 分别限制为 1 MiB 和 64 KiB。异常正文不进入产物，timeout、429、5xx、4xx、网络、过滤和无效响应使用稳定 error code 分类。
-- gateway 的 `is_live=True` 继续受 executor `allow_live=False` 默认防线约束。当前没有 live CLI，也不从环境变量隐式读取 API key；构造函数只接受调用方显式提供的 key，且 gateway 对象不保存该字符串。
+- gateway 的 `is_live=True` 继续受 executor `allow_live=False` 默认防线约束。M5.5.4 当时尚无 live CLI，也不从环境变量隐式读取 API key；构造函数只接受调用方显式提供的 key，且 gateway 对象不保存该字符串。
 - Pilot freeze candidate inventory 新增 `experiments/openai_gateway.py`，共 61 项显式输入。该 tracked candidate 仍不是 clean-commit `FrozenExperimentManifest`。
 
 M5.5.4 的 31 项定向测试全部使用 fake client，并额外检查本地锁定 OpenAI SDK `2.46.0` 的 Responses 参数签名，不访问网络。CI 同构 experiment 门禁为 `211 passed`，总分支覆盖率 `93.04%`，其中 `openai_gateway.py` 为 `97%`；全仓回归为 `621 passed`。Ruff format、Ruff lint、全量 mypy strict 和契约快照检查通过。mock 证据不能证明真实账户权限、模型 snapshot 可用性、provider 限流或账单行为。真实 Pilot 仍须先生成 clean-commit freeze manifest，再由项目 owner 单独批准。
@@ -301,3 +301,14 @@ M5.5.4 的 31 项定向测试全部使用 fake client，并额外检查本地锁
 - 归档提交位于 source commit 之后，因此日常 CI 只做 content-only 验证；需要再次声明环境一致时必须 checkout source commit。该关系由文档显式保留，不通过修改 Manifest 伪装成同一提交。
 
 M5.5.5 未读取 API key、未实例化真实 client、未发起 provider 请求，也未产生费用。CI 同构 experiment 门禁为 `212 passed`，总分支覆盖率 `93.04%`；全仓回归为 `622 passed`。Ruff format、Ruff lint、全量 mypy strict、契约快照、Pilot 预算预检和归档 Manifest content-only 验证均通过。Manifest checksum 和 Git 历史能够发现普通漂移，但不是数字签名，不能抵御具有仓库写权限者同步改写全部证据。最终审计同时确认 source commit 尚无受控 live CLI；本 Manifest 不得用于真实执行授权，launcher 实现后必须重新冻结并再次提交 owner 评审。
+
+## 22. M5.5.6 受控 Pilot launcher
+
+- `run-pilot-live` 固定执行完整 Pilot plan，不提供 `--max-items` 或 API key 参数。命令必须同时提供 Freeze Manifest、独立输出目录、`--allow-live`、完全匹配的 experiment ID 和 51,815 微美元硬上限确认。
+- 启动顺序固定为 dataset/plan 加载、完整 Manifest 环境验证、Pilot/Formal 隔离与预算预检、双重人工确认、输出路径检查、真实 `FactoryController` 准备与全部条件配对校验，最后才读取进程环境中的 `OPENAI_API_KEY` 并创建 client。
+- 每个 Pilot domain 通过原型注册、知识注册、克隆、绑定和 `AgentSpec` 导出形成一个 revision 2 工厂实例。两个 AgentSpec 与 12 条审计事件写入带 checksum 的 write-once preparation；恢复时复用该证据，拒绝身份、来源或审计链漂移。
+- factory preparation 位于 `_factory-preparation/<experiment_id>/`，不混入 executor 的 `<experiment_id>/requests|attempts|terminal` 证据树。仓库内输出只允许位于 `.tmp/`，也可使用仓库外目录；现存符号链接路径被拒绝。
+- OpenAI SDK 仍禁用隐藏重试。启动器向 executor 显式传入 `allow_live=True`，但只有全部前置门禁通过后才可到达；成功、异常和中断路径统一异步关闭 SDK client。终端汇总实际可观测 token、保守实际费用、attempt 数及冻结硬上限，失败样本和未知结果不删除。
+- M5.5.5 的 61 项 Manifest 继续作为历史执行前证据，其 source commit 不包含 launcher。tracked candidate 已将 `experiments/pilot_launcher.py` 纳入新 inventory；M5.5.6 提交后必须在 clean HEAD 重新生成最终 Manifest，旧归档不能用于费用授权。
+
+本工作包没有读取真实 API key、没有网络或模型调用，也没有产生费用。所有 live 路径测试均使用本地 fake client；CI 同构 experiment 门禁为 `225 passed`，总分支覆盖率 `92.34%`，`pilot_launcher.py` 为 `87%`；全仓回归为 `634 passed`，全量 mypy strict 检查 `193` 个源文件通过，Ruff 与契约快照门禁保持通过。

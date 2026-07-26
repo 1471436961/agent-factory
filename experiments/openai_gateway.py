@@ -6,8 +6,8 @@ import hashlib
 import importlib
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import ClassVar, Protocol, cast
+from dataclasses import dataclass, field
+from typing import Protocol, cast
 
 from jsonschema import Draft202012Validator  # type: ignore[import-untyped]
 
@@ -36,13 +36,15 @@ class _OpenAIClient(Protocol):
     @property
     def responses(self) -> _ResponsesResource: ...
 
+    async def close(self) -> None: ...
+
 
 @dataclass(frozen=True, slots=True)
 class OpenAIExperimentGateway:
     """Execute one OpenAI request without hidden retries or evidence loss."""
 
     client: _OpenAIClient
-    is_live: ClassVar[bool] = True
+    is_live: bool = field(default=True, init=False, repr=False)
 
     async def generate(self, request: GatewayRequest) -> GatewayOutcome:
         prepared = _prepare_request(request)
@@ -53,6 +55,11 @@ class OpenAIExperimentGateway:
         except Exception as exc:
             return _classify_exception(exc)
         return _normalize_response(response, request.expected_output_schema)
+
+    async def close(self) -> None:
+        """Release the SDK transport owned by this experiment gateway."""
+
+        await self.client.close()
 
 
 def create_openai_experiment_gateway(*, api_key: str) -> OpenAIExperimentGateway:
