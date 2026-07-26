@@ -10,6 +10,7 @@ from uuid import UUID
 
 import regex
 from pydantic import (
+    AliasChoices,
     AwareDatetime,
     Field,
     PositiveInt,
@@ -53,7 +54,8 @@ HttpsUrl = Annotated[
     str,
     Field(min_length=9, max_length=2_048, pattern=r"^https://[^\s]+$"),
 ]
-PositiveUsdMicros = Annotated[int, Field(strict=True, gt=0, le=10**12)]
+CurrencyCode = Literal["USD", "CNY"]
+PositiveCurrencyMicros = Annotated[int, Field(strict=True, gt=0, le=10**12)]
 JsonFieldName = Annotated[
     str,
     Field(min_length=1, max_length=128, pattern=r"^[A-Za-z_][A-Za-z0-9_-]*$"),
@@ -321,6 +323,7 @@ class GenerationConfig(FrozenModel):
     request_timeout_seconds: float = Field(gt=0, le=600)
     max_attempts: int = Field(default=3, ge=1, le=3)
     concurrency: int = Field(default=1, ge=1, le=16)
+    provider_options: JsonObject = Field(default_factory=dict)
 
 
 class ExecutionLimits(FrozenModel):
@@ -370,7 +373,7 @@ class ExecutionPlan(FrozenModel):
 
 
 class ExecutionManifest(FrozenModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.1"] = "1.1"
     experiment_id: Slug
     dataset_checksum: Sha256
     plan_checksum: Sha256
@@ -859,16 +862,32 @@ class ProviderSnapshot(FrozenModel):
 class PriceSnapshot(FrozenModel):
     provider: Slug
     model: str = Field(min_length=1, max_length=256)
-    currency: Literal["USD"] = "USD"
+    currency: CurrencyCode
     unit_tokens: Literal[1_000_000] = 1_000_000
-    input_usd_micros_per_unit: PositiveUsdMicros
-    cached_input_usd_micros_per_unit: PositiveUsdMicros | None = None
-    output_usd_micros_per_unit: PositiveUsdMicros
+    input_micros_per_unit: PositiveCurrencyMicros = Field(
+        validation_alias=AliasChoices(
+            "input_micros_per_unit",
+            "input_usd_micros_per_unit",
+        )
+    )
+    cached_input_micros_per_unit: PositiveCurrencyMicros | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "cached_input_micros_per_unit",
+            "cached_input_usd_micros_per_unit",
+        ),
+    )
+    output_micros_per_unit: PositiveCurrencyMicros = Field(
+        validation_alias=AliasChoices(
+            "output_micros_per_unit",
+            "output_usd_micros_per_unit",
+        )
+    )
     source_url: HttpsUrl
     captured_at: AwareDatetime
 
 
-def calculate_conservative_cost_usd_micros(
+def calculate_conservative_cost_micros(
     *,
     input_tokens: int,
     output_tokens: int,
@@ -879,24 +898,32 @@ def calculate_conservative_cost_usd_micros(
     if input_tokens < 0 or output_tokens < 0:
         raise ValueError("token counts cannot be negative")
     unit = pricing.unit_tokens
-    input_cost = (input_tokens * pricing.input_usd_micros_per_unit + unit - 1) // unit
-    output_cost = (
-        output_tokens * pricing.output_usd_micros_per_unit + unit - 1
-    ) // unit
+    input_cost = (input_tokens * pricing.input_micros_per_unit + unit - 1) // unit
+    output_cost = (output_tokens * pricing.output_micros_per_unit + unit - 1) // unit
     return input_cost + output_cost
 
 
 class CostBudget(FrozenModel):
-    currency: Literal["USD"] = "USD"
+    currency: CurrencyCode
     estimated_provider_requests: PositiveInt
     estimated_prompt_tokens: PositiveInt
     estimated_completion_tokens: PositiveInt
-    estimated_cost_usd_micros: PositiveUsdMicros
-    hard_cost_limit_usd_micros: PositiveUsdMicros
+    estimated_cost_micros: PositiveCurrencyMicros = Field(
+        validation_alias=AliasChoices(
+            "estimated_cost_micros",
+            "estimated_cost_usd_micros",
+        )
+    )
+    hard_cost_limit_micros: PositiveCurrencyMicros = Field(
+        validation_alias=AliasChoices(
+            "hard_cost_limit_micros",
+            "hard_cost_limit_usd_micros",
+        )
+    )
 
     @model_validator(mode="after")
     def hard_limit_must_cover_estimate(self) -> Self:
-        if self.hard_cost_limit_usd_micros < self.estimated_cost_usd_micros:
+        if self.hard_cost_limit_micros < self.estimated_cost_micros:
             raise ValueError("hard cost limit cannot be below estimated cost")
         return self
 
@@ -910,7 +937,7 @@ class PilotEvidenceRef(FrozenModel):
 class FreezeCandidateSpec(FrozenModel):
     """Reviewed inputs from which machine-observed freeze evidence is derived."""
 
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.1"] = "1.1"
     purpose: ExperimentPurpose
     freeze_id: Slug
     experiment_id: Slug
@@ -937,6 +964,7 @@ class FreezeCandidateSpec(FrozenModel):
             or self.provider.sdk_version != generation.sdk_version
             or self.pricing.provider != self.provider.provider
             or self.pricing.model != self.provider.model
+            or self.pricing.currency != self.cost_budget.currency
         ):
             raise ValueError("freeze candidate source identities do not match")
         paths = list(self.inventory_paths)
@@ -955,7 +983,7 @@ class FreezeCandidateSpec(FrozenModel):
 
 
 class FrozenExperimentManifest(FrozenModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.1"] = "1.1"
     purpose: ExperimentPurpose
     freeze_id: Slug
     experiment_id: Slug
@@ -987,6 +1015,7 @@ class FrozenExperimentManifest(FrozenModel):
             or self.provider.sdk_version != generation.sdk_version
             or self.pricing.provider != self.provider.provider
             or self.pricing.model != self.provider.model
+            or self.pricing.currency != self.cost_budget.currency
             or self.analysis_config_checksum != sha256_model(self.analysis_config)
         ):
             raise ValueError("frozen manifest source identities do not match")
@@ -1029,19 +1058,19 @@ class FrozenExperimentManifest(FrozenModel):
             or budget.estimated_completion_tokens > limits.max_completion_tokens
         ):
             raise ValueError("estimated usage exceeds technical execution limits")
-        expected_cost = calculate_conservative_cost_usd_micros(
+        expected_cost = calculate_conservative_cost_micros(
             input_tokens=budget.estimated_prompt_tokens,
             output_tokens=budget.estimated_completion_tokens,
             pricing=self.pricing,
         )
-        if budget.estimated_cost_usd_micros != expected_cost:
+        if budget.estimated_cost_micros != expected_cost:
             raise ValueError("estimated cost does not match tokens and pricing")
-        token_ceiling_cost = calculate_conservative_cost_usd_micros(
+        token_ceiling_cost = calculate_conservative_cost_micros(
             input_tokens=limits.max_prompt_tokens,
             output_tokens=limits.max_completion_tokens,
             pricing=self.pricing,
         )
-        if budget.hard_cost_limit_usd_micros > token_ceiling_cost:
+        if budget.hard_cost_limit_micros > token_ceiling_cost:
             raise ValueError("hard cost limit exceeds token-bound cost ceiling")
 
 

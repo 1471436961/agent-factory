@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.experiment_fixtures import write_current_pilot_test_manifest
 
 from agent_factory.domain.enums import AuditEventType
 from experiments.artifacts import ArtifactStore
@@ -20,13 +21,6 @@ from experiments.rendering import validate_condition_pair
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFINITION_ROOT = REPOSITORY_ROOT / "experiments" / "definitions" / "writer-pilot-v1"
-MANIFEST_PATH = (
-    REPOSITORY_ROOT
-    / "experiments"
-    / "evidence"
-    / "writer-pilot-v1"
-    / "freeze-manifest.json"
-)
 
 
 @pytest.mark.asyncio
@@ -35,7 +29,11 @@ async def test_pilot_preparer_persists_controller_specs_and_audit_chain(
 ) -> None:
     dataset = load_experiment_dataset(DEFINITION_ROOT)
     plan = load_execution_plan(DEFINITION_ROOT / "execution-plan.json", dataset)
-    manifest = load_frozen_experiment_manifest(MANIFEST_PATH)
+    manifest_path = write_current_pilot_test_manifest(
+        REPOSITORY_ROOT,
+        tmp_path / "launch-freeze-manifest.json",
+    )
+    manifest = load_frozen_experiment_manifest(manifest_path)
     store = ArtifactStore(tmp_path / "runs")
 
     provider = await prepare_pilot_invocation_provider(

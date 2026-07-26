@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.6 受控 launcher 已实现，等待提交后重新冻结；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.5 Pilot 供应商切换与重新冻结阶段；Moonshot/Kimi 受控 gateway 已实现，尚未读取真实 API key 或执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4169,7 +4169,11 @@ M5.5.6 新增 `run-pilot-live` 与 `PilotFactoryPreparation`。命令不接受 A
 
 M5.5.7 在 clean source commit `d3c19beb75587b5cc9963c05832c918694dfa9e1` 上冻结包含 `pilot_launcher.py` 的 62 项输入。其 Manifest checksum 为 `6514a01799af9b6585f4ff009ad11c887439a324200771d0cae479f28f630d22`，文件 SHA-256 为 `994f0d46557adeea77703849b0eb3978abe3d9fe89a1741c01b802ffcd2d2740`，现保存在 [`freeze-manifest-m5.5.7.json`](../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.7.json)。收尾审计确认该 inventory 没有包含 `FactoryController`、领域服务、Repository 或 migration，因此它是可追溯的历史检查点，但不能证明 FACTORY AgentSpec 的生产逻辑未漂移，也不能用于费用授权。
 
-M5.5 收尾将 `src/agent_factory` 下 85 个 Python 文件和 6 个 migration SQL 全部纳入 candidate，避免用脆弱的传递 import 列表推断运行依赖。新 canonical [`freeze-manifest.json`](../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 在 clean source commit `e76adc778300b73b5973920fbaaa72275501db8d` 上生成，共绑定 153 项输入；Manifest checksum 为 `58afac123924e0604ec4067f0492781e7115a97b6c14900aee5bcff8fcd05713`，文件 SHA-256 为 `9758d465b44663baf18ced7f06ef51292d57037e1840c7dc17ba63fb94a1cecf`。该文件在 tracked 工作树仍干净时通过环境级与 content-only 双重验证。修正只闭合执行前证据，不新增 M5.5 子里程碑，也不代表真实 Pilot 已批准或执行。
+M5.5 收尾将 `src/agent_factory` 下 85 个 Python 文件和 6 个 migration SQL 全部纳入 candidate，避免用脆弱的传递 import 列表推断运行依赖。OpenAI 版本的 canonical Manifest 曾在 clean source commit `e76adc778300b73b5973920fbaaa72275501db8d` 上生成，共绑定 153 项输入；Manifest checksum 为 `58afac123924e0604ec4067f0492781e7115a97b6c14900aee5bcff8fcd05713`，文件 SHA-256 为 `9758d465b44663baf18ced7f06ef51292d57037e1840c7dc17ba63fb94a1cecf`。供应商切换后该文件原始字节归档为 [`freeze-manifest-openai-pre-switch.json`](../experiments/evidence/writer-pilot-v1/freeze-manifest-openai-pre-switch.json)，不得再用于费用授权。
+
+2026-07-26 经项目 owner 复核，Pilot 从 OpenAI 切换为中国区 Moonshot API。冻结契约升级到 `1.1`：价格和预算显式携带 `currency`，金额统一使用该货币的整数 micros；旧 `*_usd_micros` 字段仅作为反序列化兼容别名，不再作为规范输出。当前候选固定 `https://api.moonshot.cn/v1`、Chat Completions、`kimi-k2.6`、非思考模式、流式响应、`temperature=0.6`、`top_p=0.95`、`n=1`、60 秒 timeout、最多 2 次 attempt 和单并发；MANUAL 使用 JSON mode，FACTORY 使用 strict JSON Schema，两组继续接受相同的本地 Draft 2020-12 校验。兼容客户端为 OpenAI SDK `2.46.0`，SDK 内建重试仍为零，凭据只从 `MOONSHOT_API_KEY` 读取。
+
+价格按 2026-07-26 的 [Kimi 开放平台公开价格](https://platform.kimi.com/) 冻结：每百万 token 未缓存输入 `¥6.50`、缓存输入 `¥1.10`、输出 `¥27.00`，预算不假设缓存命中。8 次预期请求对应 `¥0.429184`，最多 16 次 attempt 的本地硬上限为 `¥0.858368`。`kimi-k2.6` 是供应商别名而非带日期的不可变快照，因此 `model_is_immutable_snapshot=false`；Manifest 能冻结请求配置和响应证据，但不能阻止供应商更新别名背后的模型。新的 canonical Manifest 必须在本次实现与文档进入 clean commit 后重新生成并验证；此前对 OpenAI 模型和美元上限的批准已经失效，Moonshot 真实 Pilot 必须重新获得精确费用审批。
 
 ### 13.5 指标计算
 

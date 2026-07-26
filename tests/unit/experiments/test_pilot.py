@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,7 +19,6 @@ from experiments.freezing import (
     FreezeCandidateBuilder,
     GitSnapshot,
     load_freeze_candidate_spec,
-    load_frozen_experiment_manifest,
     verify_freeze_manifest,
 )
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
@@ -31,15 +31,12 @@ FORMAL_ROOT = REPOSITORY_ROOT / "experiments" / "definitions" / "writer-v1"
 PILOT_PLAN_PATH = PILOT_ROOT / "execution-plan.json"
 FORMAL_PLAN_PATH = FORMAL_ROOT / "execution-plan.json"
 CANDIDATE_PATH = PILOT_ROOT / "freeze-candidate.json"
-FINAL_MANIFEST_PATH = (
-    REPOSITORY_ROOT
-    / "experiments"
-    / "evidence"
-    / "writer-pilot-v1"
-    / "freeze-manifest.json"
+EVIDENCE_ROOT = REPOSITORY_ROOT / "experiments" / "evidence" / "writer-pilot-v1"
+OPENAI_PRE_SWITCH_MANIFEST_PATH = EVIDENCE_ROOT / (
+    "freeze-manifest-openai-pre-switch.json"
 )
-HISTORICAL_MANIFEST_PATH = FINAL_MANIFEST_PATH.with_name("freeze-manifest-m5.5.5.json")
-M557_MANIFEST_PATH = FINAL_MANIFEST_PATH.with_name("freeze-manifest-m5.5.7.json")
+HISTORICAL_MANIFEST_PATH = EVIDENCE_ROOT / "freeze-manifest-m5.5.5.json"
+M557_MANIFEST_PATH = EVIDENCE_ROOT / "freeze-manifest-m5.5.7.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,30 +131,38 @@ def test_pilot_fixture_is_small_balanced_and_identity_isolated() -> None:
     assert report.run_count == 8
     assert report.estimated_provider_requests == 8
     assert report.max_provider_requests == 16
-    assert report.estimated_cost_usd_micros == 25_908
-    assert report.hard_cost_limit_usd_micros == 51_815
+    assert report.currency == "CNY"
+    assert report.estimated_cost_micros == 429_184
+    assert report.hard_cost_limit_micros == 858_368
 
 
 def test_pilot_candidate_binds_reviewed_model_price_and_complete_inputs() -> None:
     pilot_dataset, pilot_plan, _, _, candidate = _inputs()
 
     assert candidate.purpose is ExperimentPurpose.PILOT
-    assert candidate.provider.provider == "openai"
-    assert candidate.provider.model == "gpt-4.1-mini-2025-04-14"
-    assert candidate.provider.api_name == "responses"
+    assert candidate.provider.provider == "moonshot"
+    assert candidate.provider.model == "kimi-k2.6"
+    assert candidate.provider.api_name == "chat-completions"
     assert candidate.provider.sdk_version == "2.46.0"
-    assert candidate.provider.model_is_immutable_snapshot is True
-    assert candidate.pricing.input_usd_micros_per_unit == 400_000
-    assert candidate.pricing.cached_input_usd_micros_per_unit == 100_000
-    assert candidate.pricing.output_usd_micros_per_unit == 1_600_000
-    assert candidate.pricing.source_url == (
-        "https://developers.openai.com/api/docs/models/gpt-4.1-mini"
-    )
+    assert candidate.provider.model_is_immutable_snapshot is False
+    assert candidate.pricing.currency == "CNY"
+    assert candidate.pricing.input_micros_per_unit == 6_500_000
+    assert candidate.pricing.cached_input_micros_per_unit == 1_100_000
+    assert candidate.pricing.output_micros_per_unit == 27_000_000
+    assert candidate.pricing.source_url == "https://platform.kimi.com/"
+    assert dict(candidate.execution_manifest.generation.provider_options) == {
+        "n": 1,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "thinking": {"type": "disabled"},
+        "top_p": 0.95,
+    }
     assert candidate.execution_manifest.generation.max_attempts == 2
     assert candidate.execution_manifest.generation.concurrency == 1
     assert candidate.execution_manifest.limits.max_provider_requests == 16
     assert "experiments/pilot.py" in candidate.inventory_paths
     assert "experiments/pilot_launcher.py" in candidate.inventory_paths
+    assert "experiments/moonshot_gateway.py" in candidate.inventory_paths
     assert "experiments/openai_gateway.py" in candidate.inventory_paths
     top_level_experiment_sources = {
         path.relative_to(REPOSITORY_ROOT).as_posix()
@@ -202,64 +207,64 @@ def test_pilot_candidate_binds_reviewed_model_price_and_complete_inputs() -> Non
 
 def test_archived_pilot_freeze_manifest_retains_historical_identity() -> None:
     manifest_bytes = HISTORICAL_MANIFEST_PATH.read_bytes()
-    manifest = load_frozen_experiment_manifest(HISTORICAL_MANIFEST_PATH)
+    manifest = json.loads(manifest_bytes)
 
     assert hashlib.sha256(manifest_bytes).hexdigest() == (
         "a3216e6b292126c5041ab701c1864c53e56ba15faac3d33ecd55c69d3a59d7b2"
     )
-    assert manifest.manifest_checksum == (
+    assert manifest["manifest_checksum"] == (
         "2673435ce2623c7c5bfaeb4a011c72f0558ef557c3506bba6685d114357bb6af"
     )
-    assert manifest.source.source_commit == ("5a5d58cb42b62e3d2e10a060fea72d4ae0a97498")
-    assert len(manifest.files) == 61
+    assert manifest["source"]["source_commit"] == (
+        "5a5d58cb42b62e3d2e10a060fea72d4ae0a97498"
+    )
+    assert len(manifest["files"]) == 61
     assert "experiments/pilot_launcher.py" not in {
-        artifact.path for artifact in manifest.files
+        artifact["path"] for artifact in manifest["files"]
     }
 
 
 def test_m557_manifest_retains_pre_closure_identity() -> None:
     manifest_bytes = M557_MANIFEST_PATH.read_bytes()
-    manifest = load_frozen_experiment_manifest(M557_MANIFEST_PATH)
+    manifest = json.loads(manifest_bytes)
 
     assert hashlib.sha256(manifest_bytes).hexdigest() == (
         "994f0d46557adeea77703849b0eb3978abe3d9fe89a1741c01b802ffcd2d2740"
     )
-    assert manifest.manifest_checksum == (
+    assert manifest["manifest_checksum"] == (
         "6514a01799af9b6585f4ff009ad11c887439a324200771d0cae479f28f630d22"
     )
-    assert manifest.source.source_commit == ("d3c19beb75587b5cc9963c05832c918694dfa9e1")
-    assert len(manifest.files) == 62
+    assert manifest["source"]["source_commit"] == (
+        "d3c19beb75587b5cc9963c05832c918694dfa9e1"
+    )
+    assert len(manifest["files"]) == 62
     assert "experiments/pilot_launcher.py" in {
-        artifact.path for artifact in manifest.files
+        artifact["path"] for artifact in manifest["files"]
     }
     assert not any(
-        artifact.path.startswith("src/agent_factory/") for artifact in manifest.files
+        artifact["path"].startswith("src/agent_factory/")
+        for artifact in manifest["files"]
     )
 
 
-def test_final_pilot_freeze_manifest_binds_complete_production_source() -> None:
-    pilot_dataset, pilot_plan, _, _, _ = _inputs()
-    manifest_bytes = FINAL_MANIFEST_PATH.read_bytes()
-    manifest = load_frozen_experiment_manifest(FINAL_MANIFEST_PATH)
+def test_openai_pre_switch_manifest_retains_production_closure_identity() -> None:
+    manifest_bytes = OPENAI_PRE_SWITCH_MANIFEST_PATH.read_bytes()
+    manifest = json.loads(manifest_bytes)
 
     assert hashlib.sha256(manifest_bytes).hexdigest() == (
         "9758d465b44663baf18ced7f06ef51292d57037e1840c7dc17ba63fb94a1cecf"
     )
-    assert manifest.manifest_checksum == (
+    assert manifest["manifest_checksum"] == (
         "58afac123924e0604ec4067f0492781e7115a97b6c14900aee5bcff8fcd05713"
     )
-    assert manifest.source.source_commit == ("e76adc778300b73b5973920fbaaa72275501db8d")
-    assert len(manifest.files) == 153
-    frozen_paths = {artifact.path for artifact in manifest.files}
-    assert _production_runtime_sources() <= frozen_paths
-    verify_freeze_manifest(
-        manifest,
-        repository_root=REPOSITORY_ROOT,
-        dataset=pilot_dataset,
-        plan=pilot_plan,
-        plan_path=PILOT_PLAN_PATH,
-        verify_environment=False,
+    assert manifest["source"]["source_commit"] == (
+        "e76adc778300b73b5973920fbaaa72275501db8d"
     )
+    assert len(manifest["files"]) == 153
+    frozen_paths = {artifact["path"] for artifact in manifest["files"]}
+    assert _production_runtime_sources() <= frozen_paths
+    assert manifest["provider"]["provider"] == "openai"
+    assert manifest["cost_budget"]["hard_cost_limit_usd_micros"] == 51_815
 
 
 def test_pilot_preflight_rejects_formal_identity_overlap() -> None:
@@ -278,7 +283,7 @@ def test_pilot_preflight_rejects_formal_identity_overlap() -> None:
 def test_pilot_preflight_rejects_budget_drift() -> None:
     pilot_dataset, pilot_plan, formal_dataset, formal_plan, candidate = _inputs()
     drifted_budget = candidate.cost_budget.model_copy(
-        update={"hard_cost_limit_usd_micros": 51_814}
+        update={"hard_cost_limit_micros": 858_367}
     )
     drifted_candidate = candidate.model_copy(update={"cost_budget": drifted_budget})
 
@@ -320,11 +325,17 @@ def test_pilot_preflight_rejects_model_and_technical_limit_drift() -> None:
     with pytest.raises(PilotPreflightError, match="concurrency"):
         _preflight(_with_generation(candidate, concurrent))
 
-    mutable_provider = candidate.provider.model_copy(
-        update={"model_is_immutable_snapshot": False}
+    false_snapshot_claim = candidate.provider.model_copy(
+        update={"model_is_immutable_snapshot": True}
     )
-    with pytest.raises(PilotPreflightError, match="immutable snapshot"):
-        _preflight(candidate.model_copy(update={"provider": mutable_provider}))
+    with pytest.raises(PilotPreflightError, match="cannot claim immutable"):
+        _preflight(candidate.model_copy(update={"provider": false_snapshot_claim}))
+
+    drifted_profile = candidate.execution_manifest.generation.model_copy(
+        update={"provider_options": {}}
+    )
+    with pytest.raises(PilotPreflightError, match="profile is not reviewed"):
+        _preflight(_with_generation(candidate, drifted_profile))
 
     for field, message in (
         ("max_provider_requests", "request limit"),
@@ -349,7 +360,7 @@ def test_pilot_preflight_rejects_estimated_usage_and_cost_drift() -> None:
         _preflight(candidate.model_copy(update={"cost_budget": estimated_usage}))
 
     estimated_cost = candidate.cost_budget.model_copy(
-        update={"estimated_cost_usd_micros": 25_907}
+        update={"estimated_cost_micros": 429_183}
     )
     with pytest.raises(PilotPreflightError, match="estimated cost"):
         _preflight(candidate.model_copy(update={"cost_budget": estimated_cost}))

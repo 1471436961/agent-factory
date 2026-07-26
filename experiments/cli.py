@@ -185,7 +185,8 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument("--formal-plan", type=Path)
     live.add_argument("--allow-live", action="store_true")
     live.add_argument("--confirm-experiment-id", required=True)
-    live.add_argument("--confirm-hard-cost-usd-micros", type=int, required=True)
+    live.add_argument("--confirm-currency", required=True, choices=("USD", "CNY"))
+    live.add_argument("--confirm-hard-cost-micros", type=int, required=True)
     return parser
 
 
@@ -210,9 +211,8 @@ def main(argv: list[str] | None = None) -> int:
                         output_root=args.output_root,
                         allow_live=args.allow_live,
                         confirmed_experiment_id=args.confirm_experiment_id,
-                        confirmed_hard_cost_usd_micros=(
-                            args.confirm_hard_cost_usd_micros
-                        ),
+                        confirmed_currency=args.confirm_currency,
+                        confirmed_hard_cost_micros=args.confirm_hard_cost_micros,
                     ),
                     repository_root=REPOSITORY_ROOT,
                 )
@@ -235,8 +235,9 @@ def main(argv: list[str] | None = None) -> int:
             f"{summary.max_provider_requests} "
             f"observed_tokens={summary.observed_prompt_tokens}+"
             f"{summary.observed_completion_tokens} "
-            f"observed_cost_usd_micros={summary.observed_cost_usd_micros} "
-            f"hard_cost_usd_micros={summary.hard_cost_limit_usd_micros}"
+            f"currency={summary.currency} "
+            f"observed_cost_micros={summary.observed_cost_micros} "
+            f"hard_cost_micros={summary.hard_cost_limit_micros}"
         )
         return 0
     dataset = load_experiment_dataset(definition_root)
@@ -299,8 +300,9 @@ def main(argv: list[str] | None = None) -> int:
             f"tasks={report.task_count} runs={report.run_count} "
             f"requests={report.estimated_provider_requests}/"
             f"{report.max_provider_requests} "
-            f"cost_usd_micros={report.estimated_cost_usd_micros}/"
-            f"{report.hard_cost_limit_usd_micros}"
+            f"currency={report.currency} "
+            f"cost_micros={report.estimated_cost_micros}/"
+            f"{report.hard_cost_limit_micros}"
         )
         return 0
     if args.command == "freeze-candidate":
@@ -326,7 +328,8 @@ def main(argv: list[str] | None = None) -> int:
             f"{action} freeze candidate {output} "
             f"sha256={manifest.manifest_checksum} "
             f"commit={manifest.source.source_commit} files={len(manifest.files)} "
-            f"hard_cost_usd_micros={manifest.cost_budget.hard_cost_limit_usd_micros}"
+            f"currency={manifest.cost_budget.currency} "
+            f"hard_cost_micros={manifest.cost_budget.hard_cost_limit_micros}"
         )
         return 0
     if args.command == "verify-freeze":

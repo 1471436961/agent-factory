@@ -218,3 +218,14 @@
    - 最终修正：保留已有 Git 历史和证据章节，不再扩张工作包编号；项目状态按 M5.5 原始退出条件判断，真实 240-run 仍属于 M5.6。
    - 证据：`docs/milestones/m5-validation-experiment.md` 第 5、8 节；项目 owner 对新增编号的人工 review 结论。
    - 对后续路线的影响：实现步骤和审批检查点不再自动获得里程碑编号；M5.5 只有在 Pilot 完成、正式 Manifest 冻结且 owner 明确批准后才能勾选完成。
+
+1. **M5.5 Pilot 从 OpenAI 专用费用契约修正为 Moonshot 与货币中立契约**
+
+   - 日期：2026-07-26
+   - 里程碑：M5.5 真实 Pilot 执行前评审
+   - 原判断：使用 OpenAI `gpt-4.1-mini-2025-04-14`、Responses API 和美元预算完成 8-run Pilot；项目 owner 已按 `$0.051815` 上限批准真实调用。
+   - 原判断的不足：ChatGPT Plus 与 OpenAI API 是独立产品，现有地区和付款条件不能形成可执行的 OpenAI API 账户路径；原实现还把金额字段编码为 USD 专用名称，无法在不歪曲单位的情况下切换供应商。另一方面，Kimi 当前只提供 `kimi-k2.6` 别名，没有带日期的不可变 snapshot，不能沿用“固定模型快照”的可复现性声明。
+   - 人工 review 结论：Pilot 改用中国区 Moonshot API 和 `kimi-k2.6` 非思考模式；旧 OpenAI 批准立即失效。模型调用 profile、人民币价格和新硬上限必须重新冻结，并在真实调用前再次获得精确批准。
+   - 最终修正：冻结 schema 升级为 `1.1`，价格和预算显式携带 `currency`，规范字段改为货币中立的 integer micros；新增 OpenAI-compatible `MoonshotExperimentGateway`，固定 Chat Completions 流式调用、`temperature=0.6`、`top_p=0.95`、`n=1`、MANUAL JSON mode、FACTORY strict JSON Schema 与本地共同校验。候选记录 `model_is_immutable_snapshot=false`，预算按未缓存输入计算为预期 `¥0.429184`、硬上限 `¥0.858368`。OpenAI canonical Manifest 原样转为切换前历史证据。
+   - 证据：[Kimi API 概览](https://platform.kimi.com/docs/api/overview)、[Kimi K2.6 使用说明](https://platform.kimi.com/docs/guide/kimi-k2-6-quickstart)、[Chat Completions 结构化输出说明](https://platform.kimi.com/docs/api/chat)、[Kimi 开放平台价格](https://platform.kimi.com/)；`experiments/moonshot_gateway.py`、`experiments/definitions/writer-pilot-v1/freeze-candidate.json` 及对应 fake-stream 单元测试。
+   - 对后续路线的影响：所有实验费用确认都必须同时匹配 currency 与 integer micros；provider 切换必须生成新 schema-compatible Manifest，不能复用旧费用批准。M5.5 在新的 Moonshot clean-commit Manifest 生成和 owner 二次批准前仍未达到真实执行条件；正式报告必须披露 provider alias 可能漂移的外部复现限制。

@@ -29,7 +29,8 @@ class _CliSource:
 
 @dataclass(frozen=True, slots=True)
 class _CliBudget:
-    hard_cost_limit_usd_micros: int = 1_000
+    currency: str = "USD"
+    hard_cost_limit_micros: int = 1_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +136,7 @@ def test_verify_pilot_cli_reports_isolated_budget_bounds(
     output = capsys.readouterr().out
     assert "experiment=writer-pilot-v1 tasks=4 runs=8" in output
     assert "requests=8/16" in output
-    assert "cost_usd_micros=25908/51815" in output
+    assert "currency=CNY cost_micros=429184/858368" in output
 
 
 def test_freeze_cli_wires_candidate_and_content_only_verification(

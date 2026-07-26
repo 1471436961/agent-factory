@@ -6,9 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+from tests.experiment_fixtures import write_current_pilot_test_manifest
 
 from experiments.artifacts import ArtifactStore
-from experiments.contracts import ExecutionPlan, FrozenExperimentManifest
+from experiments.contracts import CurrencyCode, ExecutionPlan, FrozenExperimentManifest
 from experiments.executor import InvocationProvider
 from experiments.freezing import FreezeError, load_frozen_experiment_manifest
 from experiments.gateway import (
@@ -31,14 +32,13 @@ from experiments.planning import load_execution_plan
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 PILOT_ROOT = REPOSITORY_ROOT / "experiments" / "definitions" / "writer-pilot-v1"
 FORMAL_ROOT = REPOSITORY_ROOT / "experiments" / "definitions" / "writer-v1"
-MANIFEST_PATH = (
+HISTORICAL_MANIFEST_PATH = (
     REPOSITORY_ROOT
     / "experiments"
     / "evidence"
     / "writer-pilot-v1"
-    / "freeze-manifest.json"
+    / "freeze-manifest-m5.5.5.json"
 )
-HISTORICAL_MANIFEST_PATH = MANIFEST_PATH.with_name("freeze-manifest-m5.5.5.json")
 SECRET = "sk-test-must-never-enter-artifacts"
 
 
@@ -126,13 +126,22 @@ class _StaticInvocationPreparer:
         return self.provider
 
 
+@pytest.fixture
+def launch_manifest_path(tmp_path: Path) -> Path:
+    return write_current_pilot_test_manifest(
+        REPOSITORY_ROOT,
+        tmp_path / "launch-freeze-manifest.json",
+    )
+
+
 def _request(
     output_root: Path,
     *,
-    manifest_path: Path = MANIFEST_PATH,
+    manifest_path: Path,
     allow_live: bool = True,
     confirmed_experiment_id: str = "writer-pilot-v1",
-    confirmed_hard_cost_usd_micros: int = 51_815,
+    confirmed_currency: CurrencyCode = "CNY",
+    confirmed_hard_cost_micros: int = 858_368,
 ) -> PilotLaunchRequest:
     return PilotLaunchRequest(
         definition_root=PILOT_ROOT,
@@ -143,13 +152,15 @@ def _request(
         output_root=output_root,
         allow_live=allow_live,
         confirmed_experiment_id=confirmed_experiment_id,
-        confirmed_hard_cost_usd_micros=confirmed_hard_cost_usd_micros,
+        confirmed_currency=confirmed_currency,
+        confirmed_hard_cost_micros=confirmed_hard_cost_micros,
     )
 
 
 @pytest.mark.asyncio
 async def test_live_pilot_executes_all_coordinates_and_resumes_without_calls(
     tmp_path: Path,
+    launch_manifest_path: Path,
 ) -> None:
     verifier = _NoOpFreezeVerifier()
     key_source = _RecordingKeySource()
@@ -162,12 +173,12 @@ async def test_live_pilot_executes_all_coordinates_and_resumes_without_calls(
     output_root = tmp_path / "pilot-runs"
 
     first = await run_live_pilot(
-        _request(output_root),
+        _request(output_root, manifest_path=launch_manifest_path),
         repository_root=REPOSITORY_ROOT,
         dependencies=dependencies,
     )
     second = await run_live_pilot(
-        _request(output_root),
+        _request(output_root, manifest_path=launch_manifest_path),
         repository_root=REPOSITORY_ROOT,
         dependencies=dependencies,
     )
@@ -178,9 +189,10 @@ async def test_live_pilot_executes_all_coordinates_and_resumes_without_calls(
     assert first.provider_attempts == 8
     assert first.observed_prompt_tokens == 800
     assert first.observed_completion_tokens == 320
-    assert first.observed_cost_usd_micros == 832
+    assert first.currency == "CNY"
+    assert first.observed_cost_micros == 13_840
     assert first.max_provider_requests == 16
-    assert first.hard_cost_limit_usd_micros == 51_815
+    assert first.hard_cost_limit_micros == 858_368
     assert len(gateway_factory.gateways[0].calls) == 8
     assert len(gateway_factory.gateways[1].calls) == 0
     assert [gateway.closed for gateway in gateway_factory.gateways] == [1, 1]
@@ -199,6 +211,7 @@ async def test_live_pilot_executes_all_coordinates_and_resumes_without_calls(
 @pytest.mark.asyncio
 async def test_freeze_rejection_happens_before_preparation_key_or_gateway(
     tmp_path: Path,
+    launch_manifest_path: Path,
 ) -> None:
     key_source = _RecordingKeySource()
     gateway_factory = _RecordingGatewayFactory()
@@ -210,7 +223,7 @@ async def test_freeze_rejection_happens_before_preparation_key_or_gateway(
 
     with pytest.raises(PilotLaunchError, match="freeze rejection"):
         await run_live_pilot(
-            _request(tmp_path / "runs"),
+            _request(tmp_path / "runs", manifest_path=launch_manifest_path),
             repository_root=REPOSITORY_ROOT,
             dependencies=dependencies,
         )
@@ -244,17 +257,20 @@ async def test_historical_manifest_is_rejected_before_key_read(tmp_path: Path) -
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("allow_live", "confirmed_experiment_id", "confirmed_cost"),
+    ("allow_live", "confirmed_experiment_id", "confirmed_currency", "confirmed_cost"),
     [
-        (False, "writer-pilot-v1", 51_815),
-        (True, "other-pilot", 51_815),
-        (True, "writer-pilot-v1", 51_814),
+        (False, "writer-pilot-v1", "CNY", 858_368),
+        (True, "other-pilot", "CNY", 858_368),
+        (True, "writer-pilot-v1", "USD", 858_368),
+        (True, "writer-pilot-v1", "CNY", 858_367),
     ],
 )
 async def test_approval_mismatch_fails_before_key_and_output(
     tmp_path: Path,
+    launch_manifest_path: Path,
     allow_live: bool,
     confirmed_experiment_id: str,
+    confirmed_currency: CurrencyCode,
     confirmed_cost: int,
 ) -> None:
     key_source = _RecordingKeySource()
@@ -269,9 +285,11 @@ async def test_approval_mismatch_fails_before_key_and_output(
         await run_live_pilot(
             _request(
                 output_root,
+                manifest_path=launch_manifest_path,
                 allow_live=allow_live,
                 confirmed_experiment_id=confirmed_experiment_id,
-                confirmed_hard_cost_usd_micros=confirmed_cost,
+                confirmed_currency=confirmed_currency,
+                confirmed_hard_cost_micros=confirmed_cost,
             ),
             repository_root=REPOSITORY_ROOT,
             dependencies=dependencies,
@@ -282,7 +300,10 @@ async def test_approval_mismatch_fails_before_key_and_output(
 
 
 @pytest.mark.asyncio
-async def test_missing_key_stops_after_factory_preparation(tmp_path: Path) -> None:
+async def test_missing_key_stops_after_factory_preparation(
+    tmp_path: Path,
+    launch_manifest_path: Path,
+) -> None:
     key_source = _RecordingKeySource(value=None)
     gateway_factory = _RecordingGatewayFactory()
     output_root = tmp_path / "runs"
@@ -292,9 +313,9 @@ async def test_missing_key_stops_after_factory_preparation(tmp_path: Path) -> No
         gateway_factory=gateway_factory,
     )
 
-    with pytest.raises(PilotLaunchError, match="OPENAI_API_KEY"):
+    with pytest.raises(PilotLaunchError, match="MOONSHOT_API_KEY"):
         await run_live_pilot(
-            _request(output_root),
+            _request(output_root, manifest_path=launch_manifest_path),
             repository_root=REPOSITORY_ROOT,
             dependencies=dependencies,
         )
@@ -308,10 +329,13 @@ async def test_missing_key_stops_after_factory_preparation(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
-async def test_gateway_is_closed_when_execution_is_interrupted(tmp_path: Path) -> None:
+async def test_gateway_is_closed_when_execution_is_interrupted(
+    tmp_path: Path,
+    launch_manifest_path: Path,
+) -> None:
     dataset = load_experiment_dataset(PILOT_ROOT)
     plan = load_execution_plan(PILOT_ROOT / "execution-plan.json", dataset)
-    manifest = load_frozen_experiment_manifest(MANIFEST_PATH)
+    manifest = load_frozen_experiment_manifest(launch_manifest_path)
     provider = await prepare_pilot_invocation_provider(
         dataset=dataset,
         plan=plan,
@@ -329,7 +353,7 @@ async def test_gateway_is_closed_when_execution_is_interrupted(tmp_path: Path) -
 
     with pytest.raises(RuntimeError, match="synthetic provider interruption"):
         await run_live_pilot(
-            _request(tmp_path / "interrupted"),
+            _request(tmp_path / "interrupted", manifest_path=launch_manifest_path),
             repository_root=REPOSITORY_ROOT,
             dependencies=dependencies,
         )
@@ -340,10 +364,11 @@ async def test_gateway_is_closed_when_execution_is_interrupted(tmp_path: Path) -
 @pytest.mark.asyncio
 async def test_client_creation_failure_is_normalized_without_secret(
     tmp_path: Path,
+    launch_manifest_path: Path,
 ) -> None:
     dataset = load_experiment_dataset(PILOT_ROOT)
     plan = load_execution_plan(PILOT_ROOT / "execution-plan.json", dataset)
-    manifest = load_frozen_experiment_manifest(MANIFEST_PATH)
+    manifest = load_frozen_experiment_manifest(launch_manifest_path)
     provider = await prepare_pilot_invocation_provider(
         dataset=dataset,
         plan=plan,
@@ -359,12 +384,12 @@ async def test_client_creation_failure_is_normalized_without_secret(
 
     with pytest.raises(PilotLaunchError) as captured:
         await run_live_pilot(
-            _request(tmp_path / "creation-failure"),
+            _request(tmp_path / "creation-failure", manifest_path=launch_manifest_path),
             repository_root=REPOSITORY_ROOT,
             dependencies=dependencies,
         )
 
-    assert str(captured.value) == "OpenAI experiment client cannot be created"
+    assert str(captured.value) == "Moonshot experiment client cannot be created"
     assert SECRET not in str(captured.value)
     assert captured.value.__cause__ is None
 
@@ -372,10 +397,11 @@ async def test_client_creation_failure_is_normalized_without_secret(
 @pytest.mark.asyncio
 async def test_client_close_failure_is_normalized_after_evidence_is_saved(
     tmp_path: Path,
+    launch_manifest_path: Path,
 ) -> None:
     dataset = load_experiment_dataset(PILOT_ROOT)
     plan = load_execution_plan(PILOT_ROOT / "execution-plan.json", dataset)
-    manifest = load_frozen_experiment_manifest(MANIFEST_PATH)
+    manifest = load_frozen_experiment_manifest(launch_manifest_path)
     provider = await prepare_pilot_invocation_provider(
         dataset=dataset,
         plan=plan,
@@ -392,7 +418,7 @@ async def test_client_close_failure_is_normalized_after_evidence_is_saved(
 
     with pytest.raises(PilotLaunchError, match="cannot be closed"):
         await run_live_pilot(
-            _request(output_root),
+            _request(output_root, manifest_path=launch_manifest_path),
             repository_root=REPOSITORY_ROOT,
             dependencies=dependencies,
         )
@@ -431,12 +457,15 @@ def test_live_cli_has_no_credential_or_partial_plan_argument() -> None:
             "--allow-live",
             "--confirm-experiment-id",
             "writer-pilot-v1",
-            "--confirm-hard-cost-usd-micros",
-            "51815",
+            "--confirm-currency",
+            "CNY",
+            "--confirm-hard-cost-micros",
+            "858368",
         ]
     )
     assert not hasattr(args, "api_key")
     assert not hasattr(args, "max_items")
     assert args.allow_live is True
     assert args.confirm_experiment_id == "writer-pilot-v1"
-    assert args.confirm_hard_cost_usd_micros == 51_815
+    assert args.confirm_currency == "CNY"
+    assert args.confirm_hard_cost_micros == 858_368

@@ -6,12 +6,14 @@ from dataclasses import dataclass
 
 from agent_factory.domain.common import sha256_model
 from experiments.contracts import (
+    CurrencyCode,
     ExecutionPlan,
     ExperimentPurpose,
     FreezeCandidateSpec,
-    calculate_conservative_cost_usd_micros,
+    calculate_conservative_cost_micros,
 )
 from experiments.loader import LoadedExperimentDataset
+from experiments.moonshot_gateway import MOONSHOT_MODEL, MOONSHOT_PROVIDER_OPTIONS
 from experiments.planning import validate_execution_manifest, validate_execution_plan
 from experiments.rendering import (
     calculate_condition_bundle_checksum,
@@ -33,8 +35,9 @@ class PilotPreflightReport:
     run_count: int
     estimated_provider_requests: int
     max_provider_requests: int
-    estimated_cost_usd_micros: int
-    hard_cost_limit_usd_micros: int
+    currency: CurrencyCode
+    estimated_cost_micros: int
+    hard_cost_limit_micros: int
 
 
 def validate_pilot_preflight(
@@ -122,8 +125,22 @@ def validate_pilot_preflight(
     maximum_completion_tokens = maximum_request_count * generation.max_output_tokens
     if generation.concurrency != 1:
         raise PilotPreflightError("Pilot concurrency must remain one")
-    if not candidate.provider.model_is_immutable_snapshot:
-        raise PilotPreflightError("Pilot model must be an immutable snapshot")
+    if (
+        generation.provider != "moonshot"
+        or generation.model != MOONSHOT_MODEL
+        or generation.temperature != 0.6
+        or generation.provider_options != MOONSHOT_PROVIDER_OPTIONS
+        or candidate.provider.api_name != "chat-completions"
+        or candidate.provider.sdk_name != "openai"
+    ):
+        raise PilotPreflightError("Pilot Moonshot inference profile is not reviewed")
+    if (
+        generation.provider == "moonshot"
+        and candidate.provider.model_is_immutable_snapshot
+    ):
+        raise PilotPreflightError(
+            "Moonshot provider alias cannot claim immutable snapshot semantics"
+        )
     if limits.max_provider_requests != maximum_request_count:
         raise PilotPreflightError("Pilot request limit must cover exactly all attempts")
     if limits.max_prompt_tokens != maximum_prompt_tokens:
@@ -141,19 +158,19 @@ def validate_pilot_preflight(
             "Pilot estimated usage must assume one attempt per run"
         )
 
-    expected_cost = calculate_conservative_cost_usd_micros(
+    expected_cost = calculate_conservative_cost_micros(
         input_tokens=expected_prompt_tokens,
         output_tokens=expected_completion_tokens,
         pricing=candidate.pricing,
     )
-    hard_cost_limit = calculate_conservative_cost_usd_micros(
+    hard_cost_limit = calculate_conservative_cost_micros(
         input_tokens=maximum_prompt_tokens,
         output_tokens=maximum_completion_tokens,
         pricing=candidate.pricing,
     )
-    if budget.estimated_cost_usd_micros != expected_cost:
+    if budget.estimated_cost_micros != expected_cost:
         raise PilotPreflightError("Pilot estimated cost does not match frozen pricing")
-    if budget.hard_cost_limit_usd_micros != hard_cost_limit:
+    if budget.hard_cost_limit_micros != hard_cost_limit:
         raise PilotPreflightError("Pilot hard cost limit must equal the token ceiling")
 
     return PilotPreflightReport(
@@ -163,8 +180,9 @@ def validate_pilot_preflight(
         run_count=run_count,
         estimated_provider_requests=expected_request_count,
         max_provider_requests=maximum_request_count,
-        estimated_cost_usd_micros=expected_cost,
-        hard_cost_limit_usd_micros=hard_cost_limit,
+        currency=budget.currency,
+        estimated_cost_micros=expected_cost,
+        hard_cost_limit_micros=hard_cost_limit,
     )
 
 

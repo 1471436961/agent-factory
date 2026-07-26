@@ -23,7 +23,7 @@ from experiments.contracts import (
     GenerationConfig,
     PriceSnapshot,
     ProviderSnapshot,
-    calculate_conservative_cost_usd_micros,
+    calculate_conservative_cost_micros,
 )
 from experiments.freezing import (
     FreezeCandidateBuilder,
@@ -137,8 +137,9 @@ def _candidate(
     pricing = PriceSnapshot(
         provider="openai",
         model="gpt-test-snapshot",
-        input_usd_micros_per_unit=1_000_000,
-        output_usd_micros_per_unit=2_000_000,
+        currency="USD",
+        input_micros_per_unit=1_000_000,
+        output_micros_per_unit=2_000_000,
         source_url="https://example.com/provider-pricing",
         captured_at=NOW,
     )
@@ -153,7 +154,7 @@ def _candidate(
     }
     if omitted_path is not None:
         inventory.remove(omitted_path)
-    estimated_cost = calculate_conservative_cost_usd_micros(
+    estimated_cost = calculate_conservative_cost_micros(
         input_tokens=240_000,
         output_tokens=120_000,
         pricing=pricing,
@@ -178,11 +179,12 @@ def _candidate(
         ),
         pricing=pricing,
         cost_budget=CostBudget(
+            currency="USD",
             estimated_provider_requests=240,
             estimated_prompt_tokens=240_000,
             estimated_completion_tokens=120_000,
-            estimated_cost_usd_micros=estimated_cost,
-            hard_cost_limit_usd_micros=1_000_000,
+            estimated_cost_micros=estimated_cost,
+            hard_cost_limit_micros=1_000_000,
         ),
         inventory_paths=tuple(sorted(inventory)),
         created_at=NOW,

@@ -44,6 +44,7 @@ from agent_factory.domain.models import (
 from agent_factory.settings import DEFAULT_MIGRATIONS_DIR, Settings
 from experiments.artifacts import ArtifactStore
 from experiments.contracts import (
+    CurrencyCode,
     ExecutionPlan,
     ExperimentCondition,
     ExperimentPurpose,
@@ -51,7 +52,7 @@ from experiments.contracts import (
     ExperimentTask,
     FrozenExperimentManifest,
     RenderedInvocation,
-    calculate_conservative_cost_usd_micros,
+    calculate_conservative_cost_micros,
 )
 from experiments.executor import ExperimentExecutor, InvocationProvider
 from experiments.freezing import (
@@ -61,7 +62,7 @@ from experiments.freezing import (
 )
 from experiments.gateway import ExperimentGateway
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
-from experiments.openai_gateway import create_openai_experiment_gateway
+from experiments.moonshot_gateway import create_moonshot_experiment_gateway
 from experiments.pilot import validate_pilot_preflight
 from experiments.planning import load_execution_plan
 from experiments.rendering import (
@@ -112,9 +113,10 @@ class PilotLaunchSummary(FrozenModel):
     provider_attempts: int = Field(ge=0)
     observed_prompt_tokens: int = Field(ge=0)
     observed_completion_tokens: int = Field(ge=0)
-    observed_cost_usd_micros: int = Field(ge=0)
+    currency: CurrencyCode
+    observed_cost_micros: int = Field(ge=0)
     max_provider_requests: int = Field(ge=1)
-    hard_cost_limit_usd_micros: int = Field(ge=1)
+    hard_cost_limit_micros: int = Field(ge=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +129,8 @@ class PilotLaunchRequest:
     output_root: Path
     allow_live: bool
     confirmed_experiment_id: str
-    confirmed_hard_cost_usd_micros: int
+    confirmed_currency: CurrencyCode
+    confirmed_hard_cost_micros: int
 
 
 class ManagedExperimentGateway(ExperimentGateway, Protocol):
@@ -170,7 +173,7 @@ class InvocationPreparer(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class EnvironmentApiKeySource:
-    variable_name: str = "OPENAI_API_KEY"
+    variable_name: str = "MOONSHOT_API_KEY"
 
     def read(self) -> str | None:
         return os.environ.get(self.variable_name)
@@ -184,7 +187,7 @@ class PilotLauncherDependencies:
     )
     api_key_source: ApiKeySource = field(default_factory=EnvironmentApiKeySource)
     gateway_factory: GatewayFactory = field(
-        default_factory=lambda: _create_managed_openai_gateway
+        default_factory=lambda: _create_managed_moonshot_gateway
     )
 
 
@@ -274,11 +277,11 @@ async def run_live_pilot(
 
     api_key = deps.api_key_source.read()
     if api_key is None or not api_key.strip():
-        raise PilotLaunchError("OPENAI_API_KEY is not set or is empty")
+        raise PilotLaunchError("MOONSHOT_API_KEY is not set or is empty")
     try:
         gateway = deps.gateway_factory(api_key=api_key)
     except Exception:
-        raise PilotLaunchError("OpenAI experiment client cannot be created") from None
+        raise PilotLaunchError("Moonshot experiment client cannot be created") from None
     if not gateway.is_live:
         await _close_gateway(gateway)
         raise PilotLaunchError("Pilot gateway must identify itself as live")
@@ -297,7 +300,7 @@ async def run_live_pilot(
         try:
             await gateway.close()
         except Exception:
-            exc.add_note("OpenAI experiment client also failed to close")
+            exc.add_note("Moonshot experiment client also failed to close")
         raise
     await _close_gateway(gateway)
     return _summarize_runs(runs, manifest)
@@ -486,8 +489,10 @@ def _validate_approval(
         raise PilotLaunchError("live Pilot requires --allow-live")
     if request.confirmed_experiment_id != manifest.experiment_id:
         raise PilotLaunchError("confirmed experiment ID does not match Manifest")
-    hard_limit = manifest.cost_budget.hard_cost_limit_usd_micros
-    if request.confirmed_hard_cost_usd_micros != hard_limit:
+    if request.confirmed_currency != manifest.cost_budget.currency:
+        raise PilotLaunchError("confirmed currency does not match Manifest")
+    hard_limit = manifest.cost_budget.hard_cost_limit_micros
+    if request.confirmed_hard_cost_micros != hard_limit:
         raise PilotLaunchError("confirmed hard cost does not match Manifest")
 
 
@@ -654,8 +659,8 @@ def _load_launch_inputs(
     return root, dataset, plan_path, plan, manifest
 
 
-def _create_managed_openai_gateway(*, api_key: str) -> ManagedExperimentGateway:
-    return create_openai_experiment_gateway(api_key=api_key)
+def _create_managed_moonshot_gateway(*, api_key: str) -> ManagedExperimentGateway:
+    return create_moonshot_experiment_gateway(api_key=api_key)
 
 
 def _shared_domain_schema(tasks: tuple[ExperimentTask, ...]) -> JsonObject:
@@ -698,7 +703,7 @@ async def _close_gateway(gateway: ManagedExperimentGateway) -> None:
     try:
         await gateway.close()
     except Exception:
-        raise PilotLaunchError("OpenAI experiment client cannot be closed") from None
+        raise PilotLaunchError("Moonshot experiment client cannot be closed") from None
 
 
 def _summarize_runs(
@@ -716,11 +721,12 @@ def _summarize_runs(
         provider_attempts=len(attempts),
         observed_prompt_tokens=prompt_tokens,
         observed_completion_tokens=completion_tokens,
-        observed_cost_usd_micros=calculate_conservative_cost_usd_micros(
+        currency=manifest.pricing.currency,
+        observed_cost_micros=calculate_conservative_cost_micros(
             input_tokens=prompt_tokens,
             output_tokens=completion_tokens,
             pricing=manifest.pricing,
         ),
         max_provider_requests=manifest.execution_manifest.limits.max_provider_requests,
-        hard_cost_limit_usd_micros=manifest.cost_budget.hard_cost_limit_usd_micros,
+        hard_cost_limit_micros=manifest.cost_budget.hard_cost_limit_micros,
     )

@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5 执行前生产依赖闭环已完成，等待真实 Pilot 费用审批、执行与评审。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5 正在将 Pilot 从 OpenAI 迁移到 Moonshot/Kimi，并重新建立冻结与费用审批证据。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：canonical Pilot Manifest 已绑定受控 launcher、完整实验源码和 `src/agent_factory` 生产依赖，但当前未读取 API key、运行真实 Pilot 或产生模型费用。只有项目 owner 精确批准固定模型、完整 8-run 与 51,815 微美元上限后才能执行。
+- 当前限制：OpenAI canonical Manifest 已降级为切换前历史证据；Moonshot `v1.1` candidate 已完成离线设计，但新的 clean-commit Manifest 尚未生成。当前未读取 `MOONSHOT_API_KEY`、运行真实 Pilot 或产生模型费用。只有项目 owner 在新 Manifest 生成后精确批准 `kimi-k2.6`、完整 8-run 与 `¥0.858368` 上限，才能执行。
 
 ## 2. 阶段目标
 
@@ -332,3 +332,15 @@ M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费�
 - canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 指向新的 153 项证据；M5.5.5 与 M5.5.7 文件继续保留为历史检查点。归档提交晚于 source commit，日常回归使用 content-only，环境级复核必须 checkout `e76adc7`。
 
 本次收尾修正没有读取 API key、创建 provider client、调用模型或产生费用。E 盘 detached worktree 固定在 `e76adc7`，按 `uv.lock` 创建 CPython `3.11.15` / OpenAI SDK `2.46.0` 隔离环境后，canonical Manifest 的环境级验证通过；不带 `--allow-live` 的启动预检在创建 `E:\Agent-Factory-Pilot-Evidence` 前按设计拒绝。Manifest 闭环只使项目具备申请真实 Pilot 审批的工程前置条件，M5.5 仍需完成 8-run、Pilot review、正式 Manifest 与 owner 审批后才能退出。CI 同构 experiment 门禁为 `227 passed`，总分支覆盖率 `92.34%`；全仓回归为 `636 passed`。Ruff format、Ruff lint、全量 mypy strict（`193` 个源文件）、契约快照、Pilot 预算预检和 canonical content-only verifier 均通过。
+
+## 25. M5.5 收尾修正：Pilot 供应商切换
+
+- 项目 owner 在真实调用前确认 OpenAI API 与 ChatGPT Plus 是独立产品，现有付款和地区条件无法形成可执行的 OpenAI API 路径，因此原 OpenAI 费用批准失效；该变更不修改 Writer 任务、MANUAL/FACTORY 对照条件或 8-run Pilot 规模。
+- 当前 provider 固定为中国区 Moonshot API `https://api.moonshot.cn/v1`，模型为 `kimi-k2.6`，使用 Kimi 文档支持的 OpenAI-compatible Chat Completions。请求固定为非思考模式、`stream=true`、`stream_options.include_usage=true`、`temperature=0.6`、`top_p=0.95`、`n=1`、`max_output_tokens=1024`、60 秒 timeout、最多 2 次 attempt 和单并发。
+- MANUAL 条件使用 `response_format={"type":"json_object"}`；FACTORY 条件使用 strict JSON Schema。流式 chunk 在本地聚合后仍执行同一 Draft 2020-12 Schema 校验，记录 request ID、usage 和有界响应证据；SDK 隐藏重试为零，key 只从 `MOONSHOT_API_KEY` 读取。
+- 冻结契约从 `1.0` 升级为 `1.1`。`PriceSnapshot` 与 `CostBudget` 显式携带 `CNY`，规范字段改为货币中立的 `*_micros`；旧 `*_usd_micros` 只保留为读取兼容别名。CLI 审批同时匹配 currency 和 hard-cost micros，不能只确认一个裸金额。
+- 2026-07-26 按 Kimi 开放平台公开价格记录：每百万 token 未缓存输入 `¥6.50`、缓存输入 `¥1.10`、输出 `¥27.00`。8 次预期请求、32,000 输入 token 和 8,192 输出 token 的估算为 `¥0.429184`；16 次最大 attempt、64,000 输入 token 和 16,384 输出 token 的本地硬上限为 `¥0.858368`。
+- Kimi 官方当前只提供 `kimi-k2.6` 别名，未提供带日期的不可变 snapshot。因此 candidate 必须声明 `model_is_immutable_snapshot=false`；这降低 provider 级复现强度，不能通过伪造 snapshot 标志掩盖。每次后续真实执行仍保存供应商 request ID、原始响应、usage、时间和本地请求 hash。
+- OpenAI 生产依赖闭环 Manifest 原始字节保留为 [`freeze-manifest-openai-pre-switch.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-openai-pre-switch.json)，只承担历史解释与回归证据。新的 Moonshot canonical `freeze-manifest.json` 必须在代码和文档 clean commit 上重新生成并通过环境级与 content-only 验证。
+
+本次切换阶段只实现货币中立契约、Moonshot gateway、launcher/CLI 映射、离线测试和文档同步，不读取真实 key、不访问付费接口，也不产生 Pilot 数据。新的 Manifest 与精确人工批准缺一不可；旧的“OpenAI `gpt-4.1-mini-2025-04-14`、最多 `$0.051815`”批准不得迁移解释为 Moonshot 授权。

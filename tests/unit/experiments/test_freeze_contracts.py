@@ -23,7 +23,7 @@ from experiments.contracts import (
     PriceSnapshot,
     ProviderSnapshot,
     SourceSnapshot,
-    calculate_conservative_cost_usd_micros,
+    calculate_conservative_cost_micros,
 )
 
 NOW = datetime(2026, 7, 25, 16, 0, tzinfo=UTC)
@@ -33,9 +33,10 @@ def _pricing() -> PriceSnapshot:
     return PriceSnapshot(
         provider="openai",
         model="gpt-test-snapshot",
-        input_usd_micros_per_unit=1_000_000,
-        cached_input_usd_micros_per_unit=250_000,
-        output_usd_micros_per_unit=2_000_000,
+        currency="USD",
+        input_micros_per_unit=1_000_000,
+        cached_input_micros_per_unit=250_000,
+        output_micros_per_unit=2_000_000,
         source_url="https://example.com/provider-pricing",
         captured_at=NOW,
     )
@@ -93,11 +94,12 @@ def _manifest() -> FrozenExperimentManifest:
         ),
         pricing=_pricing(),
         cost_budget=CostBudget(
+            currency="USD",
             estimated_provider_requests=8,
             estimated_prompt_tokens=4_000,
             estimated_completion_tokens=2_000,
-            estimated_cost_usd_micros=8_000,
-            hard_cost_limit_usd_micros=15_000,
+            estimated_cost_micros=8_000,
+            hard_cost_limit_micros=15_000,
         ),
         files=(
             FrozenArtifact(
@@ -134,15 +136,15 @@ def test_pilot_manifest_binds_sources_files_and_exact_cost() -> None:
 
     assert manifest.purpose is ExperimentPurpose.PILOT
     assert manifest.pilot_evidence is None
-    assert manifest.cost_budget.estimated_cost_usd_micros == (
-        calculate_conservative_cost_usd_micros(
+    assert manifest.cost_budget.estimated_cost_micros == (
+        calculate_conservative_cost_micros(
             input_tokens=4_000,
             output_tokens=2_000,
             pricing=manifest.pricing,
         )
     )
     assert (
-        calculate_conservative_cost_usd_micros(
+        calculate_conservative_cost_micros(
             input_tokens=0,
             output_tokens=0,
             pricing=manifest.pricing,
@@ -150,7 +152,7 @@ def test_pilot_manifest_binds_sources_files_and_exact_cost() -> None:
         == 0
     )
     with pytest.raises(ValueError, match="cannot be negative"):
-        calculate_conservative_cost_usd_micros(
+        calculate_conservative_cost_micros(
             input_tokens=-1,
             output_tokens=0,
             pricing=manifest.pricing,
@@ -159,12 +161,12 @@ def test_pilot_manifest_binds_sources_files_and_exact_cost() -> None:
 
 def test_money_fields_reject_float_and_limit_below_estimate() -> None:
     payload = _manifest().cost_budget.model_dump(mode="python")
-    payload["estimated_cost_usd_micros"] = 8_000.0
+    payload["estimated_cost_micros"] = 8_000.0
     with pytest.raises(ValidationError, match="valid integer"):
         CostBudget.model_validate(payload)
 
-    payload["estimated_cost_usd_micros"] = 8_000
-    payload["hard_cost_limit_usd_micros"] = 7_999
+    payload["estimated_cost_micros"] = 8_000
+    payload["hard_cost_limit_micros"] = 7_999
     with pytest.raises(ValidationError, match="below estimated"):
         CostBudget.model_validate(payload)
 
@@ -219,7 +221,7 @@ def test_manifest_rejects_unsorted_or_duplicate_file_inventory() -> None:
 def test_manifest_recomputes_estimate_and_bounds_hard_cost() -> None:
     estimate_payload = _payload()
     budget = _mapping(estimate_payload["cost_budget"])
-    budget["estimated_cost_usd_micros"] = 8_001
+    budget["estimated_cost_micros"] = 8_001
     estimate_payload["cost_budget"] = budget
     with pytest.raises(ValidationError, match="does not match tokens"):
         FrozenExperimentManifest.model_validate(estimate_payload)
@@ -233,7 +235,7 @@ def test_manifest_recomputes_estimate_and_bounds_hard_cost() -> None:
 
     ceiling_payload = _payload()
     budget = _mapping(ceiling_payload["cost_budget"])
-    budget["hard_cost_limit_usd_micros"] = 20_001
+    budget["hard_cost_limit_micros"] = 20_001
     ceiling_payload["cost_budget"] = budget
     with pytest.raises(ValidationError, match="token-bound"):
         FrozenExperimentManifest.model_validate(ceiling_payload)
