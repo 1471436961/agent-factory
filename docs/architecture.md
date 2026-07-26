@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.5 Pilot 供应商切换与重新冻结阶段；Moonshot/Kimi 受控 gateway 已实现，尚未读取真实 API key 或执行真实模型调用
+**当前阶段**：Alpha / M5.5 Moonshot Pilot 审批阶段；供应商切换与 canonical Manifest 重新冻结已完成，尚未读取真实 API key 或执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4173,7 +4173,7 @@ M5.5 收尾将 `src/agent_factory` 下 85 个 Python 文件和 6 个 migration S
 
 2026-07-26 经项目 owner 复核，Pilot 从 OpenAI 切换为中国区 Moonshot API。冻结契约升级到 `1.1`：价格和预算显式携带 `currency`，金额统一使用该货币的整数 micros；旧 `*_usd_micros` 字段仅作为反序列化兼容别名，不再作为规范输出。当前候选固定 `https://api.moonshot.cn/v1`、Chat Completions、`kimi-k2.6`、非思考模式、流式响应、`temperature=0.6`、`top_p=0.95`、`n=1`、60 秒 timeout、最多 2 次 attempt 和单并发；MANUAL 使用 JSON mode，FACTORY 使用 strict JSON Schema，两组继续接受相同的本地 Draft 2020-12 校验。兼容客户端为 OpenAI SDK `2.46.0`，SDK 内建重试仍为零，凭据只从 `MOONSHOT_API_KEY` 读取。
 
-价格按 2026-07-26 的 [Kimi 开放平台公开价格](https://platform.kimi.com/) 冻结：每百万 token 未缓存输入 `¥6.50`、缓存输入 `¥1.10`、输出 `¥27.00`，预算不假设缓存命中。8 次预期请求对应 `¥0.429184`，最多 16 次 attempt 的本地硬上限为 `¥0.858368`。`kimi-k2.6` 是供应商别名而非带日期的不可变快照，因此 `model_is_immutable_snapshot=false`；Manifest 能冻结请求配置和响应证据，但不能阻止供应商更新别名背后的模型。新的 canonical Manifest 必须在本次实现与文档进入 clean commit 后重新生成并验证；此前对 OpenAI 模型和美元上限的批准已经失效，Moonshot 真实 Pilot 必须重新获得精确费用审批。
+价格按 2026-07-26 的 [Kimi 开放平台公开价格](https://platform.kimi.com/) 冻结：每百万 token 未缓存输入 `¥6.50`、缓存输入 `¥1.10`、输出 `¥27.00`，预算不假设缓存命中。8 次预期请求对应 `¥0.429184`，最多 16 次 attempt 的本地硬上限为 `¥0.858368`。`kimi-k2.6` 是供应商别名而非带日期的不可变快照，因此 `model_is_immutable_snapshot=false`；Manifest 能冻结请求配置和响应证据，但不能阻止供应商更新别名背后的模型。新的 canonical [`freeze-manifest.json`](../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 已从 clean source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 生成，绑定 154 项输入；内部 checksum 为 `edd5cf3f304742398cc9d6ec4fa7be4c6cd14f90769393b589d67616a6eec5ac`，文件 SHA-256 为 `ae4c0727a2082bed55713147b3a28ec96fb4843d12fa96a074bebc03991c5cdd`。归档前环境级与 content-only 验证均通过；此前对 OpenAI 模型和美元上限的批准已经失效，Moonshot 真实 Pilot 仍必须重新获得精确费用审批。
 
 ### 13.5 指标计算
 

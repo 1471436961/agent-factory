@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5 正在将 Pilot 从 OpenAI 迁移到 Moonshot/Kimi，并重新建立冻结与费用审批证据。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5 已完成 OpenAI 到 Moonshot/Kimi 的迁移与重新冻结，等待新的真实 Pilot 费用审批、执行与评审。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：OpenAI canonical Manifest 已降级为切换前历史证据；Moonshot `v1.1` candidate 已完成离线设计，但新的 clean-commit Manifest 尚未生成。当前未读取 `MOONSHOT_API_KEY`、运行真实 Pilot 或产生模型费用。只有项目 owner 在新 Manifest 生成后精确批准 `kimi-k2.6`、完整 8-run 与 `¥0.858368` 上限，才能执行。
+- 当前限制：OpenAI canonical Manifest 已降级为切换前历史证据；Moonshot `v1.1` canonical Manifest 已从 clean commit 生成并通过双重验证。当前未读取 `MOONSHOT_API_KEY`、运行真实 Pilot 或产生模型费用。只有项目 owner 精确批准 `kimi-k2.6`、完整 8-run 与 `¥0.858368` 上限，才能执行。
 
 ## 2. 阶段目标
 
@@ -341,6 +341,6 @@ M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费�
 - 冻结契约从 `1.0` 升级为 `1.1`。`PriceSnapshot` 与 `CostBudget` 显式携带 `CNY`，规范字段改为货币中立的 `*_micros`；旧 `*_usd_micros` 只保留为读取兼容别名。CLI 审批同时匹配 currency 和 hard-cost micros，不能只确认一个裸金额。
 - 2026-07-26 按 Kimi 开放平台公开价格记录：每百万 token 未缓存输入 `¥6.50`、缓存输入 `¥1.10`、输出 `¥27.00`。8 次预期请求、32,000 输入 token 和 8,192 输出 token 的估算为 `¥0.429184`；16 次最大 attempt、64,000 输入 token 和 16,384 输出 token 的本地硬上限为 `¥0.858368`。
 - Kimi 官方当前只提供 `kimi-k2.6` 别名，未提供带日期的不可变 snapshot。因此 candidate 必须声明 `model_is_immutable_snapshot=false`；这降低 provider 级复现强度，不能通过伪造 snapshot 标志掩盖。每次后续真实执行仍保存供应商 request ID、原始响应、usage、时间和本地请求 hash。
-- OpenAI 生产依赖闭环 Manifest 原始字节保留为 [`freeze-manifest-openai-pre-switch.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-openai-pre-switch.json)，只承担历史解释与回归证据。新的 Moonshot canonical `freeze-manifest.json` 必须在代码和文档 clean commit 上重新生成并通过环境级与 content-only 验证。
+- OpenAI 生产依赖闭环 Manifest 原始字节保留为 [`freeze-manifest-openai-pre-switch.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-openai-pre-switch.json)，只承担历史解释与回归证据。新的 Moonshot canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 从 clean source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 生成，绑定 CPython `3.11.15`、OpenAI SDK `2.46.0`、`uv.lock` 与 154 项输入；内部 checksum 为 `edd5cf3f304742398cc9d6ec4fa7be4c6cd14f90769393b589d67616a6eec5ac`，文件 SHA-256 为 `ae4c0727a2082bed55713147b3a28ec96fb4843d12fa96a074bebc03991c5cdd`。复制归档前，环境级与 content-only 验证均通过。
 
-本次切换阶段只实现货币中立契约、Moonshot gateway、launcher/CLI 映射、离线测试和文档同步，不读取真实 key、不访问付费接口，也不产生 Pilot 数据。新的 Manifest 与精确人工批准缺一不可；旧的“OpenAI `gpt-4.1-mini-2025-04-14`、最多 `$0.051815`”批准不得迁移解释为 Moonshot 授权。
+本次切换阶段只实现货币中立契约、Moonshot gateway、launcher/CLI 映射、离线测试、文档同步和新 Manifest 归档，不读取真实 key、不访问付费接口，也不产生 Pilot 数据。归档前 CI 同构实验门禁为 `251 passed`、分支覆盖率 `91.43%`；加入 canonical Manifest 回归后，全仓基线为 `661 passed`。Ruff、mypy strict（`196` 个源文件）、契约快照和 Pilot 预检均通过。新的 Manifest 与精确人工批准缺一不可；旧的“OpenAI `gpt-4.1-mini-2025-04-14`、最多 `$0.051815`”批准不得迁移解释为 Moonshot 授权。

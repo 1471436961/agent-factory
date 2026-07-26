@@ -19,6 +19,7 @@ from experiments.freezing import (
     FreezeCandidateBuilder,
     GitSnapshot,
     load_freeze_candidate_spec,
+    load_frozen_experiment_manifest,
     verify_freeze_manifest,
 )
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
@@ -32,6 +33,7 @@ PILOT_PLAN_PATH = PILOT_ROOT / "execution-plan.json"
 FORMAL_PLAN_PATH = FORMAL_ROOT / "execution-plan.json"
 CANDIDATE_PATH = PILOT_ROOT / "freeze-candidate.json"
 EVIDENCE_ROOT = REPOSITORY_ROOT / "experiments" / "evidence" / "writer-pilot-v1"
+FINAL_MANIFEST_PATH = EVIDENCE_ROOT / "freeze-manifest.json"
 OPENAI_PRE_SWITCH_MANIFEST_PATH = EVIDENCE_ROOT / (
     "freeze-manifest-openai-pre-switch.json"
 )
@@ -265,6 +267,37 @@ def test_openai_pre_switch_manifest_retains_production_closure_identity() -> Non
     assert _production_runtime_sources() <= frozen_paths
     assert manifest["provider"]["provider"] == "openai"
     assert manifest["cost_budget"]["hard_cost_limit_usd_micros"] == 51_815
+
+
+def test_final_moonshot_manifest_binds_complete_production_source() -> None:
+    pilot_dataset, pilot_plan, _, _, _ = _inputs()
+    manifest_bytes = FINAL_MANIFEST_PATH.read_bytes()
+    manifest = load_frozen_experiment_manifest(FINAL_MANIFEST_PATH)
+
+    assert hashlib.sha256(manifest_bytes).hexdigest() == (
+        "ae4c0727a2082bed55713147b3a28ec96fb4843d12fa96a074bebc03991c5cdd"
+    )
+    assert manifest.manifest_checksum == (
+        "edd5cf3f304742398cc9d6ec4fa7be4c6cd14f90769393b589d67616a6eec5ac"
+    )
+    assert manifest.source.source_commit == ("889807a15b3d1cff9fe5df51f077de2110f6464a")
+    assert len(manifest.files) == 154
+    frozen_paths = {artifact.path for artifact in manifest.files}
+    assert _production_runtime_sources() <= frozen_paths
+    assert "experiments/moonshot_gateway.py" in frozen_paths
+    assert manifest.provider.provider == "moonshot"
+    assert manifest.provider.model == "kimi-k2.6"
+    assert manifest.provider.model_is_immutable_snapshot is False
+    assert manifest.cost_budget.currency == "CNY"
+    assert manifest.cost_budget.hard_cost_limit_micros == 858_368
+    verify_freeze_manifest(
+        manifest,
+        repository_root=REPOSITORY_ROOT,
+        dataset=pilot_dataset,
+        plan=pilot_plan,
+        plan_path=PILOT_PLAN_PATH,
+        verify_environment=False,
+    )
 
 
 def test_pilot_preflight_rejects_formal_identity_overlap() -> None:
