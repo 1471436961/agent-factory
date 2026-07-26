@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.4 OpenAI 实验 gateway 与离线契约测试已实现；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.5 执行前 Pilot freeze manifest 已生成、验证并归档；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4162,6 +4162,8 @@ M5.5.2 的 `FreezeCandidateBuilder` 只接受规范 JSON `FreezeCandidateSpec`�
 M5.5.3 新增 `tasks_per_scenario_per_domain`，让场景矩阵密度成为 `ExperimentDefinition` 的显式、可哈希输入：正式数据保持每领域 2+2，Pilot 使用每领域 1+1。`writer-pilot-v1` 包含 2 个独立合成领域、4 个任务和 8 个 run；experiment、domain、task、rubric、knowledge 与 run 身份均不得和 `writer-v1` 重叠。`validate_pilot_preflight()` 还要求单次重复、`concurrency=1`、固定模型 snapshot，并将 8 次预期请求和最多 16 次 attempt 精确映射到 32,000/64,000 输入 token、8,192/16,384 输出 token 与 `$0.025908/$0.051815` 预期/硬成本。候选固定 `gpt-4.1-mini-2025-04-14`、Responses API、OpenAI SDK `2.46.0` 和 2026-07-26 核验的官方价格；价格来源只作为带时间戳的评审输入，缓存折扣不进入预算。当前只完成离线配置与 fake 环境验证，尚未生成 clean-commit freeze manifest、读取 API key 或调用 provider。
 
 M5.5.4 新增独立于运行时 adapter 的 `OpenAIExperimentGateway`。它把冻结 invocation 映射到 Responses API：MANUAL 使用 `json_object`，FACTORY 使用绑定同一任务输出 Schema 的 strict `json_schema`；两组响应最终都由本地 Draft 2020-12 validator 按相同 Schema 验证。gateway 禁用 SDK 内建重试，由 executor 的 write-once attempt journal 统一控制重试与预算；同时保留有界原始响应、provider request ID 和 usage，分类 timeout、429、5xx、4xx、过滤、网络与无效响应。API key 只进入 SDK 构造参数，不存入 gateway 或实验产物。当前没有 live CLI；executor 默认拒绝 `is_live=True` 的 gateway，只有调用方显式传入 `allow_live=True` 才能继续。离线 mock/contract 测试与本地 SDK 签名检查不能证明真实账户权限、限流、账单或线上响应完全兼容，真实 Pilot 仍需项目 owner 另行批准。
+
+M5.5.5 在干净 source commit `5a5d58cb42b62e3d2e10a060fea72d4ae0a97498` 上生成 Pilot `FrozenExperimentManifest`，绑定 CPython `3.11.15`、OpenAI SDK `2.46.0`、`uv.lock` 和 61 项输入。Manifest 身份 checksum 为 `2673435ce2623c7c5bfaeb4a011c72f0558ef557c3506bba6685d114357bb6af`，归档文件字节 SHA-256 为 `a3216e6b292126c5041ab701c1864c53e56ba15faac3d33ecd55c69d3a59d7b2`；二者分别证明模型字段身份和具体文件字节，不得混用。归档文件位于 [`experiments/evidence/writer-pilot-v1/freeze-manifest.json`](../experiments/evidence/writer-pilot-v1/freeze-manifest.json)。Manifest 在干净 source commit 上同时通过环境级与 content-only 验证；归档进入后续提交后，当前 HEAD 与 source commit 不同，默认环境验证按设计拒绝，日常使用 content-only 验证，环境级复核必须 checkout 被绑定的 source commit。该 source commit 尚无装配 `OpenAIExperimentGateway` 的受控 live CLI，因此本 Manifest 是执行前源码与配置冻结证据，不是可授权执行的最终 Manifest；后续 launcher 代码进入 inventory 后必须创建新 source commit 并重新冻结。Git 归档仍不是数字签名或外部对象锁，且 Manifest 生成不构成真实 Pilot 费用审批。
 
 ### 13.5 指标计算
 

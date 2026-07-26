@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from experiments.freezing import (
     FreezeCandidateBuilder,
     GitSnapshot,
     load_freeze_candidate_spec,
+    load_frozen_experiment_manifest,
     verify_freeze_manifest,
 )
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
@@ -29,6 +31,13 @@ FORMAL_ROOT = REPOSITORY_ROOT / "experiments" / "definitions" / "writer-v1"
 PILOT_PLAN_PATH = PILOT_ROOT / "execution-plan.json"
 FORMAL_PLAN_PATH = FORMAL_ROOT / "execution-plan.json"
 CANDIDATE_PATH = PILOT_ROOT / "freeze-candidate.json"
+FROZEN_MANIFEST_PATH = (
+    REPOSITORY_ROOT
+    / "experiments"
+    / "evidence"
+    / "writer-pilot-v1"
+    / "freeze-manifest.json"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +178,30 @@ def test_pilot_candidate_binds_reviewed_model_price_and_complete_inputs() -> Non
         plan_path=PILOT_PLAN_PATH,
         git_reader=git_reader,
         environment_reader=environment_reader,
+    )
+
+
+def test_archived_pilot_freeze_manifest_portably_verifies() -> None:
+    pilot_dataset = load_experiment_dataset(PILOT_ROOT)
+    pilot_plan = load_execution_plan(PILOT_PLAN_PATH, pilot_dataset)
+    manifest_bytes = FROZEN_MANIFEST_PATH.read_bytes()
+    manifest = load_frozen_experiment_manifest(FROZEN_MANIFEST_PATH)
+
+    assert hashlib.sha256(manifest_bytes).hexdigest() == (
+        "a3216e6b292126c5041ab701c1864c53e56ba15faac3d33ecd55c69d3a59d7b2"
+    )
+    assert manifest.manifest_checksum == (
+        "2673435ce2623c7c5bfaeb4a011c72f0558ef557c3506bba6685d114357bb6af"
+    )
+    assert manifest.source.source_commit == ("5a5d58cb42b62e3d2e10a060fea72d4ae0a97498")
+    assert len(manifest.files) == 61
+    verify_freeze_manifest(
+        manifest,
+        repository_root=REPOSITORY_ROOT,
+        dataset=pilot_dataset,
+        plan=pilot_plan,
+        plan_path=PILOT_PLAN_PATH,
+        verify_environment=False,
     )
 
 

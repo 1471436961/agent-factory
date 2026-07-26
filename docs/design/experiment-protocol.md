@@ -473,3 +473,15 @@ M5.5.3 的测试使用 fake Git/environment 构建并验证候选，只证明 fi
 `create_openai_experiment_gateway()` 只接收显式传入的 API key，并以 `max_retries=0` 构造官方 `AsyncOpenAI`。SDK 不拥有隐藏重试权，429、5xx、timeout 和明确网络错误由 gateway 分类后交给 executor 的 write-once journal 与两次 attempt 上限处理；未知 SDK 异常按不可自动重试的 client error 处理。成功证据保留不超过 1 MiB 的规范化原始响应、request ID、输出正文和 usage；错误证据上限为 64 KiB，异常字符串不写入产物，畸形或超长 request ID 被丢弃。
 
 M5.5.4 没有新增 live CLI，没有读取环境变量或 API key，也没有发起网络请求。31 项 gateway 定向测试使用 fake client 验证 MANUAL/FACTORY 请求映射、SDK `2.46.0` Responses 方法签名、结构化输出、usage、过滤与异常分类；CI 同构 experiment 门禁为 `211 passed`，总分支覆盖率 `93.04%`，其中 `openai_gateway.py` 为 `97%`。这些证据证明本地 adapter 契约与锁定 SDK 表面兼容，不证明真实 API 权限、模型可用性、限流和计费行为；下一步必须先在干净提交上生成并验证 Pilot freeze manifest，再由项目 owner 单独批准真实 Pilot。
+
+## 24. M5.5.5 Pilot freeze manifest 归档
+
+freeze 必须在任何归档或文档修改前，从干净 commit 生成。M5.5.5 使用 source commit `5a5d58cb42b62e3d2e10a060fea72d4ae0a97498`，先输出到 Git 忽略的 `.tmp/m5-freeze/`，随后在工作树仍干净时依次执行默认 `content-and-environment` 验证与 `--content-only` 验证。默认验证额外检查当前 HEAD、porcelain status、CPython `3.11.15` 和 OpenAI SDK `2.46.0`；content-only 验证只检查 Manifest 自身份、dataset/plan/execution identity、候选字段和 61 项实际文件字节。
+
+通过验证的原始字节不经重新序列化，归档为 [`experiments/evidence/writer-pilot-v1/freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json)。内部 `manifest_checksum` 为 `2673435ce2623c7c5bfaeb4a011c72f0558ef557c3506bba6685d114357bb6af`，整个 JSON 文件的 SHA-256 为 `a3216e6b292126c5041ab701c1864c53e56ba15faac3d33ecd55c69d3a59d7b2`。前者排除 `manifest_checksum` 字段后计算结构身份，后者覆盖最终落盘字节；回归测试固定两者、source commit 和 inventory 数量，并执行 content-only verifier。
+
+Manifest 不能把自身作为被哈希输入，因此归档证据必然位于 source commit 之后的提交。归档后的当前 HEAD 不应冒充冻结执行环境：默认 verifier 因 commit 或工作树不匹配而拒绝属于正确行为；需要环境级复核时必须 checkout source commit，归档提交日常只运行 content-only 验证。本地 Git 历史提供 Alpha 追溯，但不能替代签名、外部只读归档或对象锁。
+
+最终审计确认 source commit 中只有 `run-fake` CLI，没有把 `OpenAIExperimentGateway`、归档 Manifest、显式 live 开关和输出目录装配成可复现命令。通过仓库外临时脚本执行会引入未冻结代码，不满足本实验的证据要求。因此本 Manifest 只承担执行前源码与配置检查点；M5.5 后续必须先实现受控 Pilot launcher，提交后重新生成 Manifest，旧 Manifest 保留为历史证据但不得用于费用授权。M5.5.5 不读取 API key、不调用 provider，也不请求项目 owner 批准真实 Pilot。
+
+M5.5.5 的 CI 同构 experiment 门禁为 `212 passed`，总分支覆盖率 `93.04%`；全仓回归为 `622 passed`。Ruff format、Ruff lint、全量 mypy strict、契约快照、Pilot 预算预检和归档 Manifest content-only 验证均通过。
