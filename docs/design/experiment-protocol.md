@@ -572,4 +572,4 @@ Pilot fixture + experiments package
 
 修正后的 candidate 包含原 62 项输入和 91 项生产文件。新 canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 绑定 source commit `e76adc778300b73b5973920fbaaa72275501db8d`，内部 checksum 为 `58afac123924e0604ec4067f0492781e7115a97b6c14900aee5bcff8fcd05713`，文件 SHA-256 为 `9758d465b44663baf18ced7f06ef51292d57037e1840c7dc17ba63fb94a1cecf`。该文件在任何 tracked 归档变化前通过环境级和 content-only 验证；归档后日常只做 content-only，环境级复核必须 checkout source commit。
 
-这次修正不新增 M5.5 子里程碑编号。真实 Pilot 前仍需独立确认 snapshot、完整 8-run 和 51,815 微美元本地硬上限；Manifest 是审批前置证据，不是 provider 账单上限，也不是 Pilot 结果。最终离线门禁为 `227 passed`、实验 package 分支覆盖率 `92.34%`，全仓回归为 `636 passed`；Ruff、mypy strict、契约快照、预算预检和 canonical content-only verifier 均通过。
+这次修正不新增 M5.5 子里程碑编号。真实运行使用 E 盘 detached worktree checkout `e76adc7`，Manifest 从归档提交以绝对路径只读加载，运行证据写到 worktree 与主仓库之外。该环境已通过 content-and-environment verifier；省略 `--allow-live` 的拒绝性预检没有创建输出目录。真实 Pilot 前仍需独立确认 snapshot、完整 8-run 和 51,815 微美元本地硬上限；Manifest 是审批前置证据，不是 provider 账单上限，也不是 Pilot 结果。最终离线门禁为 `227 passed`、实验 package 分支覆盖率 `92.34%`，全仓回归为 `636 passed`；Ruff、mypy strict、契约快照、预算预检和 canonical content-only verifier 均通过。
