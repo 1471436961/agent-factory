@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5.6 受控 Pilot launcher 已实现，等待提交后重新冻结与人工执行审批。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5 执行前生产依赖闭环已完成，等待真实 Pilot 费用审批、执行与评审。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：执行前 Pilot freeze manifest 已从干净 source commit 生成并完成本地验证，但该 source commit 尚无受控 live launcher；必须先实现 launcher 并重新冻结，之后才能请求真实费用审批。当前未运行 Pilot 或执行真实模型调用。
+- 当前限制：canonical Pilot Manifest 已绑定受控 launcher、完整实验源码和 `src/agent_factory` 生产依赖，但当前未读取 API key、运行真实 Pilot 或产生模型费用。只有项目 owner 精确批准固定模型、完整 8-run 与 51,815 微美元上限后才能执行。
 
 ## 2. 阶段目标
 
@@ -152,7 +152,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] M5.2 实验模型、24 个任务和冻结 rubric 通过离线测试。
 - [x] M5.3 执行计划、条件公平性、不可变产物和恢复机制通过离线故障测试。
 - [x] M5.4 评分与分析可由 fixture 完整复算。
-- [x] M5.5.1-M5.5.6 冻结契约、独立 Pilot、OpenAI gateway、执行前 Manifest 与受控 launcher 完成。
+- [x] M5.5 冻结契约、独立 Pilot、OpenAI gateway、受控 launcher 与执行前生产依赖闭环完成。
 - [ ] M5.5 pilot 完成，正式配置、预算和 manifest 经人工冻结。
 - [ ] M5.6 正式调用经人工批准并完整执行。
 - [ ] M5.7 报告、原始数据和复算证据完成。
@@ -160,7 +160,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5.1-M5.5.6 已实现冻结契约、独立 Pilot、预算预检、OpenAI gateway、历史执行前 Manifest 和受控 live launcher。仓库仍没有 Pilot 或正式模型数据，不能声称 H1-H5 获得支持，也不能把 fake client、mock 响应或合成报告当作模型质量证据。下一步是提交 M5.5.6，在该 clean commit 上重新冻结，再由项目 owner 单独决定是否批准最多 `$0.051815` 的真实 Pilot。
+M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5 已实现冻结契约、独立 Pilot、预算预检、OpenAI gateway、受控 live launcher 和包含完整生产依赖的执行前 Manifest。仓库仍没有 Pilot 或正式模型数据，不能声称 H1-H5 获得支持，也不能把 fake client、mock 响应或合成报告当作模型质量证据。下一步是由项目 owner 单独决定是否批准固定 snapshot、完整 8-run 和最多 `$0.051815` 的真实 Pilot。
 
 ## 10. M5.2 实现证据
 
@@ -318,7 +318,17 @@ M5.5.5 未读取 API key、未实例化真实 client、未发起 provider 请求
 - 最终 freeze 在干净 source commit `d3c19beb75587b5cc9963c05832c918694dfa9e1` 上生成。生成前 Git porcelain 为空，Manifest 记录 CPython `3.11.15`、OpenAI SDK `2.46.0` 和 `uv.lock` checksum `2abf80af28081e5fabd22f3bc44df6a867a1d2e56ed598eac34325ef4dd83828`。
 - 62 项 inventory 包含 `experiments/pilot_launcher.py`、OpenAI gateway、executor、冻结与评分源码、Pilot/Formal fixture、`pyproject.toml` 和 `uv.lock`。预算仍固定为 8 次预期请求、最多 16 次请求及 51,815 微美元硬上限。
 - Manifest 先写入 Git 忽略的 `.tmp/m5.5.7-freeze/`。在任何 tracked 文件变化前，`content-and-environment` 与 `--content-only` 验证均通过；内部 Manifest checksum 为 `6514a01799af9b6585f4ff009ad11c887439a324200771d0cae479f28f630d22`，原始 JSON 文件 SHA-256 为 `994f0d46557adeea77703849b0eb3978abe3d9fe89a1741c01b802ffcd2d2740`。
-- M5.5.5 原始字节移至 [`freeze-manifest-m5.5.5.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.5.json)；新的 canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 指向包含 launcher 的最终证据。两份文件分别由回归测试固定，历史证据没有被重写成新身份。
+- M5.5.5 原始字节移至 [`freeze-manifest-m5.5.5.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.5.json)；M5.5.7 原始字节现保存在 [`freeze-manifest-m5.5.7.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.7.json)。两份历史文件分别由回归测试固定，没有被重写成新身份。
 - Manifest 不能把归档后的自身提交纳入 inventory，因此归档提交的 HEAD 必然晚于 source commit。日常 CI 对 canonical 文件执行 content-only 验证；需要再次声明环境级一致性时必须 checkout `d3c19be`。
 
-M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费用。最终 Manifest 只证明受控 launcher、输入、环境声明和预算边界已经冻结，不等于项目 owner 已批准真实 Pilot，也不证明模型可用性、计费行为或输出质量。CI 同构 experiment 门禁为 `226 passed`，总分支覆盖率 `92.34%`；全仓回归为 `635 passed`。Ruff format、Ruff lint、全量 mypy strict（`193` 个源文件）、契约快照、Pilot 预算预检和 canonical Manifest content-only 验证均通过。
+M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费用。该 Manifest 冻结了 launcher 与实验输入，但收尾审计确认其 62 项 inventory 没有包含 `FactoryController` 实际执行所需的任何 `src/agent_factory` 文件，因此不能作为真实费用授权依据。CI 同构 experiment 门禁当时为 `226 passed`，总分支覆盖率 `92.34%`；全仓回归为 `635 passed`。
+
+## 24. M5.5 收尾修正：生产依赖冻结闭环
+
+- 项目 owner 确认不新增 M5.5.8-M5.5.11；生产源码补冻、真实 Pilot、评审和正式冻结继续作为原 M5.5 的退出任务。
+- Pilot candidate 从 62 项扩展为 153 项，新增 `src/agent_factory` 下全部 85 个 Python 文件和 6 个 migration SQL。测试按当前文件系统重新枚举这 91 项生产输入，任何新增文件遗漏都会阻断门禁。
+- 新 Manifest 在 clean source commit `e76adc778300b73b5973920fbaaa72275501db8d` 上生成，记录 CPython `3.11.15`、OpenAI SDK `2.46.0`、同一 lockfile、8/16 次请求边界和 51,815 微美元硬上限。
+- 生成文件先写入 `.tmp/m5.5-closure-freeze/`，在 tracked 工作树仍为空时通过 `content-and-environment` 与 `--content-only` 双重验证。内部 Manifest checksum 为 `58afac123924e0604ec4067f0492781e7115a97b6c14900aee5bcff8fcd05713`，原始文件 SHA-256 为 `9758d465b44663baf18ced7f06ef51292d57037e1840c7dc17ba63fb94a1cecf`。
+- canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 指向新的 153 项证据；M5.5.5 与 M5.5.7 文件继续保留为历史检查点。归档提交晚于 source commit，日常回归使用 content-only，环境级复核必须 checkout `e76adc7`。
+
+本次收尾修正没有读取 API key、创建 provider client、调用模型或产生费用。Manifest 闭环只使项目具备申请真实 Pilot 审批的工程前置条件，M5.5 仍需完成 8-run、Pilot review、正式 Manifest 与 owner 审批后才能退出。CI 同构 experiment 门禁为 `227 passed`，总分支覆盖率 `92.34%`；全仓回归为 `636 passed`。Ruff format、Ruff lint、全量 mypy strict（`193` 个源文件）、契约快照、Pilot 预算预检和 canonical content-only verifier 均通过。

@@ -547,6 +547,29 @@ clean d3c19be + 62-item inventory
  61 files, no CLI    62 files, launcher
 ```
 
-canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 的内部 checksum 为 `6514a01799af9b6585f4ff009ad11c887439a324200771d0cae479f28f630d22`，文件 SHA-256 为 `994f0d46557adeea77703849b0eb3978abe3d9fe89a1741c01b802ffcd2d2740`。M5.5.5 文件以原始字节保存在 [`freeze-manifest-m5.5.5.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.5.json)，旧 checksum、source commit 和 61 项 inventory 保持不变。稳定 canonical 路径只指向可执行 launcher 的冻结证据，减少真实运行时误选历史文件的机会。
+M5.5.7 Manifest 现以原始字节保存在 [`freeze-manifest-m5.5.7.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.7.json)，内部 checksum 为 `6514a01799af9b6585f4ff009ad11c887439a324200771d0cae479f28f630d22`，文件 SHA-256 为 `994f0d46557adeea77703849b0eb3978abe3d9fe89a1741c01b802ffcd2d2740`。M5.5.5 文件仍保存在 [`freeze-manifest-m5.5.5.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-m5.5.5.json)，旧 checksum、source commit 和 61 项 inventory 保持不变。
 
-归档提交不能与 Manifest 的 source commit 相同，这是自引用证据的结构性结果，不是漂移。日常测试对最终文件执行 content-only 验证；环境级复核必须 checkout `d3c19be`。Git checksum 链可以发现普通改动，但不是数字签名或外部对象锁。M5.5.7 不读取 API key、不创建真实 client，也不调用 provider；最终 Manifest 是进入费用审批的必要条件，不是审批本身。最终离线门禁为 `226 passed`、实验 package 分支覆盖率 `92.34%`，全仓回归为 `635 passed`；Ruff、mypy strict、契约快照、预算预检和 canonical content-only verifier 均通过。
+归档提交不能与 Manifest 的 source commit 相同，这是自引用证据的结构性结果，不是漂移。M5.5.7 不读取 API key、不创建真实 client，也不调用 provider。后续收尾审计发现该文件虽包含 launcher，却没有冻结 launcher 调用的 `agent_factory` 生产代码，因此它降级为历史检查点，不再承担费用授权入口。
+
+## 27. M5.5 收尾：生产依赖冻结闭环
+
+`PilotFactoryPreparation` 不是只依赖 `experiments` package 的纯渲染器。它通过 `build_container()` 和 `FactoryController` 执行 migration、原型注册、知识注册、克隆、绑定与 AgentSpec 导出。仅冻结直接 import 文件仍可能漏掉 Controller 的传递依赖和 SQL 资源，因此收尾方案选择完整纳入 `src/agent_factory` 下所有 `.py` 与 `.sql`，而不是维护易漂移的手工调用图。
+
+```text
+Pilot fixture + experiments package
+                 │
+                 ├── run-pilot-live
+                 │        │
+                 │        ▼
+                 │   FactoryController
+                 │        │
+                 │        ├── domain/application services
+                 │        └── SQLite repositories + migrations
+                 │
+                 ▼
+       153-item frozen inventory
+```
+
+修正后的 candidate 包含原 62 项输入和 91 项生产文件。新 canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 绑定 source commit `e76adc778300b73b5973920fbaaa72275501db8d`，内部 checksum 为 `58afac123924e0604ec4067f0492781e7115a97b6c14900aee5bcff8fcd05713`，文件 SHA-256 为 `9758d465b44663baf18ced7f06ef51292d57037e1840c7dc17ba63fb94a1cecf`。该文件在任何 tracked 归档变化前通过环境级和 content-only 验证；归档后日常只做 content-only，环境级复核必须 checkout source commit。
+
+这次修正不新增 M5.5 子里程碑编号。真实 Pilot 前仍需独立确认 snapshot、完整 8-run 和 51,815 微美元本地硬上限；Manifest 是审批前置证据，不是 provider 账单上限，也不是 Pilot 结果。最终离线门禁为 `227 passed`、实验 package 分支覆盖率 `92.34%`，全仓回归为 `636 passed`；Ruff、mypy strict、契约快照、预算预检和 canonical content-only verifier 均通过。

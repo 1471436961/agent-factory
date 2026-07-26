@@ -68,6 +68,14 @@ class _FrozenEnvironmentReader:
         return "2.46.0"
 
 
+def _production_runtime_sources() -> set[str]:
+    return {
+        path.relative_to(REPOSITORY_ROOT).as_posix()
+        for path in (REPOSITORY_ROOT / "src" / "agent_factory").rglob("*")
+        if path.is_file() and path.suffix in {".py", ".sql"}
+    }
+
+
 def _inputs() -> tuple[
     LoadedExperimentDataset,
     ExecutionPlan,
@@ -156,11 +164,7 @@ def test_pilot_candidate_binds_reviewed_model_price_and_complete_inputs() -> Non
         for path in (REPOSITORY_ROOT / "experiments").glob("*.py")
     }
     assert top_level_experiment_sources <= set(candidate.inventory_paths)
-    production_runtime_sources = {
-        path.relative_to(REPOSITORY_ROOT).as_posix()
-        for path in (REPOSITORY_ROOT / "src" / "agent_factory").rglob("*")
-        if path.is_file() and path.suffix in {".py", ".sql"}
-    }
+    production_runtime_sources = _production_runtime_sources()
     assert len(production_runtime_sources) == 91
     assert production_runtime_sources <= set(candidate.inventory_paths)
     assert "experiments/definitions/writer-v1/execution-plan.json" in (
@@ -230,6 +234,31 @@ def test_m557_manifest_retains_pre_closure_identity() -> None:
     }
     assert not any(
         artifact.path.startswith("src/agent_factory/") for artifact in manifest.files
+    )
+
+
+def test_final_pilot_freeze_manifest_binds_complete_production_source() -> None:
+    pilot_dataset, pilot_plan, _, _, _ = _inputs()
+    manifest_bytes = FINAL_MANIFEST_PATH.read_bytes()
+    manifest = load_frozen_experiment_manifest(FINAL_MANIFEST_PATH)
+
+    assert hashlib.sha256(manifest_bytes).hexdigest() == (
+        "9758d465b44663baf18ced7f06ef51292d57037e1840c7dc17ba63fb94a1cecf"
+    )
+    assert manifest.manifest_checksum == (
+        "58afac123924e0604ec4067f0492781e7115a97b6c14900aee5bcff8fcd05713"
+    )
+    assert manifest.source.source_commit == ("e76adc778300b73b5973920fbaaa72275501db8d")
+    assert len(manifest.files) == 153
+    frozen_paths = {artifact.path for artifact in manifest.files}
+    assert _production_runtime_sources() <= frozen_paths
+    verify_freeze_manifest(
+        manifest,
+        repository_root=REPOSITORY_ROOT,
+        dataset=pilot_dataset,
+        plan=pilot_plan,
+        plan_path=PILOT_PLAN_PATH,
+        verify_environment=False,
     )
 
 

@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.7 最终 Pilot Manifest 已归档**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。M5.5.1-M5.5.7 进一步实现独立 8-run Pilot、预算预检、OpenAI Responses gateway、受控 live CLI，以及绑定 launcher source commit `d3c19beb75587b5cc9963c05832c918694dfa9e1` 和 62 项输入的最终 Manifest。M5.5.5 的旧 Manifest 继续作为历史检查点保留，不能授权执行。仓库尚未读取真实 API key、调用模型或产生费用，也没有 Pilot/正式实验质量结论；真实 Pilot 仍需要项目 owner 对固定模型和最多 `$0.051815` 费用作独立批准。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，执行前生产依赖闭环已完成**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。M5.5 已实现独立 8-run Pilot、预算预检、OpenAI Responses gateway 和受控 live CLI；收尾审计进一步把真实 `FactoryController` 所依赖的 85 个生产 Python 文件与 6 个 migration SQL 纳入冻结。当前 canonical Manifest 绑定 source commit `e76adc778300b73b5973920fbaaa72275501db8d` 和 153 项输入，M5.5.5、M5.5.7 Manifest 只作为历史检查点保留。仓库尚未读取真实 API key、调用模型或产生费用，也没有 Pilot/正式实验质量结论；真实 Pilot 仍需要项目 owner 对固定模型和最多 `$0.051815` 费用作独立批准。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
