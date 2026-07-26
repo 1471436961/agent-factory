@@ -33,6 +33,7 @@ class GatewayRequest(FrozenModel):
     attempt_number: int = Field(ge=1, le=3)
     generation: GenerationConfig
     invocation: JsonObject
+    expected_output_schema: JsonObject
     prompt_hash: Sha256
 
 

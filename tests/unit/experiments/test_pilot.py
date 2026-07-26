@@ -138,6 +138,7 @@ def test_pilot_candidate_binds_reviewed_model_price_and_complete_inputs() -> Non
     assert candidate.execution_manifest.generation.concurrency == 1
     assert candidate.execution_manifest.limits.max_provider_requests == 16
     assert "experiments/pilot.py" in candidate.inventory_paths
+    assert "experiments/openai_gateway.py" in candidate.inventory_paths
     assert "experiments/definitions/writer-v1/execution-plan.json" in (
         candidate.inventory_paths
     )

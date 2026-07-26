@@ -239,6 +239,7 @@ class ExperimentExecutor:
                     attempt_number=attempt_number,
                     generation=request.generation,
                     invocation=request.invocation,
+                    expected_output_schema=self._tasks[item.task_id].output_schema,
                     prompt_hash=request.prompt_hash,
                 )
             )

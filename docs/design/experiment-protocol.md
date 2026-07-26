@@ -209,7 +209,7 @@ experiments/
 - 发起每个新 attempt 前，按所有已落盘 intent 重建 request/prompt/completion token 的保守预算占用；可能突破上限时生成 `budget-stopped` 终态，不先请求后补记。
 - M5.3 的 execution manifest 是技术身份，不是 M5.5 正式冻结 manifest；当前预算也只有 request/token 上限，没有价格快照和货币成本上限。
 - 执行器当前只支持 `concurrency=1`。并发执行需要额外的全局预算协调和 attempt 租约，不能只提高配置数字。
-- 当前 CLI 只暴露 fake gateway。未来 live 命令即使加入，也必须要求显式开关并经过 M5.5 人工审批；CI 和默认测试始终不得启用。
+- 当前 CLI 只暴露 fake gateway。仓库虽已提供 OpenAI 实验 adapter，但没有 live CLI；未来 live 命令即使加入，也必须要求显式开关并经过 M5.5 人工审批，CI 和默认测试始终不得启用。
 
 恢复保证的边界是“不会覆盖或重复计入本地结果”，不是“外部调用恰好一次”。若 provider 已接收请求而进程在 completion 落盘前中断，缺少 provider 幂等键时无法排除再次调用产生第二次计费；M5.3 通过 unknown 终态显式保留这种不确定性。
 
@@ -454,6 +454,22 @@ Pilot 不是从 24 个正式任务中抽样。`writer-pilot-v1` 使用 2 个新�
 
 评审候选固定 OpenAI Responses API、`gpt-4.1-mini-2025-04-14`、OpenAI SDK `2.46.0`、`temperature=0`、`max_output_tokens=1024`、60 秒 timeout、最多 2 次 attempt 和单并发。价格于 2026-07-26 从 [OpenAI GPT-4.1 mini 官方模型页](https://developers.openai.com/api/docs/models/gpt-4.1-mini)核验：每百万 token 输入 400,000 微美元、缓存输入 100,000 微美元、输出 1,600,000 微美元。预算始终按未缓存输入计算。
 
-预期一次 attempt 对应 8 次请求、32,000 prompt token、8,192 completion token 和 25,908 微美元；最坏两次 attempt 对应 16 次请求、64,000 prompt token、16,384 completion token 和 51,815 微美元。tracked `freeze-candidate.json` 固定这些人工评审输入及 60 项显式 inventory，但不伪造 source commit 或文件 checksum。只有工作包提交后，`freeze-candidate` 才能在干净工作树上派生真正的 `FrozenExperimentManifest`。
+预期一次 attempt 对应 8 次请求、32,000 prompt token、8,192 completion token 和 25,908 微美元；最坏两次 attempt 对应 16 次请求、64,000 prompt token、16,384 completion token 和 51,815 微美元。tracked `freeze-candidate.json` 固定这些人工评审输入及 61 项显式 inventory，但不伪造 source commit 或文件 checksum。只有工作包提交后，`freeze-candidate` 才能在干净工作树上派生真正的 `FrozenExperimentManifest`。
 
-`python -m experiments verify-pilot` 是纯离线预检：没有 API key 参数、live switch 或 provider client。M5.5.3 的测试使用 fake Git/environment 构建并验证候选，只证明 fixture、身份和预算自洽；真实 API 请求映射、Structured Outputs 解析和 usage 提取属于后续 live gateway 工作包，实际 Pilot 运行仍须项目 owner 单独批准。
+Pilot 候选使用以下纯离线命令预检；它没有 API key 参数、live switch 或 provider client：
+
+```bash
+uv run python -m experiments verify-pilot \
+  --definition-root experiments/definitions/writer-pilot-v1 \
+  --spec experiments/definitions/writer-pilot-v1/freeze-candidate.json
+```
+
+M5.5.3 的测试使用 fake Git/environment 构建并验证候选，只证明 fixture、身份和预算自洽；实际 Pilot 运行仍须项目 owner 单独批准。
+
+## 23. M5.5.4 OpenAI 实验 gateway
+
+`GatewayRequest.expected_output_schema` 是 executor 从冻结任务表注入的本地验证契约，不进入 provider-visible invocation，也不改变 `prompt_hash`。MANUAL invocation 保持 `output_schema=null` 并映射为 Responses API `text.format={"type":"json_object"}`；FACTORY invocation 必须携带与 expected schema 字节等价的 Schema，并映射为 strict `json_schema`。两组返回值都要解析为 JSON object，再由同一 Draft 2020-12 Schema 校验，因此不会以 FACTORY 的 provider 约束替代共同的离线评分入口条件。
+
+`create_openai_experiment_gateway()` 只接收显式传入的 API key，并以 `max_retries=0` 构造官方 `AsyncOpenAI`。SDK 不拥有隐藏重试权，429、5xx、timeout 和明确网络错误由 gateway 分类后交给 executor 的 write-once journal 与两次 attempt 上限处理；未知 SDK 异常按不可自动重试的 client error 处理。成功证据保留不超过 1 MiB 的规范化原始响应、request ID、输出正文和 usage；错误证据上限为 64 KiB，异常字符串不写入产物，畸形或超长 request ID 被丢弃。
+
+M5.5.4 没有新增 live CLI，没有读取环境变量或 API key，也没有发起网络请求。31 项 gateway 定向测试使用 fake client 验证 MANUAL/FACTORY 请求映射、SDK `2.46.0` Responses 方法签名、结构化输出、usage、过滤与异常分类；CI 同构 experiment 门禁为 `211 passed`，总分支覆盖率 `93.04%`，其中 `openai_gateway.py` 为 `97%`。这些证据证明本地 adapter 契约与锁定 SDK 表面兼容，不证明真实 API 权限、模型可用性、限流和计费行为；下一步必须先在干净提交上生成并验证 Pilot freeze manifest，再由项目 owner 单独批准真实 Pilot。

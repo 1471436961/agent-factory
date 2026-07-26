@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5 已进入且 M5.5.3 Pilot 配置与离线预检已实现。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5 已进入且 M5.5.4 OpenAI 实验 gateway 与离线契约测试已实现。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：已选择并离线审核 Pilot 模型、SDK、官方价格来源和预算候选，但尚未在 clean commit 上生成 freeze manifest，也未接入真实 provider、运行 Pilot 或执行真实模型调用。
+- 当前限制：已选择并离线审核 Pilot 模型、SDK、官方价格来源和预算候选，也已完成 provider adapter 的离线契约测试；但尚未在 clean commit 上生成 freeze manifest，未运行 Pilot 或执行真实模型调用。
 
 ## 2. 阶段目标
 
@@ -152,7 +152,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] M5.2 实验模型、24 个任务和冻结 rubric 通过离线测试。
 - [x] M5.3 执行计划、条件公平性、不可变产物和恢复机制通过离线故障测试。
 - [x] M5.4 评分与分析可由 fixture 完整复算。
-- [x] M5.5.1-M5.5.3 冻结契约、候选生成、独立 Pilot fixture 和离线预算预检完成。
+- [x] M5.5.1-M5.5.4 冻结契约、候选生成、独立 Pilot fixture、离线预算预检和 OpenAI gateway 契约测试完成。
 - [ ] M5.5 pilot 完成，正式配置、预算和 manifest 经人工冻结。
 - [ ] M5.6 正式调用经人工批准并完整执行。
 - [ ] M5.7 报告、原始数据和复算证据完成。
@@ -160,7 +160,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。M5.5.1-M5.5.3 已建立冻结契约、候选生成、独立 Pilot fixture 和离线预算预检，并由项目 owner 确认固定模型、SDK、价格与预算候选。仓库仍没有 Pilot 或正式模型数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是实现只在显式 live 审批下可用的 OpenAI gateway，并以 mock/contract test 验证请求映射；真实 Pilot 调用仍需项目 owner 再次明确批准。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。M5.5.1-M5.5.4 已建立冻结契约、候选生成、独立 Pilot fixture、离线预算预检和 OpenAI gateway 契约测试，并由项目 owner 确认固定模型、SDK、价格与预算候选。仓库仍没有 Pilot 或正式模型数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告、fake gateway 或 mock OpenAI 响应当作模型质量证据。下一步是在干净提交上生成并验证 Pilot freeze manifest；真实 Pilot 调用仍需项目 owner 再次明确批准。
 
 ## 10. M5.2 实现证据
 
@@ -277,7 +277,17 @@ M5.5.2 的 CI 同构 experiment 门禁为 `173 passed`，`experiments` 分支覆
 - `experiments/definitions/writer-pilot-v1/` 使用 Aerilon Routing 与 Brivane Storage 两个独立合成领域，共 4 个任务、4 份 rubric、1 次重复和 8 个 MANUAL/FACTORY run。Pilot 数据集 checksum 为 `4651ae511935d2c9e1312b67fcb568669e4ea993f37059939249e9e83255d9aa`，计划 checksum 为 `ed7a237fd48280e6fcefda742a6336f70cf58170362800e5897ab7db43eb480d`。
 - `validate_pilot_preflight()` 交叉验证 Pilot 与 formal 的 experiment、domain、task、rubric、knowledge 和 run 身份没有交集，并拒绝非单次重复、非 1+1 矩阵、非固定模型 snapshot、并发大于 1 或预算等式漂移。
 - 经项目 owner 确认的离线候选使用 OpenAI Responses API、固定快照 `gpt-4.1-mini-2025-04-14` 和 SDK `2.46.0`。2026-07-26 从 OpenAI 官方模型页面核验的每百万 token 单价为输入 `$0.40`、缓存输入 `$0.10`、输出 `$1.60`；预算不假设缓存命中。
-- 8 个 run 按一次 attempt 估算 8 次请求、32,000 输入 token、8,192 输出 token和 `$0.025908`；最多 2 次 attempt 对应 16 次请求、64,000 输入 token、16,384 输出 token 和 `$0.051815` 硬上限。`verify-pilot` 只执行离线身份与预算预检。
+- 8 个 run 按一次 attempt 估算 8 次请求、32,000 输入 token、8,192 输出 token 和 `$0.025908`；最多 2 次 attempt 对应 16 次请求、64,000 输入 token、16,384 输出 token 和 `$0.051815` 硬上限。`verify-pilot` 只执行离线身份与预算预检。
 - 候选 inventory 显式绑定 Pilot/Formal fixture、全部 `experiments/*.py`、`pyproject.toml` 与 `uv.lock`。当前 tracked spec 不是 `FrozenExperimentManifest`：clean source commit、逐文件 checksum 和最终 manifest checksum 必须在本工作包提交后由 M5.5.2 builder 派生。
 
 M5.5.3 没有读取 API key、实例化 live gateway 或调用模型。定向测试覆盖独立 fixture、正式/Pilot 身份重叠、预算漂移、真实候选 spec 的 fake Git/environment 冻结构建与 CLI 预检；这些证据只证明配置自洽，不证明 API 请求已经兼容，也不构成 Pilot 结果。CI 同构 experiment 门禁为 `181 passed`，`experiments` 分支覆盖率 92.69%，其中 `pilot.py` 为 96%、`freezing.py` 为 90%；全仓回归为 `590 passed`。Ruff format、Ruff lint、全量 mypy strict 和契约快照检查均通过。真实调用必须在 live gateway 完成 mock 契约测试后由项目 owner 单独批准。
+
+## 20. M5.5.4 OpenAI 实验 gateway 与离线契约
+
+- `GatewayRequest.expected_output_schema` 由 executor 从冻结任务表注入，只用于本地共同验证，不进入 provider-visible invocation 或 `prompt_hash`。MANUAL 映射为 `json_object`，FACTORY 映射为 strict `json_schema`；两组输出最终都按同一个 Draft 2020-12 Schema 校验。
+- `OpenAIExperimentGateway` 使用官方 Responses API，发送冻结 model、instructions、task input、temperature、max output tokens 和 timeout，并设置 `store=False`。SDK 内建重试固定为零，避免绕过 executor 的 journal、attempt 和预算控制。
+- 成功结果保留 provider request ID、原始响应、输出正文、结构化对象和输入/输出 token；响应与错误 body 分别限制为 1 MiB 和 64 KiB。异常正文不进入产物，timeout、429、5xx、4xx、网络、过滤和无效响应使用稳定 error code 分类。
+- gateway 的 `is_live=True` 继续受 executor `allow_live=False` 默认防线约束。当前没有 live CLI，也不从环境变量隐式读取 API key；构造函数只接受调用方显式提供的 key，且 gateway 对象不保存该字符串。
+- Pilot freeze candidate inventory 新增 `experiments/openai_gateway.py`，共 61 项显式输入。该 tracked candidate 仍不是 clean-commit `FrozenExperimentManifest`。
+
+M5.5.4 的 31 项定向测试全部使用 fake client，并额外检查本地锁定 OpenAI SDK `2.46.0` 的 Responses 参数签名，不访问网络。CI 同构 experiment 门禁为 `211 passed`，总分支覆盖率 `93.04%`，其中 `openai_gateway.py` 为 `97%`；全仓回归为 `621 passed`。Ruff format、Ruff lint、全量 mypy strict 和契约快照检查通过。mock 证据不能证明真实账户权限、模型 snapshot 可用性、provider 限流或账单行为。真实 Pilot 仍须先生成 clean-commit freeze manifest，再由项目 owner 单独批准。
