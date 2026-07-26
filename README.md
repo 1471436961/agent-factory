@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.2 冻结候选生成与离线验证已实现**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 已生成 240 项固定执行计划，并实现条件渲染、不可变产物、fake gateway、有限重试、断点恢复、只读 journal 校验、逐 run 可追溯评分、task 配对聚合、确定性 bootstrap、H1/H2/H4 阈值判定、评分 Manifest，以及 content-addressed 的 JSON/CSV/Markdown 报告包和一键离线复算命令；M5.5.1-M5.5.2 进一步实现 Pilot/正式身份隔离、精确成本契约、Git/运行环境采集、有界文件清单和规范化冻结 Manifest 校验。尚未选择或冻结真实模型与官方价格，也未调用真实模型。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.3 Pilot 配置与离线预检已实现**。M1 核心生产链、M2 技能治理、M3 接口与受限运行时，以及 M4 Alpha 安全、回归与发布门禁均已由项目 owner 验收；M4 退出候选提交 `4a55d73` 的 GitHub Actions [`CI #25`](https://github.com/1471436961/agent-factory/actions/runs/30148036514) 已通过。M5 已生成 240 项固定执行计划，并实现条件渲染、不可变产物、fake gateway、有限重试、断点恢复、只读 journal 校验、逐 run 可追溯评分、task 配对聚合、确定性 bootstrap、H1/H2/H4 阈值判定、评分 Manifest，以及 content-addressed 的 JSON/CSV/Markdown 报告包和一键离线复算命令；M5.5.1-M5.5.3 进一步实现冻结契约、Git/运行环境采集、有界文件清单、独立 8-run Pilot fixture、Pilot/Formal 身份隔离和确定性预算预检。离线候选配置使用 `gpt-4.1-mini-2025-04-14` 固定快照与 OpenAI SDK `2.46.0`，但尚未在 clean commit 上生成正式 freeze manifest，也未接入或调用真实 provider。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
@@ -100,7 +100,7 @@ uv --cache-dir E:/Agent-Factory/.tmp/uv-cache run python -m scripts.local_alpha_
 
 ## M5 验证实验
 
-M5 将证据拆分为三类：240 次 Writer 生成只检验结构一致性、知识遗漏和读者适应性；单操作者构建时间只作为探索性工程案例；审计完整性由确定性链路验证。仓库级 `experiments` package 已实现严格契约、安全 fixture loader、240 项确定性执行计划、MANUAL/FACTORY 公平性校验、不可变 attempt journal、有限重试、恢复执行器、只读证据加载器、离线评分器、task 级配对分析器和 manifest-last 报告发布器。主要分析采用 intention-to-treat，成功样本分析只作敏感性检查；10,000 次 bootstrap 使用 SHA-256 派生索引和 Type-7 分位数，不依赖 Python PRNG、NumPy 或 notebook。`score-manifest.json` 绑定逐 run 评分，`AnalysisSummary` 是分析事实源，CSV 与 Markdown 必须可由它逐字节重建。数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`，计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。该模块不进入运行时 wheel。
+M5 将证据拆分为三类：240 次 Writer 生成只检验结构一致性、知识遗漏和读者适应性；单操作者构建时间只作为探索性工程案例；审计完整性由确定性链路验证。仓库级 `experiments` package 已实现严格契约、安全 fixture loader、240 项确定性执行计划、MANUAL/FACTORY 公平性校验、不可变 attempt journal、有限重试、恢复执行器、只读证据加载器、离线评分器、task 级配对分析器和 manifest-last 报告发布器。主要分析采用 intention-to-treat，成功样本分析只作敏感性检查；10,000 次 bootstrap 使用 SHA-256 派生索引和 Type-7 分位数，不依赖 Python PRNG、NumPy 或 notebook。`score-manifest.json` 绑定逐 run 评分，`AnalysisSummary` 是分析事实源，CSV 与 Markdown 必须可由它逐字节重建。正式数据集 checksum 为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e`，正式计划 checksum 为 `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`；二者因 M5.5.3 将场景矩阵密度纳入定义契约而更新，24 个任务和 240 个 run 坐标未改变。该模块不进入运行时 wheel。
 
 ```bash
 uv run pytest -q tests/unit/experiments \

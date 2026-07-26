@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.2 冻结候选生成与离线验证已实现；尚未执行真实模型调用
+**当前阶段**：Alpha / M5.5 Pilot 与正式冻结阶段，M5.5.3 Pilot 配置与离线预检已实现；尚未执行真实模型调用
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4151,13 +4151,15 @@ coordinates.sort(
 )
 ```
 
-实验计划生成后以规范化 JSON 保存并计算 SHA-256；当前 240 项计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。hash-sort 不依赖 Python `random` 的具体实现。`run_id` 由固定 namespace 下的 UUID5 根据 experiment、condition、task 和 repetition 确定性生成，与执行顺序分离。失败请求按原位置最多重试 2 次，每次 attempt 均保留错误类别、原始错误响应和供应商 request ID；已有终态 run 只能校验并跳过，不能覆盖。
+实验计划生成后以规范化 JSON 保存并计算 SHA-256；当前 240 项计划 checksum 为 `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`。hash-sort 不依赖 Python `random` 的具体实现。`run_id` 由固定 namespace 下的 UUID5 根据 experiment、condition、task 和 repetition 确定性生成，与执行顺序分离。失败请求按原位置最多重试 2 次，每次 attempt 均保留错误类别、原始错误响应和供应商 request ID；已有终态 run 只能校验并跳过，不能覆盖。
 
 M5.3 的 write-once journal 路径为 `requests/<run_id>.json`、`attempts/<run_id>/<NNN>-started.json`、`<NNN>-completed.json` 和 `terminal/<run_id>.json`。调用 gateway 前先写 intent；恢复时若只有 intent，则生成 `RESULT_UNKNOWN_AFTER_INTERRUPTION` 失败 attempt。该设计防止结果被静默丢弃或重复计入，但在 provider 不支持幂等键时，不能保证中断后的再次外部调用不会重复计费。当前执行器只支持 `concurrency=1`，technical manifest 也不替代 M5.5 对模型、SDK、价格和货币成本的正式冻结。
 
 M5.5.1 使用外层 `FrozenExperimentManifest` 补充正式冻结身份，不修改既有 technical manifest 和 journal schema。它内联 technical manifest 与 analysis config，并绑定 source commit、干净工作树声明、CPython/SDK、lockfile、Provider/模型、官方价格来源、微美元成本预算和有序文件清单。Pilot 与 formal 通过 `ExperimentPurpose` 区分；formal 必须引用不同 experiment ID 的 Pilot 证据。金额不使用 float，估算成本由冻结 token 数和每百万 token 的整数微美元单价重算。当前契约尚不读取文件、Git 或价格网站，也不代表已完成人工审批。
 
 M5.5.2 的 `FreezeCandidateBuilder` 只接受规范 JSON `FreezeCandidateSpec`，机器派生 Git commit、CPython/SDK 精确版本、`uv.lock` 与全部输入文件的字节数和 SHA-256。清单必须覆盖 dataset、知识声明与正文、任务、rubric、MANUAL condition、执行计划、候选 spec 和 lockfile；额外文件须显式列出，不自动扫描仓库。构建前后读取两次相同且干净的 Git 快照，防止采集期间源码变化；路径逃逸、符号链接、空文件、单文件 2 MiB 和总计 32 MiB 越界均拒绝。`verify_freeze_manifest()` 总是复核 Manifest 自 checksum、dataset/plan/execution identity 和文件字节；默认再校验当前 commit、工作树、Python 与 SDK，content-only 模式不声称当前环境可执行。该机制不验证价格网页真实性，不能抵御本地管理员同步改写全部文件和 checksum，也不替代项目 owner 的批准或外部只读归档。
+
+M5.5.3 新增 `tasks_per_scenario_per_domain`，让场景矩阵密度成为 `ExperimentDefinition` 的显式、可哈希输入：正式数据保持每领域 2+2，Pilot 使用每领域 1+1。`writer-pilot-v1` 包含 2 个独立合成领域、4 个任务和 8 个 run；experiment、domain、task、rubric、knowledge 与 run 身份均不得和 `writer-v1` 重叠。`validate_pilot_preflight()` 还要求单次重复、`concurrency=1`、固定模型 snapshot，并将 8 次预期请求和最多 16 次 attempt 精确映射到 32,000/64,000 输入 token、8,192/16,384 输出 token 与 `$0.025908/$0.051815` 预期/硬成本。候选固定 `gpt-4.1-mini-2025-04-14`、Responses API、OpenAI SDK `2.46.0` 和 2026-07-26 核验的官方价格；价格来源只作为带时间戳的评审输入，缓存折扣不进入预算。当前只完成离线配置与 fake 环境验证，尚未生成 clean-commit freeze manifest、读取 API key 或调用 provider。
 
 ### 13.5 指标计算
 

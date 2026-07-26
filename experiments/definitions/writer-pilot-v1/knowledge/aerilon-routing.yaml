@@ -1,0 +1,28 @@
+domain_id: aerilon-routing
+knowledge_id: aerilon-routing-guide
+version: 1.4.0
+name: Aerilon Routing current contract
+content_path: knowledge/aerilon-routing.md
+content_checksum: c476f188a95a98661f17dcca90e9d341ae222d967f41b4a6bd898728748b2c64
+synthetic: true
+facts:
+  - fact_id: route-endpoint
+    statement: Route definitions use POST /v3/routes.
+    accepted_matchers:
+      - kind: exact
+        pattern: POST /v3/routes
+  - fact_id: route-rule-limit
+    statement: A workspace supports at most 80 active route rules.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'at most 80 active route rules'
+  - fact_id: route-propagation
+    statement: A published route can take up to 45 seconds to reach every edge.
+    accepted_matchers:
+      - kind: exact
+        pattern: up to 45 seconds
+  - fact_id: failover-threshold
+    statement: Failover starts after three consecutive failed health checks.
+    accepted_matchers:
+      - kind: exact
+        pattern: three consecutive failed health checks

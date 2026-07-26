@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5 已进入且 M5.5.2 冻结候选生成与离线验证已实现。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5 已进入且 M5.5.3 Pilot 配置与离线预检已实现。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：已实现离线执行器与冻结候选机制但未接入真实 provider；尚未选择真实模型、核验官方价格、运行 Pilot 或执行真实模型调用。
+- 当前限制：已选择并离线审核 Pilot 模型、SDK、官方价格来源和预算候选，但尚未在 clean commit 上生成 freeze manifest，也未接入真实 provider、运行 Pilot 或执行真实模型调用。
 
 ## 2. 阶段目标
 
@@ -102,7 +102,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 ### M5.5 Pilot、校准与正式冻结
 
 - 使用不进入正式数据集的 pilot 任务验证请求格式、输出解析、成本计量和 rubric 可用性。
-- 冻结 `experiment.yaml`、任务集、知识包、评分规则、执行计划、源代码 commit、模型标识、SDK 版本、价格快照、请求上限、token 上限和成本上限。
+- 冻结 `dataset.yaml`、任务集、知识包、评分规则、执行计划、源代码 commit、模型标识、SDK 版本、价格快照、请求上限、token 上限和成本上限。
 - 生成冻结 manifest 及所有输入文件的 SHA-256。
 
 退出条件：pilot 与正式 run ID 空间隔离；冻结后修改任何输入都必须创建新 experiment ID。项目 owner 明确批准模型、预算和正式执行。
@@ -152,6 +152,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] M5.2 实验模型、24 个任务和冻结 rubric 通过离线测试。
 - [x] M5.3 执行计划、条件公平性、不可变产物和恢复机制通过离线故障测试。
 - [x] M5.4 评分与分析可由 fixture 完整复算。
+- [x] M5.5.1-M5.5.3 冻结契约、候选生成、独立 Pilot fixture 和离线预算预检完成。
 - [ ] M5.5 pilot 完成，正式配置、预算和 manifest 经人工冻结。
 - [ ] M5.6 正式调用经人工批准并完整执行。
 - [ ] M5.7 报告、原始数据和复算证据完成。
@@ -159,7 +160,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。M5.5.1-M5.5.2 已建立冻结契约、候选生成和本地验证机制，但尚未选择真实模型与官方价格，也未生成获批候选或运行 Pilot。仓库没有正式实验数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是准备与人工评审 Pilot 配置，再执行受预算约束的 Pilot；任何真实调用仍需项目 owner 明确批准。
+M5.1-M5.3 已建立实验设计基线、严格契约、冻结 Writer fixture 和可恢复的离线执行基础设施；M5.4.1-M5.4.5 已实现离线评分、task 配对分析、可验证报告发布和从完整 journal 到报告的一键复算。M5.5.1-M5.5.3 已建立冻结契约、候选生成、独立 Pilot fixture 和离线预算预检，并由项目 owner 确认固定模型、SDK、价格与预算候选。仓库仍没有 Pilot 或正式模型数据，不能声称 H1-H5 获得支持，也不能把合成评分集、合成报告或 fake gateway 结果当作模型质量证据。下一步是实现只在显式 live 审批下可用的 OpenAI gateway，并以 mock/contract test 验证请求映射；真实 Pilot 调用仍需项目 owner 再次明确批准。
 
 ## 10. M5.2 实现证据
 
@@ -169,7 +170,7 @@ M5.2 将实验基础设施放在仓库级 `experiments` package，而不是 `src
 - `experiments/loader.py` 使用 `yaml.safe_load()`、UTF-8 与文件大小限制、路径 containment、原始知识字节 SHA-256 和跨文件引用校验。
 - `experiments/definitions/writer-v1/` 固定 6 个虚构领域，每个领域包含 2 个一致性任务与 2 个适应性任务，共 24 个任务和 24 份 rubric。
 - 每份知识同时包含当前事实和明确标注的 legacy distractor；required fact matcher 必须在知识中有证据，forbidden matcher 必须对应实际 distractor。
-- 数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`，复制到不同根目录后保持一致。
+- M5.2 实现时数据集 checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`；M5.5.3 将场景矩阵密度纳入定义契约后，当前 checksum 更新为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e`，复制到不同根目录后保持一致。
 - Ruff 与 mypy strict 已纳入 `experiments`；CI 增加独立 90% 分支覆盖率门禁。
 - `uv build` 成功生成 sdist 与 wheel；wheel 共 95 个条目且不存在 `experiments/` 条目，研究基础设施未进入运行时分发包。
 
@@ -179,7 +180,7 @@ M5.2 将实验基础设施放在仓库级 `experiments` package，而不是 `src
 
 M5.3 在 `experiments` package 中新增计划、渲染、产物、gateway、执行器和离线 CLI，不修改 Agent Factory 的运行时服务边界：
 
-- `experiments/planning.py` 使用 `SHA-256(seed + coordinate)` 排序全部 240 个坐标，使用 UUID5 派生 `run_id`。提交的计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。
+- `experiments/planning.py` 使用 `SHA-256(seed + coordinate)` 排序全部 240 个坐标，使用 UUID5 派生 `run_id`。M5.3 实现时计划 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`；M5.5.3 因 definition checksum 更新而重新生成的当前 checksum 为 `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`，240 个 run 坐标未改变。
 - `experiments/rendering.py` 将两组共同的任务、读者信息与原始知识字节放入同一 `task_input`；MANUAL 使用人工 prompt 与文本化 Schema，FACTORY 使用真实控制器导出的 `AgentSpec` 与 provider-level Schema。条件 bundle checksum 为 `17781f2fb7d88c4f38edce23580f4eab6b06a4b7e5330b85a20d427fb36b0d76`。
 - `experiments/artifacts.py` 使用临时文件、`fsync` 与同文件系统 hard link 发布 write-once 规范化 JSON。相同内容重放是幂等的，不同内容报冲突；路径逃逸和符号链接被拒绝。
 - `experiments/executor.py` 在调用 gateway 前持久化 attempt intent，在调用后写 completion，最后写 terminal run。恢复时从 journal 重建保守 token/request 预算，已有终态只校验并跳过。
@@ -269,3 +270,14 @@ M5.5.1 的 CI 同构 experiment 门禁为 `158 passed`，`experiments` 分支覆
 M5.5.2 没有选择真实模型或官方价格，没有读取 API key、访问价格 URL 或执行模型调用。测试使用合成 Provider、模型、价格和 fake Git/environment reader，因此只证明冻结机制的结构和失败防线，不构成 Pilot 或正式冻结证据。候选 checksum 也不是数字签名，正式证据仍需 owner 审批与外部只读归档。
 
 M5.5.2 的 CI 同构 experiment 门禁为 `173 passed`，`experiments` 分支覆盖率 92.59%，其中 `freezing.py` 为 90%、`cli.py` 为 98%；全仓回归为 `582 passed`。Ruff format、Ruff lint、全量 mypy strict 和既有契约快照检查均通过。
+
+## 19. M5.5.3 Pilot 配置与离线预检
+
+- `ExperimentDefinition.tasks_per_scenario_per_domain` 将每领域的场景密度从 loader 常量提升为冻结定义字段；`expected_task_count` 必须等于领域数、两种场景和该密度的乘积。正式 Writer 保持每领域 2+2，Pilot 使用每领域 1+1。
+- `experiments/definitions/writer-pilot-v1/` 使用 Aerilon Routing 与 Brivane Storage 两个独立合成领域，共 4 个任务、4 份 rubric、1 次重复和 8 个 MANUAL/FACTORY run。Pilot 数据集 checksum 为 `4651ae511935d2c9e1312b67fcb568669e4ea993f37059939249e9e83255d9aa`，计划 checksum 为 `ed7a237fd48280e6fcefda742a6336f70cf58170362800e5897ab7db43eb480d`。
+- `validate_pilot_preflight()` 交叉验证 Pilot 与 formal 的 experiment、domain、task、rubric、knowledge 和 run 身份没有交集，并拒绝非单次重复、非 1+1 矩阵、非固定模型 snapshot、并发大于 1 或预算等式漂移。
+- 经项目 owner 确认的离线候选使用 OpenAI Responses API、固定快照 `gpt-4.1-mini-2025-04-14` 和 SDK `2.46.0`。2026-07-26 从 OpenAI 官方模型页面核验的每百万 token 单价为输入 `$0.40`、缓存输入 `$0.10`、输出 `$1.60`；预算不假设缓存命中。
+- 8 个 run 按一次 attempt 估算 8 次请求、32,000 输入 token、8,192 输出 token和 `$0.025908`；最多 2 次 attempt 对应 16 次请求、64,000 输入 token、16,384 输出 token 和 `$0.051815` 硬上限。`verify-pilot` 只执行离线身份与预算预检。
+- 候选 inventory 显式绑定 Pilot/Formal fixture、全部 `experiments/*.py`、`pyproject.toml` 与 `uv.lock`。当前 tracked spec 不是 `FrozenExperimentManifest`：clean source commit、逐文件 checksum 和最终 manifest checksum 必须在本工作包提交后由 M5.5.2 builder 派生。
+
+M5.5.3 没有读取 API key、实例化 live gateway 或调用模型。定向测试覆盖独立 fixture、正式/Pilot 身份重叠、预算漂移、真实候选 spec 的 fake Git/environment 冻结构建与 CLI 预检；这些证据只证明配置自洽，不证明 API 请求已经兼容，也不构成 Pilot 结果。CI 同构 experiment 门禁为 `181 passed`，`experiments` 分支覆盖率 92.69%，其中 `pilot.py` 为 96%、`freezing.py` 为 90%；全仓回归为 `590 passed`。Ruff format、Ruff lint、全量 mypy strict 和契约快照检查均通过。真实调用必须在 live gateway 完成 mock 契约测试后由项目 owner 单独批准。

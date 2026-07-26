@@ -1,0 +1,36 @@
+domain_id: aerilon-routing
+output_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    title: {type: string, minLength: 1}
+    summary: {type: string, minLength: 1}
+    key_points:
+      type: array
+      minItems: 2
+      maxItems: 6
+      items: {type: string, minLength: 1}
+    next_action: {type: string, minLength: 1}
+  required: [title, summary, key_points, next_action]
+  additionalProperties: false
+tasks:
+  - task_id: aerilon-current-reference
+    domain_id: aerilon-routing
+    scenario: consistency
+    instruction: Create a current routing reference covering the endpoint, active-rule limit, and propagation delay. Exclude all legacy values.
+    reader_profile: An implementation engineer preparing a production routing configuration.
+    knowledge:
+      knowledge_id: aerilon-routing-guide
+      version: 1.4.0
+      checksum: c476f188a95a98661f17dcca90e9d341ae222d967f41b4a6bd898728748b2c64
+    rubric_id: aerilon-current-reference-rubric
+  - task_id: aerilon-first-rollout
+    domain_id: aerilon-routing
+    scenario: adaptation
+    instruction: Explain propagation and failover to a new operator. Begin the summary with "For a first rollout" and include "staging" in next_action. Exclude all legacy values.
+    reader_profile: A new operator performing a first regional rollout.
+    knowledge:
+      knowledge_id: aerilon-routing-guide
+      version: 1.4.0
+      checksum: c476f188a95a98661f17dcca90e9d341ae222d967f41b4a6bd898728748b2c64
+    rubric_id: aerilon-first-rollout-rubric

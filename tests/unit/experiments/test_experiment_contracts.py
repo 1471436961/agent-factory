@@ -187,6 +187,11 @@ def test_definition_requires_canonical_complete_collections(
     with pytest.raises(ValidationError, match="each domain requires"):
         ExperimentDefinition.model_validate(payload)
 
+    payload = experiment_root.model_dump(mode="python")
+    payload["tasks_per_scenario_per_domain"] = 1
+    with pytest.raises(ValidationError, match="scenario matrix"):
+        ExperimentDefinition.model_validate(payload)
+
 
 def test_thresholds_require_a_real_inconclusive_band() -> None:
     with pytest.raises(ValidationError, match="below support threshold"):

@@ -31,6 +31,7 @@ from experiments.freezing import (
 )
 from experiments.gateway import FakeExperimentGateway
 from experiments.loader import LoadedExperimentDataset, load_experiment_dataset
+from experiments.pilot import validate_pilot_preflight
 from experiments.pipeline import OfflineAnalysisPipeline
 from experiments.planning import (
     build_execution_manifest,
@@ -117,6 +118,20 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--bootstrap-seed", type=int)
     analyze.add_argument("--bootstrap-iterations", type=int, default=10_000)
 
+    pilot = subcommands.add_parser(
+        "verify-pilot",
+        help="verify Pilot isolation and reviewed offline budget bounds",
+    )
+    _add_definition_root(pilot)
+    pilot.add_argument("--plan", type=Path)
+    pilot.add_argument("--spec", type=Path, required=True)
+    pilot.add_argument(
+        "--formal-definition-root",
+        type=Path,
+        default=DEFAULT_DEFINITION_ROOT,
+    )
+    pilot.add_argument("--formal-plan", type=Path)
+
     freeze = subcommands.add_parser(
         "freeze-candidate",
         help="derive an offline freeze candidate from reviewed local inputs",
@@ -181,6 +196,31 @@ def main(argv: list[str] | None = None) -> int:
             f"runs={result.score_manifest.run_count} "
             f"score_set_sha256={result.score_manifest.score_set_checksum} "
             f"analysis_sha256={result.analysis_manifest.analysis_checksum}"
+        )
+        return 0
+    if args.command == "verify-pilot":
+        candidate = load_freeze_candidate_spec(args.spec.resolve())
+        formal_root = args.formal_definition_root.resolve()
+        formal_dataset = load_experiment_dataset(formal_root)
+        formal_plan_path = (
+            args.formal_plan or formal_root / "execution-plan.json"
+        ).resolve()
+        formal_plan = load_execution_plan(formal_plan_path, formal_dataset)
+        report = validate_pilot_preflight(
+            pilot_dataset=dataset,
+            pilot_plan=plan,
+            candidate=candidate,
+            formal_dataset=formal_dataset,
+            formal_plan=formal_plan,
+        )
+        print(
+            "verified Pilot preflight: "
+            f"experiment={report.pilot_experiment_id} "
+            f"tasks={report.task_count} runs={report.run_count} "
+            f"requests={report.estimated_provider_requests}/"
+            f"{report.max_provider_requests} "
+            f"cost_usd_micros={report.estimated_cost_usd_micros}/"
+            f"{report.hard_cost_limit_usd_micros}"
         )
         return 0
     if args.command == "freeze-candidate":

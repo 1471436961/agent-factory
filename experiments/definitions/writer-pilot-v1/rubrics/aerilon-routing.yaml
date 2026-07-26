@@ -1,0 +1,23 @@
+domain_id: aerilon-routing
+rubrics:
+  - rubric_id: aerilon-current-reference-rubric
+    task_id: aerilon-current-reference
+    required_fact_ids: [route-endpoint, route-rule-limit, route-propagation]
+    forbidden_matchers:
+      - {kind: exact, pattern: POST /v2/routes}
+  - rubric_id: aerilon-first-rollout-rubric
+    task_id: aerilon-first-rollout
+    required_fact_ids: [route-propagation, failover-threshold]
+    forbidden_matchers:
+      - {kind: exact, pattern: 120 active route rules}
+    personalization_constraints:
+      - constraint_id: first-rollout-opening
+        description: Summary begins with the requested rollout framing.
+        expectation: present
+        matcher: {kind: regex, pattern: '^For a first rollout', case_sensitive: true}
+        target_field: summary
+      - constraint_id: staging-action
+        description: Next action asks the new operator to use staging.
+        expectation: present
+        matcher: {kind: exact, pattern: staging}
+        target_field: next_action

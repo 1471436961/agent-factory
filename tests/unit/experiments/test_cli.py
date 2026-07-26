@@ -12,6 +12,9 @@ from experiments.cli import main
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 DEFINITION_ROOT = REPOSITORY_ROOT / "experiments" / "definitions" / "writer-v1"
 COMMITTED_PLAN = DEFINITION_ROOT / "execution-plan.json"
+PILOT_ROOT = REPOSITORY_ROOT / "experiments" / "definitions" / "writer-pilot-v1"
+PILOT_PLAN = PILOT_ROOT / "execution-plan.json"
+PILOT_CANDIDATE = PILOT_ROOT / "freeze-candidate.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +109,33 @@ def test_run_fake_is_explicitly_non_evidentiary(
     assert "offline smoke only; not experiment evidence" in captured.out
     terminal = list(output_root.rglob("terminal/*.json"))
     assert len(terminal) == 2
+
+
+def test_verify_pilot_cli_reports_isolated_budget_bounds(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        main(
+            [
+                "verify-pilot",
+                "--definition-root",
+                str(PILOT_ROOT),
+                "--plan",
+                str(PILOT_PLAN),
+                "--spec",
+                str(PILOT_CANDIDATE),
+                "--formal-definition-root",
+                str(DEFINITION_ROOT),
+                "--formal-plan",
+                str(COMMITTED_PLAN),
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert "experiment=writer-pilot-v1 tasks=4 runs=8" in output
+    assert "requests=8/16" in output
+    assert "cost_usd_micros=25908/51815" in output
 
 
 def test_freeze_cli_wires_candidate_and_content_only_verification(

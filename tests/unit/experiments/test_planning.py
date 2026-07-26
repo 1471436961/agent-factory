@@ -26,7 +26,7 @@ from experiments.planning import (
 
 CONDITION_CHECKSUM = "c" * 64
 EXPECTED_PLAN_CHECKSUM = (
-    "81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f"
+    "8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920"
 )
 
 

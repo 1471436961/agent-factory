@@ -1,0 +1,36 @@
+domain_id: brivane-storage
+output_schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    title: {type: string, minLength: 1}
+    summary: {type: string, minLength: 1}
+    key_points:
+      type: array
+      minItems: 2
+      maxItems: 6
+      items: {type: string, minLength: 1}
+    next_action: {type: string, minLength: 1}
+  required: [title, summary, key_points, next_action]
+  additionalProperties: false
+tasks:
+  - task_id: brivane-upload-reference
+    domain_id: brivane-storage
+    scenario: consistency
+    instruction: Create a current multipart-upload reference covering minimum part size, maximum part count, and checksum. Exclude all legacy values.
+    reader_profile: An SDK engineer implementing multipart uploads.
+    knowledge:
+      knowledge_id: brivane-storage-guide
+      version: 2.2.0
+      checksum: bd9168a94fd6dbb83f2a83fe91de16b548d54f3c705e5a0fff61cbe4c8dc47e9
+    rubric_id: brivane-upload-reference-rubric
+  - task_id: brivane-recovery-brief
+    domain_id: brivane-storage
+    scenario: adaptation
+    instruction: Explain deletion recovery and part checksums to a support coordinator. Begin the summary with "What to expect" and mention "recovery window" in next_action. Exclude all legacy values.
+    reader_profile: A support coordinator answering a customer recovery question.
+    knowledge:
+      knowledge_id: brivane-storage-guide
+      version: 2.2.0
+      checksum: bd9168a94fd6dbb83f2a83fe91de16b548d54f3c705e5a0fff61cbe4c8dc47e9
+    rubric_id: brivane-recovery-brief-rubric

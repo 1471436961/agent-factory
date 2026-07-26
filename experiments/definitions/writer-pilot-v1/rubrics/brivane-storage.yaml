@@ -1,0 +1,23 @@
+domain_id: brivane-storage
+rubrics:
+  - rubric_id: brivane-upload-reference-rubric
+    task_id: brivane-upload-reference
+    required_fact_ids: [minimum-part-size, maximum-part-count, part-checksum]
+    forbidden_matchers:
+      - {kind: exact, pattern: at least 8 MiB}
+  - rubric_id: brivane-recovery-brief-rubric
+    task_id: brivane-recovery-brief
+    required_fact_ids: [recovery-window, part-checksum]
+    forbidden_matchers:
+      - {kind: exact, pattern: MD5 checksum}
+    personalization_constraints:
+      - constraint_id: expectation-opening
+        description: Summary begins with the requested support framing.
+        expectation: present
+        matcher: {kind: regex, pattern: '^What to expect', case_sensitive: true}
+        target_field: summary
+      - constraint_id: recovery-window-action
+        description: Next action explicitly names the recovery window.
+        expectation: present
+        matcher: {kind: exact, pattern: recovery window}
+        target_field: next_action

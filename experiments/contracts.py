@@ -274,6 +274,7 @@ class ExperimentDefinition(FrozenModel):
     repetitions: int = Field(default=5, ge=1, le=20)
     randomization_seed: int = Field(ge=0, le=2**63 - 1)
     expected_task_count: PositiveInt
+    tasks_per_scenario_per_domain: int = Field(default=2, ge=1, le=20)
     knowledge_files: Annotated[tuple[ArtifactPath, ...], Field(min_length=1)]
     task_files: Annotated[tuple[ArtifactPath, ...], Field(min_length=1)]
     rubric_files: Annotated[tuple[ArtifactPath, ...], Field(min_length=1)]
@@ -300,6 +301,13 @@ class ExperimentDefinition(FrozenModel):
             == len(self.rubric_files)
         ):
             raise ValueError("each domain requires one knowledge, task and rubric file")
+        expected_task_count = (
+            len(self.domain_ids)
+            * len(ExperimentScenario)
+            * self.tasks_per_scenario_per_domain
+        )
+        if self.expected_task_count != expected_task_count:
+            raise ValueError("expected_task_count does not match the scenario matrix")
         return self
 
 

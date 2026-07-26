@@ -21,7 +21,7 @@ from experiments.loader import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 FIXTURE_ROOT = REPOSITORY_ROOT / "experiments" / "definitions" / "writer-v1"
 EXPECTED_DATASET_CHECKSUM = (
-    "673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b"
+    "e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e"
 )
 
 
@@ -47,6 +47,7 @@ def test_frozen_dataset_has_expected_matrix_and_checksum(
 ) -> None:
     assert dataset.definition.experiment_id == "writer-validation-v1"
     assert dataset.definition.repetitions == 5
+    assert dataset.definition.tasks_per_scenario_per_domain == 2
     assert len(dataset.knowledge) == 6
     assert len(dataset.tasks) == 24
     assert len(dataset.rubrics) == 24
@@ -218,7 +219,7 @@ def test_loader_rejects_declared_task_count_mismatch(tmp_path: Path) -> None:
     payload["expected_task_count"] = 25
     _write_yaml(path, payload)
 
-    with pytest.raises(ExperimentFixtureError, match="task count"):
+    with pytest.raises(ExperimentFixtureError, match="Pydantic validation failed"):
         load_experiment_dataset(root)
 
 
@@ -323,7 +324,9 @@ def test_loader_rejects_unknown_personalization_target(tmp_path: Path) -> None:
         load_experiment_dataset(root)
 
 
-def test_loader_rejects_non_two_by_two_domain_matrix(tmp_path: Path) -> None:
+def test_loader_rejects_a_domain_outside_the_declared_scenario_matrix(
+    tmp_path: Path,
+) -> None:
     root = _copy_dataset(tmp_path)
     tasks_path = root / "tasks" / "nexora-events.yaml"
     task_payload = _read_yaml(tasks_path)
@@ -337,7 +340,10 @@ def test_loader_rejects_non_two_by_two_domain_matrix(tmp_path: Path) -> None:
     rubrics[2].pop("personalization_constraints")
     _write_yaml(rubric_path, rubric_payload)
 
-    with pytest.raises(ExperimentFixtureError, match=r"2\+2 scenario matrix"):
+    with pytest.raises(
+        ExperimentFixtureError,
+        match="tasks_per_scenario_per_domain",
+    ):
         load_experiment_dataset(root)
 
 

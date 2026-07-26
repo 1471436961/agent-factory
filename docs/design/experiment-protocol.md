@@ -113,7 +113,7 @@ Pilot 只验证 API 兼容性、解析稳定性、rubric 可计算性、限流�
 
 M5.5 必须冻结：
 
-- `experiment.yaml`；
+- `dataset.yaml`；
 - 24 个任务及输出 Schema；
 - 6 个知识包及事实词表；
 - MANUAL prompt 和 FACTORY Prototype/渲染规则；
@@ -325,7 +325,7 @@ M5.2 已在仓库级 `experiments` package 实现并测试以下对象：
 
 `experiments/loader.py` 只接受 fixture 根目录内的相对路径，使用 `yaml.safe_load()`，限制 YAML 为 256 KiB、知识正文为 128 KiB，并验证 UTF-8、JSON Schema Draft 2020-12、知识 checksum、事实 matcher、rubric 引用和每领域 `2 consistency + 2 adaptation` 矩阵。
 
-冻结 fixture 位于 `experiments/definitions/writer-v1/`，包含 6 份知识、24 个任务和 24 份 rubric，dataset checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`。该 checksum 不包含绝对路径，因此相同字节复制到其他工作目录仍得到同一值。
+冻结 fixture 位于 `experiments/definitions/writer-v1/`，包含 6 份知识、24 个任务和 24 份 rubric。M5.2 初始 dataset checksum 为 `673b6866d58853a5c788ccff5b6acdc6511ee01b1085439d3d1353811dd3d51b`；M5.5.3 将 `tasks_per_scenario_per_domain` 纳入定义后，当前 checksum 为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e`。该 checksum 不包含绝对路径，因此相同字节复制到其他工作目录仍得到同一值。
 
 M5.2 只定义了 `ExecutionPlan`、`ExperimentRun` 等产物契约；计划生成、条件渲染、run 文件写入与恢复已在 M5.3 落地。真实 provider 调用仍未实现，也不得把 fake gateway 的执行能力表述为正式实验已经运行。
 
@@ -340,7 +340,7 @@ M5.3 新增以下可测试模块：
 - `experiments/executor.py`：顺序执行固定计划，记录 intent/completion journal，执行有限重试、预算停止和断点恢复。
 - `experiments/cli.py`：提供 `plan`、`verify-plan` 与非证据性的 `run-fake` 离线命令；没有 live 子命令。
 
-冻结 Writer fixture 的执行计划共有 240 项，checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`。MANUAL prompt 字节与 renderer version 组成的 condition bundle checksum 为 `17781f2fb7d88c4f38edce23580f4eab6b06a4b7e5330b85a20d427fb36b0d76`。FACTORY 条件的集成测试通过真实 `FactoryController` 完成原型注册、知识注册、克隆、绑定和 `AgentSpec` 导出，再与 MANUAL 条件逐字节核对共同 task input。
+冻结 Writer fixture 的执行计划共有 240 项；M5.3 初始 checksum 为 `81c535b96bcd3b33ea217dd031953a7f7fc6ae586c995172956324b2b7b7996f`，M5.5.3 绑定新 definition checksum 后的当前值为 `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`。MANUAL prompt 字节与 renderer version 组成的 condition bundle checksum 为 `17781f2fb7d88c4f38edce23580f4eab6b06a4b7e5330b85a20d427fb36b0d76`。FACTORY 条件的集成测试通过真实 `FactoryController` 完成原型注册、知识注册、克隆、绑定和 `AgentSpec` 导出，再与 MANUAL 条件逐字节核对共同 task input。
 
 离线定向门禁为 `83 passed`，`experiments` 分支覆盖率 92.84%；全量回归为 `492 passed`，生产代码总覆盖率 92%，其中 domain 96%、application 95%。这组证据证明代码路径、契约和故障恢复行为满足 M5.3 规格，不证明真实模型质量、正式预算安全或实验命题成立。
 
@@ -445,3 +445,15 @@ Git 通过参数数组、`shell=False`、10 秒 timeout 和输出大小上限读
 M5.5.2 只实现机制并使用合成 Provider、模型和价格做离线测试。它不访问价格来源 URL，不读取 API key，不执行 provider 请求，也不生成获得批准的真实冻结候选。Manifest checksum 只能发现非同步篡改，不能提供签名真实性；正式冻结仍需后续 pilot 证据、项目 owner 审批与外部只读归档。
 
 M5.5.2 的 CI 同构 experiment 门禁为 `173 passed`，`experiments` 分支覆盖率 92.59%，其中 `freezing.py` 为 90%、`cli.py` 为 98%；全仓回归为 `582 passed`。Ruff format、Ruff lint、全量 mypy strict 和既有契约快照检查均通过。测试没有网络请求或真实模型调用。
+
+## 22. M5.5.3 Pilot 定义与预算预检
+
+Pilot 不是从 24 个正式任务中抽样。`writer-pilot-v1` 使用 2 个新的 synthetic domain，每个领域各有 1 个 consistency 和 1 个 adaptation 任务；1 次重复、2 个条件共产生 8 个 run。`ExperimentDefinition.tasks_per_scenario_per_domain` 参与定义和数据集 checksum，loader 同时校验声明任务总数与逐领域实际矩阵，避免为 Pilot 放宽正式 fixture 的完整性规则。
+
+`validate_pilot_preflight()` 接受 Pilot dataset/plan、`FreezeCandidateSpec` 与 formal dataset/plan。检查顺序为：分别校验两份计划和 Pilot technical manifest；校验候选 purpose、definition 与 condition bundle；证明 experiment/domain/task/rubric/knowledge/run 身份集合不相交；最后重算 request、prompt token、completion token 和微美元成本。预检要求 `repetitions=1`、1+1 场景矩阵、固定 model snapshot 与 `concurrency=1`，并要求 technical limits 精确等于 `run_count * max_attempts` 的最坏边界，不能通过虚高预算绕开评审。
+
+评审候选固定 OpenAI Responses API、`gpt-4.1-mini-2025-04-14`、OpenAI SDK `2.46.0`、`temperature=0`、`max_output_tokens=1024`、60 秒 timeout、最多 2 次 attempt 和单并发。价格于 2026-07-26 从 [OpenAI GPT-4.1 mini 官方模型页](https://developers.openai.com/api/docs/models/gpt-4.1-mini)核验：每百万 token 输入 400,000 微美元、缓存输入 100,000 微美元、输出 1,600,000 微美元。预算始终按未缓存输入计算。
+
+预期一次 attempt 对应 8 次请求、32,000 prompt token、8,192 completion token 和 25,908 微美元；最坏两次 attempt 对应 16 次请求、64,000 prompt token、16,384 completion token 和 51,815 微美元。tracked `freeze-candidate.json` 固定这些人工评审输入及 60 项显式 inventory，但不伪造 source commit 或文件 checksum。只有工作包提交后，`freeze-candidate` 才能在干净工作树上派生真正的 `FrozenExperimentManifest`。
+
+`python -m experiments verify-pilot` 是纯离线预检：没有 API key 参数、live switch 或 provider client。M5.5.3 的测试使用 fake Git/environment 构建并验证候选，只证明 fixture、身份和预算自洽；真实 API 请求映射、Structured Outputs 解析和 usage 提取属于后续 live gateway 工作包，实际 Pilot 运行仍须项目 owner 单独批准。

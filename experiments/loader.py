@@ -262,12 +262,15 @@ def _validate_dataset(
             )
         _validate_constraint_targets(task, rubric)
 
+    expected_per_scenario = definition.tasks_per_scenario_per_domain
     expected_matrix = {
-        ExperimentScenario.CONSISTENCY: 2,
-        ExperimentScenario.ADAPTATION: 2,
+        ExperimentScenario.CONSISTENCY: expected_per_scenario,
+        ExperimentScenario.ADAPTATION: expected_per_scenario,
     }
     if any(counts != expected_matrix for counts in per_domain.values()):
-        raise ExperimentFixtureError("each domain requires a 2+2 scenario matrix")
+        raise ExperimentFixtureError(
+            "each domain must match tasks_per_scenario_per_domain"
+        )
 
 
 def _validate_constraint_targets(

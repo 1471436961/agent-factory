@@ -1,0 +1,28 @@
+domain_id: brivane-storage
+knowledge_id: brivane-storage-guide
+version: 2.2.0
+name: Brivane Storage current contract
+content_path: knowledge/brivane-storage.md
+content_checksum: bd9168a94fd6dbb83f2a83fe91de16b548d54f3c705e5a0fff61cbe4c8dc47e9
+synthetic: true
+facts:
+  - fact_id: minimum-part-size
+    statement: Multipart parts are at least 5 MiB except for the final part.
+    accepted_matchers:
+      - kind: regex
+        pattern: 'at least 5 MiB.{0,80}final part'
+  - fact_id: maximum-part-count
+    statement: A multipart upload supports at most 5,000 parts.
+    accepted_matchers:
+      - kind: exact
+        pattern: at most 5,000 parts
+  - fact_id: recovery-window
+    statement: Deleted objects remain recoverable for seven days.
+    accepted_matchers:
+      - kind: exact
+        pattern: recoverable for seven days
+  - fact_id: part-checksum
+    statement: Each upload part requires a SHA-256 checksum.
+    accepted_matchers:
+      - kind: exact
+        pattern: SHA-256 checksum
