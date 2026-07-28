@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.5 已完成，M5.6 正式实验尚未启动。M5.5 的 Pilot 证据 seal、正式 preflight/launcher、盲评工具、clean-commit Manifest 和 owner 冻结批准均已完成。
+- 状态：进行中；M5.1-M5.6 已完成，M5.7 尚未启动。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的旧 Moonshot Manifest 只解释前两次历史执行；绑定 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 的新 Manifest 只解释第三次兼容性复验。正式 Manifest 固定 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026`，保守估算为 `CNY 12875520 micros`、硬上限为 `CNY 25751040 micros`。M5.6 live 尚未启动，任何执行工具或 provider profile 变化都必须重新冻结和审批。
+- 当前限制：正式 M5.6 证据仅由 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026`、Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 和外部 E 盘证据根解释；`kimi-k2.6` 是可变别名，供应商级复现强度有限。M5.7 在独立规划和确认前不得读取私有映射形成条件级结论。
 
 ## 2. 阶段目标
 
@@ -157,13 +157,13 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] MFJS 适配与失败 usage 修正通过门禁，并在 clean commit 上重新冻结。
 - [x] 修正后的真实 8-run Pilot 完成并通过 FACTORY Structured Output 兼容性评审。
 - [x] M5.5 正式配置、预算和 manifest 经项目 owner 人工冻结与批准。
-- [ ] M5.6 正式调用经人工批准并完整执行。
+- [x] M5.6 正式调用经人工批准并完整执行，盲审包与私有映射完成可恢复发布。
 - [ ] M5.7 报告、原始数据和复算证据完成。
 - [ ] 项目 owner 确认结束并封存 M5。
 
 ## 9. 当前结论
 
-M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5 的三次真实 Moonshot Pilot 只形成兼容性证据：第一次 8-run 因凭据设置失败；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Structured Output 与 MFJS 子集不兼容而失败；第三次在 MFJS projection 后得到 FACTORY 4/4 成功、MANUAL 3/4 成功和 1 个非 JSON 无效响应。该结果支持“修正后的 FACTORY 请求与当前 Moonshot 接口兼容”，不能用于 H1-H5，也不能解释为框架质量优于或劣于 MANUAL。第三次 35 项外部证据已由 `9cb5965cbd76cdec0728b29ec91f45da2a178a52d633030bbae51cc4e073114d` seal 绑定；正式 preflight、launcher 和盲评分离已通过完整 240-run fake 验证。正式 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 及费用边界已由项目 owner 批准，M5.5 已结束；下一步是另行授权并执行 M5.6，本次审批没有启动 live 调用。
+M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的工程链；M5.5 完成 Moonshot 兼容性 Pilot、正式冻结与人工审批。M5.6 随后在冻结 source commit 上连续完成 240-run：232 个 `succeeded`、8 个 `invalid-response`，245 次 attempt，观测 usage 为 71,730 input + 66,820 output tokens，费用为 `CNY 2270385 micros`，没有越过 480 次 attempt 或 `CNY 25751040 micros` 硬上限。完整 journal 通过 `ExperimentEvidenceLoader`，公开 240-item 盲审包和私有 240-record 映射完成可恢复、可重放发布。该结果只完成正式数据采集与盲化，不形成 H1-H5 或条件优劣结论；下一步 M5.7 尚未启动。
 
 ## 10. M5.2 实现证据
 
@@ -384,3 +384,19 @@ M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费�
 冻结器在 clean source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026` 上生成 152 项正式 Manifest；内部 checksum 为 `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f`，原始文件 SHA-256 为 `d4d2d390467f47097db67540bcafaffc51c98152cd176b730855ebd8f1277ff1`。环境级和 content-only 验证均通过，归档提交 `4d4b4a1e6121e5c54a5794dbc1cf200be922544d` 的 GitHub Actions run `30345967632` 成功。
 
 项目 owner 随后精确批准该 Manifest、Moonshot `kimi-k2.6` 非思考模式、完整 240-run、最多 480 次 attempt、`CNY 12875520 micros` 预计费用和 `CNY 25751040 micros` 本地硬上限，并明确本次不启动 M5.6。至此 M5.5 退出条件全部满足；M5.6 live 启动仍需单独授权。
+
+## 28. M5.6 正式执行启动
+
+2026-07-28，项目 owner 确认 M5.6 执行规划，授权更新阶段记录、创建冻结 detached worktree，并完成不读取 API key 的 Manifest、环境、正式 preflight 和拒绝路径校验。该确认启动 M5.6 阶段，但不授权读取 `MOONSHOT_API_KEY`、添加 `--allow-live` 或产生 Moonshot 费用。
+
+正式执行使用已批准的 source commit、Manifest 和费用边界，不修改冻结代码。离线准备通过后，实际 240-run 命令、证据目录和硬费用上限必须再次展示并取得精确付费执行授权。过程与结果持续记录在 [`M5.6 正式执行记录`](../reports/m5.6-formal-execution.md)。
+
+离线准备在 `E:\\Agent-Factory-Formal-Source-20260728` 完成：worktree 的 `HEAD` 与 Git porcelain、CPython `3.11.15`、OpenAI SDK `2.46.0`、Manifest 文件 SHA-256 和环境级 verifier 全部匹配冻结记录；正式 preflight 返回 24 tasks、5 repetitions、MANUAL/FACTORY 各 120 runs、240/480 请求边界和既定人民币预算。省略 `--allow-live` 的完整启动命令以 exit code `2` 被拒绝，`E:\\Agent-Factory-Formal-Evidence-20260728` 前后均不存在。全过程没有读取 API key、创建 provider client、访问网络或产生费用。
+
+## 29. M5.6 正式执行与盲审发布
+
+项目 owner 在离线门禁后单独批准 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f`、完整 240-run、最多 480 次 attempt、单并发和 `CNY 25751040 micros` 硬上限。第一次 live 启动因普通环境变量中没有密钥而在访问 provider 前拒绝；owner 随后明确批准只在子进程内解密既有 DPAPI 密钥。正式执行从 `2026-07-28T13:16:28.698895Z` 连续运行至 `2026-07-28T14:13:21.047159Z`，launcher 以 exit code `0` 结束，没有发生进程级中断或恢复。
+
+240 个终态包括 232 个 `succeeded` 和 8 个 `invalid-response`。245 次 attempt 中有 5 次可重试的 `MOONSHOT_NETWORK_ERROR`，没有 provider request ID 或 usage；其余 240 次均保存互不重复的 provider request ID 和成对 usage。8 次最终无效响应分别为 6 个 `MOONSHOT_RESPONSE_INCOMPLETE`、1 个 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT` 和 1 个 `MOONSHOT_OUTPUT_SCHEMA_INVALID`。总 usage 为 71,730 input + 66,820 output tokens，观测费用 `CNY 2270385 micros`。所有失败、重试和终态均保留，详细证据见 [`M5.6 正式执行记录`](../reports/m5.6-formal-execution.md)。
+
+原始证据根包含 973 个文件和 46,763,544 bytes，完整 journal 经 `ExperimentEvidenceLoader` 重载通过。公开盲审包包含 240 items，package checksum 为 `ef5a31f9d0b5a81a169c22d3c68321fcc8723561f057e70f0a92a6880ce85fca`；独立私有映射包含 240 records，mapping checksum 为 `64eeb21b7ab800458aea7b8db81baf405017c6a8926e116edff50131960c118b`。相同构建命令重放得到相同 checksum。至此 M5.6 退出条件满足；M5.7 的评分、条件映射解盲、统计分析和报告仍需另行规划确认。

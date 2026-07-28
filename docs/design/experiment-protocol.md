@@ -661,3 +661,11 @@ FACTORY usage 为 872 input + 1,171 output，MANUAL usage 为 1,416 input + 669 
 盲评生成器只接受完整且已验证的 terminal evidence。公开 `BlindReviewItem` 没有 condition、run ID、repetition、execution order、Prompt hash 或 AgentSpec 字段，只包含随机 review ID、任务/读者材料、rubric 所需事实、终态和可用模型输出；私有 `BlindReviewMapping` 单独保存 review ID 到 run/condition 的来源链。两个 ArtifactStore 根必须彼此独立且不能嵌套。首次生成先 write-once 保存映射，随后发布逐 item 文件和 package Manifest；中断重放复用原随机 ID，篡改 run checksum、item checksum 或映射都会阻断。
 
 正式 Manifest 在 clean source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026` 上生成并通过环境级、content-only 与远程 CI 验证。项目 owner 已批准 Manifest checksum `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f`、`kimi-k2.6` 非思考 profile、完整 240-run、最多 480 次 attempt、`CNY 12875520 micros` 预计费用和 `CNY 25751040 micros` 本地硬上限，M5.5 因此结束。审批原文与证据链见 [`M5.5 正式冻结审批记录`](../reports/m5.5-formal-freeze-approval.md)。该审批明确没有启动 M5.6；live launcher 仍须在单独授权后执行。
+
+## 32. M5.6 正式执行证据
+
+项目 owner 在环境级 verifier、正式 preflight 和无副作用拒绝测试通过后，单独批准了与正式 Manifest 完全一致的 provider、模型、240-run、480-attempt 和费用边界。执行使用 detached worktree `E:\\Agent-Factory-Formal-Source-20260728`，原始证据、公开盲审包和私有映射分别写入三个互不嵌套的 E 盘根目录。密钥由 owner 单独授权从 Windows DPAPI 文件解密，只注入执行子进程，并在进程结束时清除。
+
+正式 launcher 在一次连续 session 中完成，执行窗口为 `2026-07-28T13:16:28.698895Z` 至 `2026-07-28T14:13:21.047159Z`。240 个终态包括 232 个 `succeeded` 和 8 个 `invalid-response`；245 次 attempt 中 5 次为可重试 `MOONSHOT_NETWORK_ERROR`，其余 240 次具有互不重复的 provider request ID 和完整 usage。总 usage 为 71,730 input + 66,820 output tokens，观测费用 `CNY 2270385 micros`，没有触发 480 次请求或 `CNY 25751040 micros` 硬上限。
+
+`ExperimentEvidenceLoader` 对 973 个原始文件和 46,763,544 bytes 执行完整重载验证。盲审生成器随后发布 240 个公开 item；package checksum 为 `ef5a31f9d0b5a81a169c22d3c68321fcc8723561f057e70f0a92a6880ce85fca`。独立私有 mapping 含 240 条记录，checksum 为 `64eeb21b7ab800458aea7b8db81baf405017c6a8926e116edff50131960c118b`；相同命令重放得到相同结果。M5.6 因此完成，但这些工程事实不构成条件优劣或 H1-H5 结论。评分、人工盲评结果接入、解盲和统计分析属于 M5.7，须另行确认后启动。

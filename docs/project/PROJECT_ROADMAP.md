@@ -28,9 +28,9 @@
 
 ## 4. 当前状态
 
-当前状态：M5.1-M5.5 已完成，M5.6 正式实验尚未启动。M5.5 已完成 Moonshot 迁移、生产依赖冻结、三次经批准的真实 8-run Pilot、35 项外部证据 seal、正式 24-task / 5-repetition / 120:120 preflight、完整 launcher、条件分离盲评包和 clean-commit Manifest。第三次 Pilot 的 FACTORY 4/4 成功、MANUAL 3/4 成功及 1 个 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT` 只通过 FACTORY 兼容性门禁，不形成 H1-H5 结论。正式数据集/计划 checksum 仍为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e` / `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)，Pilot 复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)，正式冻结边界见 [`M5.5 正式冻结审批记录`](../reports/m5.5-formal-freeze-approval.md)。
+当前状态：M5.1-M5.6 已完成，M5.7 尚未启动。正式 240-run 在冻结 source commit 上连续完成，得到 232 个 `succeeded`、8 个 `invalid-response` 和 245 次 attempts；观测 usage 为 71,730 input + 66,820 output tokens，费用为 `CNY 2270385 micros`，未触发请求或费用上限。完整 journal 通过只读 loader，公开 240-item 盲审包与独立私有 240-record 映射均完成可重放发布。当前不形成 H1-H5 或条件优劣结论。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)，正式冻结边界见 [`M5.5 正式冻结审批记录`](../reports/m5.5-formal-freeze-approval.md)，M5.6 完整证据摘要见 [`M5.6 正式执行记录`](../reports/m5.6-formal-execution.md)。
 
-执行边界：项目 owner 已批准正式 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f`、240 次预期请求、480 次最大 attempt、`CNY 12875520 micros` 保守估算与 `CNY 25751040 micros` 绝对硬上限，M5.5 因此结束。由于 `kimi-k2.6` 不是不可变 snapshot，正式报告必须把 provider 别名漂移列为复现限制。本次审批明确不启动 M5.6；live 执行仍需单独授权，并必须 checkout Manifest 的 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026` 通过环境级验证。
+执行边界：正式证据绑定 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 和 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026`。由于 `kimi-k2.6` 不是不可变 snapshot，正式报告必须把 provider 别名漂移列为复现限制。原始输出和私有映射保留在仓库外 E 盘目录；M5.7 在另行确认前不得开始条件级分析。
 
 ## 5. 最终展示物
 

@@ -3,11 +3,11 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.6 正式实验待启动阶段；M5.5 正式 Manifest 与费用边界已由项目 owner 批准，M5.6 live 尚未启动
+**当前阶段**：Alpha / M5.6 正式执行与盲审材料发布已完成；M5.7 评分与分析尚未启动
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
-配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[M4 阶段文档](milestones/m4-quality-security.md)、[M5 阶段文档](milestones/m5-validation-experiment.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)、[Gradio 演示设计说明](design/gradio-demo.md)、[Alpha 安全、回归与发布门禁设计说明](design/security-regression-gates.md)、[M4.4 事务与并发故障证据](design/transaction-fault-evidence.md)、[M5 实验协议设计说明](design/experiment-protocol.md)、[M5.5 Moonshot Pilot 执行与纠偏报告](reports/m5.5-moonshot-pilot-review.md)、[M5.5 正式冻结审批记录](reports/m5.5-formal-freeze-approval.md)、[本地 Alpha 部署说明](deployment/local-alpha.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
+配套工程文档：[项目路线图](project/PROJECT_ROADMAP.md)、[M0 阶段文档](milestones/m0-foundation.md)、[M1 阶段文档](milestones/m1-core-production-chain.md)、[M2 阶段文档](milestones/m2-skill-governance.md)、[M3 阶段文档](milestones/m3-interfaces-runtime-demo.md)、[M4 阶段文档](milestones/m4-quality-security.md)、[M5 阶段文档](milestones/m5-validation-experiment.md)、[领域契约设计说明](design/domain-contracts.md)、[SQLite 持久化设计说明](design/sqlite-persistence.md)、[应用服务设计说明](design/application-services.md)、[REST API 设计说明](design/rest-api.md)、[Authentication 设计说明](design/authentication.md)、[M2 技能治理设计说明](design/skill-governance.md)、[生命周期与 Runtime 契约设计说明](design/lifecycle-runtime-contracts.md)、[Python SDK 设计说明](design/python-sdk.md)、[Factory Tool Adapter 设计说明](design/factory-tool-adapter.md)、[Runtime 与安全工具执行设计说明](design/runtime-tool-execution.md)、[Gradio 演示设计说明](design/gradio-demo.md)、[Alpha 安全、回归与发布门禁设计说明](design/security-regression-gates.md)、[M4.4 事务与并发故障证据](design/transaction-fault-evidence.md)、[M5 实验协议设计说明](design/experiment-protocol.md)、[M5.5 Moonshot Pilot 执行与纠偏报告](reports/m5.5-moonshot-pilot-review.md)、[M5.5 正式冻结审批记录](reports/m5.5-formal-freeze-approval.md)、[M5.6 正式执行记录](reports/m5.6-formal-execution.md)、[本地 Alpha 部署说明](deployment/local-alpha.md)、[学习日志](../LEARNING_LOG.md)、[设计纠偏记录](../DECISION_CORRECTIONS.md)。
 
 ---
 
@@ -4181,6 +4181,8 @@ M5.5 收尾将 `src/agent_factory` 下 85 个 Python 文件和 6 个 migration S
 
 第三次真实 Pilot 在 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 上执行完整 8-run，FACTORY 4/4 成功，MANUAL 3/4 成功；唯一 MANUAL 失败为 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。8 个 run 共 8 次 attempt，无重试，全部保存 provider request ID；总 usage 为 2,288 input + 1,840 output，观测费用 `CNY 64552 micros`。失败 attempt 的 usage 已进入 journal 和成本汇总，证明计量修正生效。FACTORY 从修正前 0/4 变为修正后 4/4，因而通过当前 Moonshot 接口的 Structured Output 兼容性门禁；该窄结论不构成 H1-H5 或条件优劣证据。第三次外部证据的 35 项文件由 `PilotEvidenceSeal` 逐文件绑定；正式 preflight 强制 24 tasks、5 repetitions、120/120 条件平衡、240/480 请求边界和人民币预算。`run-formal-live` 与 Pilot 共享 Factory preparation、完整计划校验、密钥读取顺序和 executor；盲评生成器把 240 个 condition-free item 与私有映射写入两个不可嵌套根。项目 owner 已批准 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026` 的正式 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 及 `CNY 25751040 micros` 硬上限，M5.5 因此结束；本次批准没有启动 M5.6 live。完整复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](reports/m5.5-moonshot-pilot-review.md)与[`M5.5 正式冻结审批记录`](reports/m5.5-formal-freeze-approval.md)。
 
+M5.6 在项目 owner 单独批准后，从同一冻结 source commit 连续执行完整 240-run。最终得到 232 个 `succeeded`、8 个 `invalid-response` 和 245 次 attempts；总 usage 为 71,730 input + 66,820 output tokens，观测费用 `CNY 2270385 micros`。完整 journal 经只读 loader 复核后生成公开 240-item 盲审包与独立私有映射，package checksum 为 `ef5a31f9d0b5a81a169c22d3c68321fcc8723561f057e70f0a92a6880ce85fca`，mapping checksum 为 `64eeb21b7ab800458aea7b8db81baf405017c6a8926e116edff50131960c118b`。这些事实只证明 M5.6 数据采集和盲化闭环完成，不形成条件比较或 H1-H5 结论；完整记录见 [`M5.6 正式执行记录`](reports/m5.6-formal-execution.md)。
+
 ### 13.5 指标计算
 
 ```python
@@ -4258,9 +4260,9 @@ H5 使用独立确定性验证记录。验证器必须从 Prototype、Knowledge�
 7. 主要分析采用 intention-to-treat 并按最差值映射全部执行失败；只分析成功输出的结果必须标为不产生命题判定的敏感性分析。
 8. 结果表必须包含模型名、执行日期、Prompt hash、知识校验和、计划 SHA-256 和代码 commit hash。
 
-结论分为“支持”“不支持”“证据不足”，不使用“证明框架更优”这类超出实验范围的表述。分析实现必须是可测试的 Python 模块，notebook 不能成为唯一计算来源。M5.5 已冻结并由项目 owner 批准 provider、模型、价格快照、请求/token/成本上限；M5.6 仍须在单独 live 授权后 checkout 冻结 source commit 执行，默认测试和 CI 始终使用 fake gateway。
+结论分为“支持”“不支持”“证据不足”，不使用“证明框架更优”这类超出实验范围的表述。分析实现必须是可测试的 Python 模块，notebook 不能成为唯一计算来源。M5.6 已从冻结 source commit 完成单并发 240-run 并发布盲审材料；M5.7 必须从该外部证据根离线复算，默认测试和 CI 仍始终使用 fake gateway。
 
-当前 `experiments/analysis.py` 已实现上述主要指标。Bootstrap 不使用 Python PRNG，而是对 seed、命题、population、scenario、replicate 和 draw 计算 SHA-256，并用 rejection sampling 生成无直接取模偏差的 task 索引。H2 的 MANUAL 遗漏率零分母会显式计入 invalid replicate；有效比例低于 95% 时结论为“证据不足”，同时保留绝对遗漏率差区间。`experiments/pipeline.py` 已将完整 journal 校验、评分 Manifest、统计分析和 content-addressed 报告发布串成一键离线复算，但尚未读取真实模型数据。
+当前 `experiments/analysis.py` 已实现上述主要指标。Bootstrap 不使用 Python PRNG，而是对 seed、命题、population、scenario、replicate 和 draw 计算 SHA-256，并用 rejection sampling 生成无直接取模偏差的 task 索引。H2 的 MANUAL 遗漏率零分母会显式计入 invalid replicate；有效比例低于 95% 时结论为“证据不足”，同时保留绝对遗漏率差区间。`experiments/pipeline.py` 已将完整 journal 校验、评分 Manifest、统计分析和 content-addressed 报告发布串成一键离线复算；M5.6 只用 loader 和盲审生成器验证真实证据，尚未在 M5.7 运行评分与分析 pipeline。
 
 
 ---
