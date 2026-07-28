@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5 已执行两次经批准的 Moonshot 8-run Pilot；MFJS Schema 适配和失败 usage 计量修正已从 clean commit 重新冻结，等待第三次真实 Pilot 的独立费用审批。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5 已执行三次经批准的 Moonshot 8-run Pilot；第三次 FACTORY 4/4 成功，MFJS 兼容性复验通过，等待正式配置、预算和 Manifest 的 owner 冻结批准。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的 Moonshot Manifest 只解释两次历史执行；修正后的新 Manifest 绑定 source commit `e010b5356019e29aa4a89b4a10722671073589d5`。当前没有新的 live 费用批准；M5.6 也未获授权。
+- 当前限制：绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的旧 Moonshot Manifest 只解释前两次历史执行；绑定 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 的新 Manifest 只解释第三次兼容性复验。M5.6 的正式 Manifest 和费用尚未冻结或批准。
 
 ## 2. 阶段目标
 
@@ -153,9 +153,9 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] M5.3 执行计划、条件公平性、不可变产物和恢复机制通过离线故障测试。
 - [x] M5.4 评分与分析可由 fixture 完整复算。
 - [x] M5.5 冻结契约、独立 Pilot、Moonshot gateway、受控 launcher 与执行前生产依赖闭环完成。
-- [x] 两次真实 Pilot 的成功、失败、request、attempt、terminal 和成本证据均保留并完成复核。
+- [x] 三次真实 Pilot 的成功、失败、request、attempt、terminal 和成本证据均保留并完成复核。
 - [x] MFJS 适配与失败 usage 修正通过门禁，并在 clean commit 上重新冻结。
-- [ ] 修正后的真实 8-run Pilot 完成并通过兼容性评审。
+- [x] 修正后的真实 8-run Pilot 完成并通过 FACTORY Structured Output 兼容性评审。
 - [ ] M5.5 正式配置、预算和 manifest 经项目 owner 人工冻结与批准。
 - [ ] M5.6 正式调用经人工批准并完整执行。
 - [ ] M5.7 报告、原始数据和复算证据完成。
@@ -163,7 +163,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5 已获得真实 Moonshot Pilot 数据，但它只形成兼容性证据：第一次 8-run 因凭据设置失败；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Structured Output 与 MFJS 子集不兼容而失败。该结果不能用于 H1-H5，不能进入正式统计，也不能解释为框架质量劣于或优于 MANUAL。兼容性修正已通过门禁并重新冻结；下一步必须先获得与新 Manifest 精确匹配的 owner 费用审批，M5.6 仍保持阻断。
+M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5 的三次真实 Moonshot Pilot 只形成兼容性证据：第一次 8-run 因凭据设置失败；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Structured Output 与 MFJS 子集不兼容而失败；第三次在 MFJS projection 后得到 FACTORY 4/4 成功、MANUAL 3/4 成功和 1 个非 JSON 无效响应。该结果支持“修正后的 FACTORY 请求与当前 Moonshot 接口兼容”，不能用于 H1-H5，也不能解释为框架质量优于或劣于 MANUAL。下一步是冻结并审批 M5.6 的正式配置、预算和 Manifest；在此之前 M5.5 未结束，M5.6 仍保持阻断。
 
 ## 10. M5.2 实现证据
 
@@ -355,10 +355,14 @@ M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费�
 - 第二次旧 journal 记录 MANUAL 的 1,416 input + 612 output token，终端汇总 `CNY 25728 micros`。FACTORY 原始失败 chunk 另含 872 input + 49 output，完整可观察成本应为 `CNY 32719 micros`。该值低于 `CNY 858368 micros` 硬上限；调用前预算 reservation 未失效。
 - 四个 FACTORY 错误码均为 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。对照请求和 Moonshot 官方文档后，根因定位为完整 Draft 2020-12 Schema 超出 MFJS Structured Output 子集；旧 mock 测试只覆盖 SDK 参数形状，没有覆盖供应商真实约束子集。
 - 修正实现对 provider schema 做确定性 MFJS projection；本地专属约束转为 description hint，未知结构关键字在调用前拒绝，完整 Draft Schema 继续承担共同本地终验。失败 gateway outcome 可携带成对 usage，executor 将其写入 `RunAttempt` 并纳入成本汇总。
-- 旧 Manifest 与两个外部证据目录保持不变。修正改变请求字节和 journal 行为，新 Manifest 已从 clean commit 重新冻结；仍须获得新的付费批准，不能自动执行第三次 Pilot。
+- 旧 Manifest 与两个外部证据目录保持不变。修正改变请求字节和 journal 行为，新 Manifest 已从 clean commit 重新冻结，并在独立费用批准后用于第三次 Pilot。
 
 详细证据、计算和后续门禁见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。当前仍不存在正式实验结论，M5.5 未结束。
 
 2026-07-28 本地纠偏门禁结果：全仓 `666 passed`；`tests/unit/experiments` 为 `256 passed`，`experiments` 分支覆盖率 `90.12%`；Ruff format、Ruff lint、全量 mypy strict（`196` 个源文件）与三项契约快照检查均通过。测试只使用 fake client 和历史本地证据，没有读取 API key 或调用 provider。
 
-同日，修正源码先提交为 `e010b5356019e29aa4a89b4a10722671073589d5`。冻结器在该干净提交上生成 154 项新 Manifest，并依次通过 `content-and-environment` 与 `content-only` 验证；内部 checksum 为 `8b92ee21ce97611d9887ad5b2117f9f724c6ecd2c0609be26cf01c643302e17f`，文件 SHA-256 为 `75c0494161095dc64f566920b7fe232480237eef97bb8f8c40a24600ad02493d`，货币与硬上限仍为 `CNY 858368 micros`。Manifest 归档不构成第三次真实调用批准。
+同日，修正源码先提交为 `e010b5356019e29aa4a89b4a10722671073589d5`。冻结器在该干净提交上生成 154 项新 Manifest，并依次通过 `content-and-environment` 与 `content-only` 验证；内部 checksum 为 `8b92ee21ce97611d9887ad5b2117f9f724c6ecd2c0609be26cf01c643302e17f`，文件 SHA-256 为 `75c0494161095dc64f566920b7fe232480237eef97bb8f8c40a24600ad02493d`，货币与硬上限仍为 `CNY 858368 micros`。归档本身不构成费用授权；项目 owner 随后另行批准了仅限该 Manifest 的第三次 8-run Pilot。
+
+第三次 Pilot 在 detached worktree `e010b535` 上通过环境级 Manifest 校验后执行，证据根为 `E:\\Agent-Factory-Kimi-Pilot-Evidence-MFJS-20260728`，执行窗口为 `2026-07-28T06:49:19.809042Z` 至 `2026-07-28T06:50:55.890361Z`。8 个 run 均在第一次 attempt 进入终态：FACTORY 4/4 `succeeded`；MANUAL 3/4 `succeeded`，`brivane-recovery-brief` 因 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT` 成为 `invalid-response`。全部 attempt 均有 provider request ID，`ExperimentEvidenceLoader` 对 8 request、8 attempt 和 8 terminal 的完整 journal 校验通过。
+
+第三次观测 usage 为 2,288 input + 1,840 output，对应 `CNY 64552 micros`，低于 `CNY 858368 micros` 硬上限；失败 MANUAL attempt 的 362 input + 181 output 已正确写入 journal 和成本汇总。该失败的 raw stream 超过 64 KiB 错误证据上限，因而没有保留精确非 JSON 正文。FACTORY 从纠偏前 0/4 提升为修正后 4/4，满足本次 Structured Output 兼容性门禁；MANUAL 单次失败和 `kimi-k2.6` 可变别名仍作为限制保留。当前仍不存在正式实验质量结论。

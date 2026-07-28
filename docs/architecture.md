@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.5 Moonshot Pilot 兼容性复验审批阶段；MFJS Schema 适配和失败 usage 计量已从 clean commit 重新冻结，尚未授权第三次调用
+**当前阶段**：Alpha / M5.5 正式实验冻结审批阶段；MFJS 修正后的第三次 Pilot 已通过 FACTORY Structured Output 兼容性门禁，M5.6 尚未授权
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4173,11 +4173,13 @@ M5.5 收尾将 `src/agent_factory` 下 85 个 Python 文件和 6 个 migration S
 
 2026-07-26 经项目 owner 复核，Pilot 从 OpenAI 切换为中国区 Moonshot API。冻结契约升级到 `1.1`：价格和预算显式携带 `currency`，金额统一使用该货币的整数 micros；旧 `*_usd_micros` 字段仅作为反序列化兼容别名，不再作为规范输出。当前候选固定 `https://api.moonshot.cn/v1`、Chat Completions、`kimi-k2.6`、非思考模式、流式响应、`temperature=0.6`、`top_p=0.95`、`n=1`、60 秒 timeout、最多 2 次 attempt 和单并发；MANUAL 使用 JSON mode，FACTORY 使用 strict JSON Schema，两组继续接受相同的本地 Draft 2020-12 校验。兼容客户端为 OpenAI SDK `2.46.0`，SDK 内建重试仍为零，凭据只从 `MOONSHOT_API_KEY` 读取。
 
-价格按 2026-07-26 的 [Kimi 开放平台公开价格](https://platform.kimi.com/) 冻结：每百万 token 未缓存输入 `¥6.50`、缓存输入 `¥1.10`、输出 `¥27.00`，预算不假设缓存命中。8 次预期请求对应 `¥0.429184`，最多 16 次 attempt 的本地硬上限为 `¥0.858368`。`kimi-k2.6` 是供应商别名而非带日期的不可变快照，因此 `model_is_immutable_snapshot=false`；Manifest 能冻结请求配置和响应证据，但不能阻止供应商更新别名背后的模型。两次已执行 Pilot 使用的 Manifest 从 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 生成，现已原字节归档为 [`freeze-manifest-moonshot-pre-mfjs.json`](../experiments/evidence/writer-pilot-v1/freeze-manifest-moonshot-pre-mfjs.json)。MFJS 修正后的新 canonical [`freeze-manifest.json`](../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 绑定 clean source commit `e010b5356019e29aa4a89b4a10722671073589d5` 和 154 项输入；内部 checksum 为 `8b92ee21ce97611d9887ad5b2117f9f724c6ecd2c0609be26cf01c643302e17f`，文件 SHA-256 为 `75c0494161095dc64f566920b7fe232480237eef97bb8f8c40a24600ad02493d`，归档前环境级与 content-only 验证均通过。
+价格按 2026-07-26 的 [Kimi 开放平台公开价格](https://platform.kimi.com/) 冻结：每百万 token 未缓存输入 `¥6.50`、缓存输入 `¥1.10`、输出 `¥27.00`，预算不假设缓存命中。8 次预期请求对应 `¥0.429184`，最多 16 次 attempt 的本地硬上限为 `¥0.858368`。`kimi-k2.6` 是供应商别名而非带日期的不可变快照，因此 `model_is_immutable_snapshot=false`；Manifest 能冻结请求配置和响应证据，但不能阻止供应商更新别名背后的模型。前两次已执行 Pilot 使用的 Manifest 从 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 生成，现已原字节归档为 [`freeze-manifest-moonshot-pre-mfjs.json`](../experiments/evidence/writer-pilot-v1/freeze-manifest-moonshot-pre-mfjs.json)。MFJS 修正后的 canonical [`freeze-manifest.json`](../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 绑定 clean source commit `e010b5356019e29aa4a89b4a10722671073589d5` 和 154 项输入；内部 checksum 为 `8b92ee21ce97611d9887ad5b2117f9f724c6ecd2c0609be26cf01c643302e17f`，文件 SHA-256 为 `75c0494161095dc64f566920b7fe232480237eef97bb8f8c40a24600ad02493d`，归档前环境级与 content-only 验证均通过，并在独立精确批准后用于第三次 Pilot。
 
-Moonshot 真实 Pilot 随后执行两次。第一次因本地凭据设置错误产生 8 个 `provider-failed`；第二次在有效凭据下得到 MANUAL 4/4 成功、FACTORY 4/4 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。原始 FACTORY chunk 的 usage 合计为 872 input + 49 output，但旧失败契约没有把它写入 attempt token 字段，导致终端只汇总成功侧 1,416 input + 612 output 和 `CNY 25728 micros`；完整可观察 usage 应为 2,288 input + 661 output，即 `CNY 32719 micros`。调用前预算预留和 `CNY 858368 micros` 硬上限没有被绕过，缺陷只影响失败 usage 的持久化与观测成本。
+前两次 Moonshot 真实 Pilot 使用旧 Manifest。第一次因本地凭据设置错误产生 8 个 `provider-failed`；第二次在有效凭据下得到 MANUAL 4/4 成功、FACTORY 4/4 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。原始 FACTORY chunk 的 usage 合计为 872 input + 49 output，但旧失败契约没有把它写入 attempt token 字段，导致终端只汇总成功侧 1,416 input + 612 output 和 `CNY 25728 micros`；完整可观察 usage 应为 2,288 input + 661 output，即 `CNY 32719 micros`。调用前预算预留和 `CNY 858368 micros` 硬上限没有被绕过，缺陷只影响失败 usage 的持久化与观测成本。
 
-根因是旧 gateway 将完整 Draft 2020-12 Schema 直接透传给 Moonshot Structured Output，而供应商只承诺 [MFJS 子集](https://github.com/MoonshotAI/walle/blob/main/docs/mfjs-spec.zh.md)。修正后的 `_to_moonshot_mfjs()` 只保留 MFJS 支持的结构关键字，把 `minLength`、`minItems`、`maxItems` 等本地约束转换为稳定 description hint，并对未知结构关键字在 SDK 调用前返回 `MOONSHOT_OUTPUT_SCHEMA_UNSUPPORTED`。完整 Draft Schema 不变，仍在响应后对两组执行相同本地校验。`GatewayFailure` 可携带成对 usage，executor 将其写入失败 `RunAttempt` 并纳入成本汇总。旧 Manifest 只解释已执行证据；新 Manifest 已绑定修正源码，但第三次真实 Pilot 仍必须获得与其精确匹配的费用批准。完整复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](reports/m5.5-moonshot-pilot-review.md)。
+根因是旧 gateway 将完整 Draft 2020-12 Schema 直接透传给 Moonshot Structured Output，而供应商只承诺 [MFJS 子集](https://github.com/MoonshotAI/walle/blob/main/docs/mfjs-spec.zh.md)。修正后的 `_to_moonshot_mfjs()` 只保留 MFJS 支持的结构关键字，把 `minLength`、`minItems`、`maxItems` 等本地约束转换为稳定 description hint，并对未知结构关键字在 SDK 调用前返回 `MOONSHOT_OUTPUT_SCHEMA_UNSUPPORTED`。完整 Draft Schema 不变，仍在响应后对两组执行相同本地校验。`GatewayFailure` 可携带成对 usage，executor 将其写入失败 `RunAttempt` 并纳入成本汇总。
+
+第三次真实 Pilot 在 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 上执行完整 8-run，FACTORY 4/4 成功，MANUAL 3/4 成功；唯一 MANUAL 失败为 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。8 个 run 共 8 次 attempt，无重试，全部保存 provider request ID；总 usage 为 2,288 input + 1,840 output，观测费用 `CNY 64552 micros`。失败 attempt 的 usage 已进入 journal 和成本汇总，证明计量修正生效。FACTORY 从修正前 0/4 变为修正后 4/4，因而通过当前 Moonshot 接口的 Structured Output 兼容性门禁；该窄结论不构成 H1-H5 或条件优劣证据。M5.5 仍需冻结并由 owner 批准正式配置、预算和 Manifest。完整复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](reports/m5.5-moonshot-pilot-review.md)。
 
 ### 13.5 指标计算
 

@@ -28,9 +28,9 @@
 
 ## 4. 当前状态
 
-当前状态：M5.1-M5.4 已实现，M5.5 已完成 Moonshot 迁移、生产依赖冻结和两次经批准的真实 8-run Pilot。第一次执行因本地凭据设置错误留下 8 个 `provider-failed`；第二次 MANUAL 4/4 成功，FACTORY 4/4 因把完整 Draft 2020-12 Schema 直接交给只承诺 MFJS 子集的 Structured Output 而成为 `invalid-response`。失败证据未被删除；provider Schema 适配和失败 usage 计量修正已通过 `666` 项全仓回归与 `experiments` 90% 分支覆盖率门禁。旧 Manifest 继续解释已执行请求；新 canonical Manifest 已绑定 clean source commit `e010b5356019e29aa4a89b4a10722671073589d5`、154 项输入和 checksum `8b92ee21ce97611d9887ad5b2117f9f724c6ecd2c0609be26cf01c643302e17f`，但尚未获得下一次真实调用批准。正式数据集/计划 checksum 仍为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e` / `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)，实证复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。
+当前状态：M5.1-M5.4 已实现，M5.5 已完成 Moonshot 迁移、生产依赖冻结和三次经批准的真实 8-run Pilot。第一次执行因本地凭据设置错误留下 8 个 `provider-failed`；第二次 MANUAL 4/4 成功，FACTORY 4/4 因把完整 Draft 2020-12 Schema 直接交给只承诺 MFJS 子集的 Structured Output 而成为 `invalid-response`；第三次使用修正后的 canonical Manifest，FACTORY 4/4 成功，MANUAL 3/4 成功并保留 1 个 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。第三次 journal 完整记录 2,288 input + 1,840 output 和 `CNY 64552 micros`，失败 usage 已进入成本汇总。该结果通过 FACTORY 兼容性门禁，不形成 H1-H5 结论。正式数据集/计划 checksum 仍为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e` / `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)，实证复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。
 
-执行边界：未获得与新 Manifest 精确匹配的 `kimi-k2.6` 非思考模式、完整 8-run、最多 16 次 attempt 和 `CNY 858368 micros` 硬上限批准前，不得发起第三次 provider 调用。由于 `kimi-k2.6` 不是不可变 snapshot，报告必须把 provider 别名漂移列为复现限制。修正后 Pilot 通过评审并冻结正式 Manifest 后，M5.5 才能结束。
+执行边界：第三次 Pilot 的批准只覆盖对应 Pilot Manifest 和最多 `CNY 858368 micros`，不延伸到 M5.6。由于 `kimi-k2.6` 不是不可变 snapshot，正式报告必须把 provider 别名漂移列为复现限制。只有正式配置、预算和 Manifest 经项目 owner 冻结并明确批准后，M5.5 才能结束，240-run 才能开始。
 
 ## 5. 最终展示物
 
