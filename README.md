@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.5 正式实验冻结审批阶段**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。项目 owner 已批准并执行三次真实 8-run Pilot：第一次因本地凭据设置错误留下 8 个失败终态；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Moonshot MFJS 兼容边界返回 `invalid-response`；第三次使用 MFJS 修正后的 Manifest，FACTORY 4/4 成功，MANUAL 3/4 成功并保留 1 个非 JSON 无效响应。第三次总 usage 为 2,288 input + 1,840 output，观测费用 `CNY 64552 micros`。35 项外部证据已形成逐文件 SHA-256 seal；正式 240-run preflight、受控 launcher 和盲评包生成器已通过离线 240-run fake gateway 验证。该结果只通过 FACTORY Structured Output 兼容性门禁，尚不存在 H1-H5 或正式实验质量结论。正式 Manifest 与最高 `CNY 25751040 micros` 费用仍须 owner 单独批准。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.6 正式实验待启动阶段**。M1-M4 已由项目 owner 验收，M5.1-M5.5 已完成；M5.6 尚未启动。三次真实 8-run Pilot 均已保留完整终态，第三次 MFJS 修正复验得到 FACTORY 4/4 成功、MANUAL 3/4 成功和 1 个非 JSON 无效响应，总 usage 为 2,288 input + 1,840 output，观测费用 `CNY 64552 micros`。35 项外部证据已形成逐文件 SHA-256 seal；正式 240-run preflight、受控 launcher 和盲评包生成器已通过离线 240-run fake gateway 验证。项目 owner 已批准正式 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f`、Moonshot `kimi-k2.6` 非思考模式、240-run / 480-attempt 边界、`CNY 12875520 micros` 保守估算和 `CNY 25751040 micros` 硬上限；该批准结束 M5.5，但没有启动或授权本轮执行 M5.6。当前仍不存在 H1-H5 或正式实验质量结论。M4 仍不包含公网生产部署能力，唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
@@ -118,7 +118,7 @@ uv run python -m experiments analyze \
   --output-root .tmp/m5-fake-replay/derived
 ```
 
-尚不存在正式实验结果。`run-fake` 只产生合成响应，即使随后通过 `analyze` 生成完整评分和报告，也不能用于 H1-H5。真实 Moonshot Pilot 暴露的 FACTORY Structured Output 与 MFJS 子集不兼容、失败 usage 少记问题已经修正；第三次 8-run 复验中 FACTORY 4/4 成功，MANUAL 仍有 1 次非 JSON 无效响应，详见 [M5.5 Moonshot Pilot 执行与纠偏报告](docs/reports/m5.5-moonshot-pilot-review.md)。Pilot 与正式数据严格隔离；`run-formal-live` 不接受部分计划或 API key 参数，并在读取环境密钥前强制校验正式 Manifest、240-run 平衡设计和精确人民币上限。正式调用仍须由项目 owner 明确批准 Manifest、模型、预算和执行。
+尚不存在正式实验结果。`run-fake` 只产生合成响应，即使随后通过 `analyze` 生成完整评分和报告，也不能用于 H1-H5。真实 Moonshot Pilot 暴露的 FACTORY Structured Output 与 MFJS 子集不兼容、失败 usage 少记问题已经修正；第三次 8-run 复验中 FACTORY 4/4 成功，MANUAL 仍有 1 次非 JSON 无效响应，详见 [M5.5 Moonshot Pilot 执行与纠偏报告](docs/reports/m5.5-moonshot-pilot-review.md)。Pilot 与正式数据严格隔离；`run-formal-live` 不接受部分计划或 API key 参数，并在读取环境密钥前强制校验正式 Manifest、240-run 平衡设计和精确人民币上限。正式冻结的 owner 审批见 [M5.5 正式冻结审批记录](docs/reports/m5.5-formal-freeze-approval.md)；M5.6 live 启动仍需单独明确授权。
 
 `python -m experiments freeze-candidate` 从规范 JSON spec 生成 write-once 冻结候选；`verify-freeze` 默认同时复核文件内容和当前 Git/Python/SDK 环境，`--content-only` 只做可移植内容校验并明确不声称环境可执行。`seal-pilot-evidence` 验证完整 Pilot journal 后只归档外部证据的路径、大小和 SHA-256；`build-blind-review` 把不含 condition/run ID 的评审项与私有映射写入两个不可嵌套的根。所有离线命令都不读取 API key 或调用 provider；候选生成成功也不代表模型、价格、预算或正式执行已经获得项目 owner 批准。
 

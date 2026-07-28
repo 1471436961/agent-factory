@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5 已执行三次经批准的 Moonshot 8-run Pilot；第三次 FACTORY 4/4 成功，MFJS 兼容性复验通过。Pilot 证据 seal、正式 preflight/launcher 和盲评工具已完成，等待 clean-commit 正式 Manifest 与 owner 冻结批准。
+- 状态：进行中；M5.1-M5.5 已完成，M5.6 正式实验尚未启动。M5.5 的 Pilot 证据 seal、正式 preflight/launcher、盲评工具、clean-commit Manifest 和 owner 冻结批准均已完成。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的旧 Moonshot Manifest 只解释前两次历史执行；绑定 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 的新 Manifest 只解释第三次兼容性复验。正式配置的保守估算为 `CNY 12875520 micros`、硬上限为 `CNY 25751040 micros`；M5.6 的正式 Manifest 和费用尚未由 owner 批准。
+- 当前限制：绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的旧 Moonshot Manifest 只解释前两次历史执行；绑定 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 的新 Manifest 只解释第三次兼容性复验。正式 Manifest 固定 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026`，保守估算为 `CNY 12875520 micros`、硬上限为 `CNY 25751040 micros`。M5.6 live 尚未启动，任何执行工具或 provider profile 变化都必须重新冻结和审批。
 
 ## 2. 阶段目标
 
@@ -156,14 +156,14 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] 三次真实 Pilot 的成功、失败、request、attempt、terminal 和成本证据均保留并完成复核。
 - [x] MFJS 适配与失败 usage 修正通过门禁，并在 clean commit 上重新冻结。
 - [x] 修正后的真实 8-run Pilot 完成并通过 FACTORY Structured Output 兼容性评审。
-- [ ] M5.5 正式配置、预算和 manifest 经项目 owner 人工冻结与批准。
+- [x] M5.5 正式配置、预算和 manifest 经项目 owner 人工冻结与批准。
 - [ ] M5.6 正式调用经人工批准并完整执行。
 - [ ] M5.7 报告、原始数据和复算证据完成。
 - [ ] 项目 owner 确认结束并封存 M5。
 
 ## 9. 当前结论
 
-M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5 的三次真实 Moonshot Pilot 只形成兼容性证据：第一次 8-run 因凭据设置失败；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Structured Output 与 MFJS 子集不兼容而失败；第三次在 MFJS projection 后得到 FACTORY 4/4 成功、MANUAL 3/4 成功和 1 个非 JSON 无效响应。该结果支持“修正后的 FACTORY 请求与当前 Moonshot 接口兼容”，不能用于 H1-H5，也不能解释为框架质量优于或劣于 MANUAL。第三次 35 项外部证据已由 `9cb5965cbd76cdec0728b29ec91f45da2a178a52d633030bbae51cc4e073114d` seal 绑定；正式 preflight、launcher 和盲评分离已通过完整 240-run fake 验证。下一步是在 clean commit 上生成并审批正式 Manifest；在 owner 批准前 M5.5 未结束，M5.6 仍保持阻断。
+M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5 的三次真实 Moonshot Pilot 只形成兼容性证据：第一次 8-run 因凭据设置失败；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Structured Output 与 MFJS 子集不兼容而失败；第三次在 MFJS projection 后得到 FACTORY 4/4 成功、MANUAL 3/4 成功和 1 个非 JSON 无效响应。该结果支持“修正后的 FACTORY 请求与当前 Moonshot 接口兼容”，不能用于 H1-H5，也不能解释为框架质量优于或劣于 MANUAL。第三次 35 项外部证据已由 `9cb5965cbd76cdec0728b29ec91f45da2a178a52d633030bbae51cc4e073114d` seal 绑定；正式 preflight、launcher 和盲评分离已通过完整 240-run fake 验证。正式 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 及费用边界已由项目 owner 批准，M5.5 已结束；下一步是另行授权并执行 M5.6，本次审批没有启动 live 调用。
 
 ## 10. M5.2 实现证据
 
@@ -357,7 +357,7 @@ M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费�
 - 修正实现对 provider schema 做确定性 MFJS projection；本地专属约束转为 description hint，未知结构关键字在调用前拒绝，完整 Draft Schema 继续承担共同本地终验。失败 gateway outcome 可携带成对 usage，executor 将其写入 `RunAttempt` 并纳入成本汇总。
 - 旧 Manifest 与两个外部证据目录保持不变。修正改变请求字节和 journal 行为，新 Manifest 已从 clean commit 重新冻结，并在独立费用批准后用于第三次 Pilot。
 
-详细证据、计算和后续门禁见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。当前仍不存在正式实验结论，M5.5 未结束。
+详细证据、计算和后续门禁见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。在该检查点仍不存在正式实验结论，M5.5 尚未结束；最终冻结与审批状态见第 27 节。
 
 2026-07-28 本地纠偏门禁结果：全仓 `666 passed`；`tests/unit/experiments` 为 `256 passed`，`experiments` 分支覆盖率 `90.12%`；Ruff format、Ruff lint、全量 mypy strict（`196` 个源文件）与三项契约快照检查均通过。测试只使用 fake client 和历史本地证据，没有读取 API key 或调用 provider。
 
@@ -377,6 +377,10 @@ M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费�
 - `run-formal-live` 与 Pilot 共用 Factory preparation、完整 invocation 校验、密钥延迟读取、write-once executor、恢复和成本汇总。CLI 不提供部分运行、API key 或模型参数覆盖。
 - 盲评生成器发布 240 个不含 condition/run ID/Prompt/AgentSpec 的公开 item，并把可恢复来源映射保存到独立、不可嵌套的私有根。完整 fake journal 的生成、重放和篡改拒绝测试通过。
 
-这些能力只使正式冻结具备工程前提。正式 Manifest 和 `CNY 25751040 micros` 上限仍须 owner 精确批准；批准前 M5.6 保持阻断。
+这些能力构成正式冻结的工程前提。正式 Manifest 和费用边界的审批结果见 [`M5.5 正式冻结审批记录`](../reports/m5.5-formal-freeze-approval.md)。
 
 2026-07-28 正式冻结前门禁从空覆盖数据独立执行：CI 同构 experiment 集合为 `280 passed`，`experiments` 分支覆盖率 `90.03%`；全仓回归为 `689 passed`，生产代码总分支覆盖率 `92%`，其中 domain `96%`、application `95%`。Ruff format、Ruff lint、全量 mypy strict（`205` 个源文件）以及 OpenAPI、Writer AgentSpec、审计时间线三项契约快照检查均通过。全部门禁只使用 fake client 与本地历史证据，没有读取 API key、创建真实 provider client 或产生模型费用。
+
+冻结器在 clean source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026` 上生成 152 项正式 Manifest；内部 checksum 为 `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f`，原始文件 SHA-256 为 `d4d2d390467f47097db67540bcafaffc51c98152cd176b730855ebd8f1277ff1`。环境级和 content-only 验证均通过，归档提交 `4d4b4a1e6121e5c54a5794dbc1cf200be922544d` 的 GitHub Actions run `30345967632` 成功。
+
+项目 owner 随后精确批准该 Manifest、Moonshot `kimi-k2.6` 非思考模式、完整 240-run、最多 480 次 attempt、`CNY 12875520 micros` 预计费用和 `CNY 25751040 micros` 本地硬上限，并明确本次不启动 M5.6。至此 M5.5 退出条件全部满足；M5.6 live 启动仍需单独授权。
