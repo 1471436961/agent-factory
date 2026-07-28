@@ -417,4 +417,4 @@ ITT 主分析按预注册最差值计入 8 个 FACTORY 无效响应。H1 效应 
 
 H5 在两个独立 SQLite 数据库中执行固定生产链，六个步骤均通过，record checksum 为 `9761a69331e7359870811400cfdbd7ad380ff052bd80bcdc20088e567a12d9c0`；删除晋升事件的反例准确降为 5/6。H3 与人工评分因证据缺失保持未评估。完整证据、解释和 owner 验收项见 [`M5.7 正式复算、审计验证与阶段报告`](../reports/m5.7-validation-report.md)。
 
-M5.7 收尾门禁为：experiments `291 passed`、分支覆盖率 `90.20%`；全仓 `700 passed`、生产代码总覆盖率 92%、domain 96%、application 95%；Ruff、mypy strict（208 个源文件）、三项契约快照和隔离 wheel/local process smoke 全部通过。门禁未读取 API key 或访问模型 provider；它们证明当前自动化契约成立，不证明公网生产就绪或语义质量可靠。
+M5.7 收尾门禁为：experiments `291 passed`、分支覆盖率 `90.20%`；全仓 `700 passed`、生产代码总覆盖率 92%、domain 96%、application 95%；Ruff、mypy strict（208 个源文件）、三项契约快照和隔离 wheel/local process smoke 全部通过。候选提交 `4faaf54aa36e496961608cab9fdaa5f89adcba71` 的 GitHub Actions CI #30380750733 同样通过。门禁未读取 API key 或访问模型 provider；它们证明当前自动化契约成立，不证明公网生产就绪或语义质量可靠。
