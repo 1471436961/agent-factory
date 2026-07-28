@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.6 已完成，M5.7 尚未启动。
+- 状态：进行中；M5.1-M5.7 技术执行已完成，等待项目 owner 验收并决定是否封存 M5。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：正式 M5.6 证据仅由 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026`、Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 和外部 E 盘证据根解释；`kimi-k2.6` 是可变别名，供应商级复现强度有限。M5.7 在独立规划和确认前不得读取私有映射形成条件级结论。
+- 当前限制：正式 M5.6 证据仅由 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026`、Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 和外部 E 盘证据根解释；`kimi-k2.6` 是可变别名，供应商级复现强度有限。M5.7 已经 owner 确认启动，但只能读取和派生，不能修改原始证据或补跑模型。
 
 ## 2. 阶段目标
 
@@ -158,12 +158,12 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 - [x] 修正后的真实 8-run Pilot 完成并通过 FACTORY Structured Output 兼容性评审。
 - [x] M5.5 正式配置、预算和 manifest 经项目 owner 人工冻结与批准。
 - [x] M5.6 正式调用经人工批准并完整执行，盲审包与私有映射完成可恢复发布。
-- [ ] M5.7 报告、原始数据和复算证据完成。
+- [x] M5.7 报告、原始数据 seal、复算证据与 H5 工程验证完成。
 - [ ] 项目 owner 确认结束并封存 M5。
 
 ## 9. 当前结论
 
-M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的工程链；M5.5 完成 Moonshot 兼容性 Pilot、正式冻结与人工审批。M5.6 随后在冻结 source commit 上连续完成 240-run：232 个 `succeeded`、8 个 `invalid-response`，245 次 attempt，观测 usage 为 71,730 input + 66,820 output tokens，费用为 `CNY 2270385 micros`，没有越过 480 次 attempt 或 `CNY 25751040 micros` 硬上限。完整 journal 通过 `ExperimentEvidenceLoader`，公开 240-item 盲审包和私有 240-record 映射完成可恢复、可重放发布。该结果只完成正式数据采集与盲化，不形成 H1-H5 或条件优劣结论；下一步 M5.7 尚未启动。
+M5.1-M5.7 技术执行已完成。正式原始 journal 已由逐文件 seal 绑定，冻结 commit 上的评分和 10,000 次 bootstrap 分析完成幂等重放。ITT 结果为 H1、H2 `not-supported`，H4 `insufficient-evidence`；H3 和人工评分未评估。冻结后 H5 工程验证以真实 SQLite 聚合与审计事件交叉恢复六步来源链，完整率为 1.0。以上结果不证明框架更优，M5 仍等待项目 owner 人工验收。
 
 ## 10. M5.2 实现证据
 
@@ -400,3 +400,21 @@ M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费�
 240 个终态包括 232 个 `succeeded` 和 8 个 `invalid-response`。245 次 attempt 中有 5 次可重试的 `MOONSHOT_NETWORK_ERROR`，没有 provider request ID 或 usage；其余 240 次均保存互不重复的 provider request ID 和成对 usage。8 次最终无效响应分别为 6 个 `MOONSHOT_RESPONSE_INCOMPLETE`、1 个 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT` 和 1 个 `MOONSHOT_OUTPUT_SCHEMA_INVALID`。总 usage 为 71,730 input + 66,820 output tokens，观测费用 `CNY 2270385 micros`。所有失败、重试和终态均保留，详细证据见 [`M5.6 正式执行记录`](../reports/m5.6-formal-execution.md)。
 
 原始证据根包含 973 个文件和 46,763,544 bytes，完整 journal 经 `ExperimentEvidenceLoader` 重载通过。公开盲审包包含 240 items，package checksum 为 `ef5a31f9d0b5a81a169c22d3c68321fcc8723561f057e70f0a92a6880ce85fca`；独立私有映射包含 240 records，mapping checksum 为 `64eeb21b7ab800458aea7b8db81baf405017c6a8926e116edff50131960c118b`。相同构建命令重放得到相同 checksum。至此 M5.6 退出条件满足；M5.7 的评分、条件映射解盲、统计分析和报告仍需另行规划确认。
+
+## 30. M5.7 启动与证据边界
+
+2026-07-28，项目 owner 确认启动 M5.7。执行顺序固定为：先对外部正式 journal 建立逐文件 seal，再从冻结 source commit 离线复算 H1/H2/H4，随后独立执行 H5 确定性审计验证，最后归档派生产物、报告和门禁证据。M5.7 不再调用 Moonshot，不修改原始 journal，不以 Git 提交时间推断未采集的 H3 构建时长。
+
+正式 journal 为 973 个文件、46,763,544 bytes，最大单文件 303,104 bytes。`FormalEvidenceSeal` 保留 2 MiB 单文件、10,000 文件和 2 MiB seal 上限，并为正式证据单独设置 64 MiB 总量上限；Pilot 的既有 32 MiB 上限和 JSON 契约保持不变。seal 必须同时绑定冻结 Manifest、execution Manifest、execution plan、运行状态计数、attempt 数量以及每个相对路径的字节数与 SHA-256。该 seal 检测后续字节漂移，但不把本地 E 盘描述为第三方不可篡改存储。
+
+H3 因没有前瞻采集的 `BuildSession` 数据，将报告为 `NOT_EVALUATED`；不能用 Git 历史补造 active build time。盲审包在 M5.6 已生成，但当前没有双评审者结果接入，因此人工评分同样不进入正式统计。H5 是冻结后新增的确定性工程验证，只检验工厂已实现的来源追溯链，不参与 H1/H2/H4 模型结果计算，并必须在报告中披露这一时序边界。
+
+## 31. M5.7 正式复算与 H5 结果
+
+Formal seal 两次读取同一外部 journal，均得到 973 files、240 runs、245 attempts 和 checksum `e48f95061010c97b62c89d5d470b412af9d2514d4a8ca3ad11e0152a185efb7f`。随后在冻结 worktree `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026` 中运行现有 `OfflineAnalysisPipeline`；两次执行均得到 score set `23babf695c02629f271533140290be6e5dfe495596b9d7d6b73f59a693b3c665` 和 analysis `e1bd22e304c1e54845555b35daa1b18895fd700bdb46258e16cc02bd7bfcbe30`。
+
+ITT 主分析按预注册最差值计入 8 个 FACTORY 无效响应。H1 效应 -0.066666666667，95% 区间 [-0.1, -0.033333333333]，判定 `not-supported`；H2 相对遗漏降低 -0.314685314685，区间 [-0.653467295548, -0.100594512195]，判定 `not-supported`；H4 效应 -0.066666666667，区间 [-0.133333333333, 0]，判定 `insufficient-evidence`。Succeeded-only 只作为敏感性分析，不产生正式命题判定。
+
+H5 在两个独立 SQLite 数据库中执行固定生产链，六个步骤均通过，record checksum 为 `9761a69331e7359870811400cfdbd7ad380ff052bd80bcdc20088e567a12d9c0`；删除晋升事件的反例准确降为 5/6。H3 与人工评分因证据缺失保持未评估。完整证据、解释和 owner 验收项见 [`M5.7 正式复算、审计验证与阶段报告`](../reports/m5.7-validation-report.md)。
+
+M5.7 收尾门禁为：experiments `291 passed`、分支覆盖率 `90.20%`；全仓 `700 passed`、生产代码总覆盖率 92%、domain 96%、application 95%；Ruff、mypy strict（208 个源文件）、三项契约快照和隔离 wheel/local process smoke 全部通过。门禁未读取 API key 或访问模型 provider；它们证明当前自动化契约成立，不证明公网生产就绪或语义质量可靠。

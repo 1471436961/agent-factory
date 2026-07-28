@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.6 正式实验待启动阶段**。M1-M4 已由项目 owner 验收，M5.1-M5.5 已完成；M5.6 尚未启动。三次真实 8-run Pilot 均已保留完整终态，第三次 MFJS 修正复验得到 FACTORY 4/4 成功、MANUAL 3/4 成功和 1 个非 JSON 无效响应，总 usage 为 2,288 input + 1,840 output，观测费用 `CNY 64552 micros`。35 项外部证据已形成逐文件 SHA-256 seal；正式 240-run preflight、受控 launcher 和盲评包生成器已通过离线 240-run fake gateway 验证。项目 owner 已批准正式 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f`、Moonshot `kimi-k2.6` 非思考模式、240-run / 480-attempt 边界、`CNY 12875520 micros` 保守估算和 `CNY 25751040 micros` 硬上限；该批准结束 M5.5，但没有启动或授权本轮执行 M5.6。当前仍不存在 H1-H5 或正式实验质量结论。M4 仍不包含公网生产部署能力，唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.7 技术执行完成、等待项目 owner 验收阶段**。M1-M4 已由项目 owner 验收，M5.1-M5.7 的技术工作已经完成。正式实验在冻结 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026` 上执行 240 runs，得到 232 个 `succeeded`、8 个 `invalid-response` 和 245 次 attempts；总 usage 为 71,730 input + 66,820 output tokens，观测费用为 `CNY 2270385 micros`。M5.7 对 973 个原始证据文件建立逐文件 seal，并从冻结代码完成离线评分和 10,000 次 bootstrap 重放：H1、H2 为 `not-supported`，H4 为 `insufficient-evidence`；H3 与人工评分因缺少合格证据保持 `NOT_EVALUATED`。冻结后 H5 工程验证在两个独立 SQLite 数据库中均恢复出 6/6 来源链。以上结论不证明框架整体优于手写 Agent。当前仍不包含公网生产部署能力，唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
@@ -118,7 +118,7 @@ uv run python -m experiments analyze \
   --output-root .tmp/m5-fake-replay/derived
 ```
 
-尚不存在正式实验结果。`run-fake` 只产生合成响应，即使随后通过 `analyze` 生成完整评分和报告，也不能用于 H1-H5。真实 Moonshot Pilot 暴露的 FACTORY Structured Output 与 MFJS 子集不兼容、失败 usage 少记问题已经修正；第三次 8-run 复验中 FACTORY 4/4 成功，MANUAL 仍有 1 次非 JSON 无效响应，详见 [M5.5 Moonshot Pilot 执行与纠偏报告](docs/reports/m5.5-moonshot-pilot-review.md)。Pilot 与正式数据严格隔离；`run-formal-live` 不接受部分计划或 API key 参数，并在读取环境密钥前强制校验正式 Manifest、240-run 平衡设计和精确人民币上限。正式冻结的 owner 审批见 [M5.5 正式冻结审批记录](docs/reports/m5.5-formal-freeze-approval.md)；M5.6 live 启动仍需单独明确授权。
+正式结果只来自 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 绑定的 M5.6 journal；`run-fake` 产生的合成响应不能用于 H1-H5。M5.7 的原始证据 seal checksum 为 `e48f95061010c97b62c89d5d470b412af9d2514d4a8ca3ad11e0152a185efb7f`，score set checksum 为 `23babf695c02629f271533140290be6e5dfe495596b9d7d6b73f59a693b3c665`，analysis checksum 为 `e1bd22e304c1e54845555b35daa1b18895fd700bdb46258e16cc02bd7bfcbe30`。ITT 主分析显示 FACTORY 相对 MANUAL 的结构通过率差为 `-0.066666666667`，知识遗漏率绝对差（MANUAL - FACTORY）为 `-0.125`，个性化适应度差为 `-0.066666666667`；具体置信区间、失败归因和边界见 [M5.7 正式复算与审计报告](docs/reports/m5.7-validation-report.md)。
 
 `python -m experiments freeze-candidate` 从规范 JSON spec 生成 write-once 冻结候选；`verify-freeze` 默认同时复核文件内容和当前 Git/Python/SDK 环境，`--content-only` 只做可移植内容校验并明确不声称环境可执行。`seal-pilot-evidence` 验证完整 Pilot journal 后只归档外部证据的路径、大小和 SHA-256；`build-blind-review` 把不含 condition/run ID 的评审项与私有映射写入两个不可嵌套的根。所有离线命令都不读取 API key 或调用 provider；候选生成成功也不代表模型、价格、预算或正式执行已经获得项目 owner 批准。
 
@@ -165,6 +165,9 @@ async with AgentFactoryClient(
 - [M4.4 事务与并发故障证据](docs/design/transaction-fault-evidence.md)
 - [M5 实验协议设计说明](docs/design/experiment-protocol.md)
 - [M5.5 Moonshot Pilot 执行与纠偏报告](docs/reports/m5.5-moonshot-pilot-review.md)
+- [M5.5 正式冻结审批记录](docs/reports/m5.5-formal-freeze-approval.md)
+- [M5.6 正式执行记录](docs/reports/m5.6-formal-execution.md)
+- [M5.7 正式复算与审计报告](docs/reports/m5.7-validation-report.md)
 - [本地 Alpha 部署说明](docs/deployment/local-alpha.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)

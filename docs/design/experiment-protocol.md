@@ -669,3 +669,21 @@ FACTORY usage 为 872 input + 1,171 output，MANUAL usage 为 1,416 input + 669 
 正式 launcher 在一次连续 session 中完成，执行窗口为 `2026-07-28T13:16:28.698895Z` 至 `2026-07-28T14:13:21.047159Z`。240 个终态包括 232 个 `succeeded` 和 8 个 `invalid-response`；245 次 attempt 中 5 次为可重试 `MOONSHOT_NETWORK_ERROR`，其余 240 次具有互不重复的 provider request ID 和完整 usage。总 usage 为 71,730 input + 66,820 output tokens，观测费用 `CNY 2270385 micros`，没有触发 480 次请求或 `CNY 25751040 micros` 硬上限。
 
 `ExperimentEvidenceLoader` 对 973 个原始文件和 46,763,544 bytes 执行完整重载验证。盲审生成器随后发布 240 个公开 item；package checksum 为 `ef5a31f9d0b5a81a169c22d3c68321fcc8723561f057e70f0a92a6880ce85fca`。独立私有 mapping 含 240 条记录，checksum 为 `64eeb21b7ab800458aea7b8db81baf405017c6a8926e116edff50131960c118b`；相同命令重放得到相同结果。M5.6 因此完成，但这些工程事实不构成条件优劣或 H1-H5 结论。评分、人工盲评结果接入、解盲和统计分析属于 M5.7，须另行确认后启动。
+
+## 33. M5.7 证据封存与复算协议
+
+M5.7 已由项目 owner 独立确认启动。第一条不可逆边界是先 seal、后分析：`FormalEvidenceSeal` 先使用 `ExperimentEvidenceLoader` 验证 240 个终态及其来源身份，再逐文件记录相对路径、字节数和 SHA-256。正式证据总量上限为 64 MiB，单文件上限仍为 2 MiB，文件数上限为 10,000；这些边界覆盖本次 46,763,544-byte journal，但不会取消有界读取。相同 seal 命令重放必须返回完全相同的模型和 checksum，任何文件增删、改写或 Manifest 身份漂移都必须失败。
+
+H1/H2/H4 必须在冻结 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026` 的 detached worktree 中运行现有 `OfflineAnalysisPipeline`。输入只允许使用已 seal 的原始证据根、冻结 definition、execution plan 和预注册 `AnalysisConfig`；输出写入新的外部派生目录，不能回写 journal。首次发布后使用相同命令重放，score package、analysis package 及其 checksum 必须保持一致。
+
+H3 只有在实验前采集 `BuildSession` 的 active、wall-clock 和 excluded-wait 时长时才可计算。本次正式运行没有该证据，因此结论固定为 `NOT_EVALUATED`，Git 时间戳、聊天记录或事后回忆均不能替代。人工盲评没有双评审结果与摄入契约，本阶段只保存 M5.6 的 condition-free package，不把人工质量分数并入 H1/H2/H4。
+
+H5 使用隔离 SQLite 数据库构造固定生产链，并逐项恢复 Prototype、Knowledge、AgentInstance、AgentSpec、EvaluationReport 与 Promotion 的来源关系。H5 verifier 是 M5.7 的冻结后工程验证，不能读取或改变 H1/H2/H4 的模型输出；报告必须明确其后置实现属性，避免把它表述为预注册的生成实验结果。
+
+## 34. M5.7 复算结果与协议执行情况
+
+Formal seal 的两次构建均覆盖 973 files、46,763,544 bytes、240 runs 和 245 attempts，seal checksum 为 `e48f95061010c97b62c89d5d470b412af9d2514d4a8ca3ad11e0152a185efb7f`。冻结 worktree 中的离线管线随后完成两次相同输入重放，score set checksum `23babf695c02629f271533140290be6e5dfe495596b9d7d6b73f59a693b3c665` 与 analysis checksum `e1bd22e304c1e54845555b35daa1b18895fd700bdb46258e16cc02bd7bfcbe30` 均保持一致。
+
+ITT 主分析严格使用预注册阈值：H1 与 H2 均为 `not-supported`，H4 为 `insufficient-evidence`。H3 因没有 `BuildSession` 数据保持 `NOT_EVALUATED`，人工评分因没有双评审者结果而不进入统计。H5 冻结后验证在两个独立 SQLite 数据库中得到相同 6/6 记录，并由缺失事件反例证明不会静默假通过。完整数值、解释边界与证据链接见 [`M5.7 正式复算、审计验证与阶段报告`](../reports/m5.7-validation-report.md)。
+
+收尾门禁使用与 CI 相同的 experiments 测试集合取得 `291 passed` 和 `90.20%` 分支覆盖率；全仓取得 `700 passed`，生产代码总覆盖率 92%。Ruff、mypy strict、契约快照和隔离 wheel/local process smoke 均通过。所有门禁不访问模型 provider，不能替代外部效度、人工评分或公网部署验证。

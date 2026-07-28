@@ -28,9 +28,9 @@
 
 ## 4. 当前状态
 
-当前状态：M5.1-M5.6 已完成，M5.7 尚未启动。正式 240-run 在冻结 source commit 上连续完成，得到 232 个 `succeeded`、8 个 `invalid-response` 和 245 次 attempts；观测 usage 为 71,730 input + 66,820 output tokens，费用为 `CNY 2270385 micros`，未触发请求或费用上限。完整 journal 通过只读 loader，公开 240-item 盲审包与独立私有 240-record 映射均完成可重放发布。当前不形成 H1-H5 或条件优劣结论。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)，正式冻结边界见 [`M5.5 正式冻结审批记录`](../reports/m5.5-formal-freeze-approval.md)，M5.6 完整证据摘要见 [`M5.6 正式执行记录`](../reports/m5.6-formal-execution.md)。
+当前状态：M5.1-M5.7 技术执行已完成，等待项目 owner 验收后决定是否封存 M5。正式离线复算得到 H1、H2 `not-supported`，H4 `insufficient-evidence`；H3 和人工评分没有可用正式证据。H5 冻结后工程验证在两个独立 SQLite 数据库中得到相同的 6/6 来源链记录。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)，正式冻结边界见 [`M5.5 正式冻结审批记录`](../reports/m5.5-formal-freeze-approval.md)，M5.6 数据采集见 [`M5.6 正式执行记录`](../reports/m5.6-formal-execution.md)，正式结论见 [`M5.7 正式复算与审计报告`](../reports/m5.7-validation-report.md)。
 
-执行边界：正式证据绑定 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 和 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026`。由于 `kimi-k2.6` 不是不可变 snapshot，正式报告必须把 provider 别名漂移列为复现限制。原始输出和私有映射保留在仓库外 E 盘目录；M5.7 在另行确认前不得开始条件级分析。
+执行边界：正式证据绑定 Manifest `211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f` 和 source commit `f0c75655bd3f8ccd1ce4e662e687fe0d50edc026`。由于 `kimi-k2.6` 不是不可变 snapshot，provider 级复现强度有限。原始输出和私有映射仍保留在仓库外 E 盘目录；仓库只归档逐文件 seal、确定性分数、分析包和 H5 记录。后续调优必须创建新的 experiment ID，不能改写本次结果。
 
 ## 5. 最终展示物
 
