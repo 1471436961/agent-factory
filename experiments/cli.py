@@ -15,6 +15,11 @@ from agent_factory.domain.errors import FactoryError
 from agent_factory.domain.models import AgentSpec, KnowledgeRef, PrototypeRef
 from agent_factory.domain.services.spec import checksum_agent_spec
 from experiments.artifacts import ArtifactStore, ArtifactStoreError
+from experiments.audit_verification import (
+    audit_verification_checksum,
+    publish_audit_verification,
+    run_audit_lineage_verification,
+)
 from experiments.blind_review import build_blind_review_package
 from experiments.contracts import (
     AnalysisConfig,
@@ -26,7 +31,9 @@ from experiments.contracts import (
     RenderedInvocation,
 )
 from experiments.evidence_sealing import (
+    build_formal_evidence_seal,
     build_pilot_evidence_seal,
+    publish_formal_evidence_seal,
     publish_pilot_evidence_seal,
 )
 from experiments.executor import ExperimentExecutor
@@ -251,6 +258,26 @@ def build_parser() -> argparse.ArgumentParser:
     seal_evidence.add_argument("--root-label", required=True)
     seal_evidence.add_argument("--output", type=Path, required=True)
 
+    seal_formal_evidence = subcommands.add_parser(
+        "seal-formal-evidence",
+        help="validate and hash one externally retained formal evidence tree",
+    )
+    _add_definition_root(seal_formal_evidence)
+    seal_formal_evidence.add_argument("--plan", type=Path)
+    seal_formal_evidence.add_argument("--manifest", type=Path, required=True)
+    seal_formal_evidence.add_argument("--evidence-root", type=Path, required=True)
+    seal_formal_evidence.add_argument("--root-label", required=True)
+    seal_formal_evidence.add_argument("--output", type=Path, required=True)
+
+    audit_lineage = subcommands.add_parser(
+        "verify-audit-lineage",
+        help="run the deterministic H5 lineage check in an isolated SQLite database",
+    )
+    _add_definition_root(audit_lineage)
+    audit_lineage.add_argument("--plan", type=Path)
+    audit_lineage.add_argument("--database-path", type=Path, required=True)
+    audit_lineage.add_argument("--output", type=Path, required=True)
+
     live = subcommands.add_parser(
         "run-pilot-live",
         help="execute every run in one fully verified Pilot Manifest",
@@ -400,7 +427,7 @@ def main(argv: list[str] | None = None) -> int:
             raise FreezeError("Pilot evidence requires a Pilot freeze Manifest")
         if manifest.experiment_id != dataset.definition.experiment_id:
             raise FreezeError("Pilot freeze Manifest does not match definition root")
-        seal = build_pilot_evidence_seal(
+        pilot_seal = build_pilot_evidence_seal(
             dataset=dataset,
             plan=plan,
             evidence_root=args.evidence_root,
@@ -410,12 +437,62 @@ def main(argv: list[str] | None = None) -> int:
                 manifest.execution_manifest.manifest_checksum
             ),
         )
-        created = publish_pilot_evidence_seal(seal, args.output)
+        created = publish_pilot_evidence_seal(pilot_seal, args.output)
         action = "created" if created else "verified"
         print(
             f"{action} Pilot evidence seal {args.output.resolve()} "
-            f"files={len(seal.files)} runs={seal.run_count} "
-            f"attempts={seal.attempt_count} sha256={seal.seal_checksum}"
+            f"files={len(pilot_seal.files)} runs={pilot_seal.run_count} "
+            f"attempts={pilot_seal.attempt_count} "
+            f"sha256={pilot_seal.seal_checksum}"
+        )
+        return 0
+    if args.command == "seal-formal-evidence":
+        manifest = load_frozen_experiment_manifest(args.manifest.resolve())
+        if manifest.purpose is not ExperimentPurpose.FORMAL:
+            raise FreezeError("Formal evidence requires a formal freeze Manifest")
+        if manifest.experiment_id != dataset.definition.experiment_id:
+            raise FreezeError("Formal freeze Manifest does not match definition root")
+        formal_seal = build_formal_evidence_seal(
+            dataset=dataset,
+            plan=plan,
+            evidence_root=args.evidence_root,
+            evidence_root_label=args.root_label,
+            freeze_manifest_checksum=manifest.manifest_checksum,
+            expected_execution_manifest_checksum=(
+                manifest.execution_manifest.manifest_checksum
+            ),
+        )
+        created = publish_formal_evidence_seal(formal_seal, args.output)
+        action = "created" if created else "verified"
+        print(
+            f"{action} formal evidence seal {args.output.resolve()} "
+            f"files={len(formal_seal.files)} runs={formal_seal.run_count} "
+            f"attempts={formal_seal.attempt_count} "
+            f"sha256={formal_seal.seal_checksum}"
+        )
+        return 0
+    if args.command == "verify-audit-lineage":
+        record = asyncio.run(
+            run_audit_lineage_verification(
+                database_path=args.database_path,
+                migrations_dir=(
+                    REPOSITORY_ROOT
+                    / "src"
+                    / "agent_factory"
+                    / "infrastructure"
+                    / "sqlite"
+                    / "sql"
+                ),
+                experiment_id=dataset.definition.experiment_id,
+            )
+        )
+        created = publish_audit_verification(record, args.output)
+        action = "created" if created else "verified"
+        print(
+            f"{action} H5 audit verification {args.output.resolve()} "
+            f"steps={len(record.steps)} completeness={record.completeness:.6f} "
+            f"passed={str(record.passed).lower()} "
+            f"sha256={audit_verification_checksum(record)}"
         )
         return 0
     if args.command == "verify-plan":

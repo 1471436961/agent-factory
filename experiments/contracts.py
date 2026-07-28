@@ -988,6 +988,54 @@ class PilotEvidenceSeal(FrozenModel):
         return self
 
 
+class FormalEvidenceArtifact(FrozenModel):
+    path: EvidenceArtifactPath
+    byte_size: PositiveInt
+    content_checksum: Sha256
+
+
+class FormalEvidenceStatusCount(FrozenModel):
+    status: RunStatus
+    count: PositiveInt
+
+
+class FormalEvidenceSeal(FrozenModel):
+    """Content identity for one validated, externally retained formal journal."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    experiment_id: Slug
+    evidence_root_label: Slug
+    freeze_manifest_checksum: Sha256
+    execution_manifest_checksum: Sha256
+    plan_checksum: Sha256
+    run_count: PositiveInt
+    attempt_count: PositiveInt
+    status_counts: Annotated[
+        tuple[FormalEvidenceStatusCount, ...],
+        Field(min_length=1),
+    ]
+    files: Annotated[
+        tuple[FormalEvidenceArtifact, ...],
+        Field(min_length=1, max_length=10_000),
+    ]
+    total_bytes: PositiveInt
+    seal_checksum: Sha256
+
+    @model_validator(mode="after")
+    def evidence_identity_must_be_canonical(self) -> Self:
+        statuses = [item.status for item in self.status_counts]
+        if statuses != sorted(statuses) or len(statuses) != len(set(statuses)):
+            raise ValueError("Formal evidence statuses must be unique and sorted")
+        if sum(item.count for item in self.status_counts) != self.run_count:
+            raise ValueError("Formal evidence status counts must cover every run")
+        paths = [item.path for item in self.files]
+        if paths != sorted(paths) or len(paths) != len(set(paths)):
+            raise ValueError("Formal evidence files must be unique and sorted")
+        if sum(item.byte_size for item in self.files) != self.total_bytes:
+            raise ValueError("Formal evidence byte total does not match file inventory")
+        return self
+
+
 class PilotEvidenceRef(FrozenModel):
     experiment_id: Slug
     freeze_manifest_path: FreezeArtifactPath
