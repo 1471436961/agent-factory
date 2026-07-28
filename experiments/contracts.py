@@ -489,6 +489,8 @@ class RunAttempt(FrozenModel):
     def terminal_fields_must_match_status(self) -> Self:
         if self.completed_at < self.started_at:
             raise ValueError("attempt completed_at must not precede started_at")
+        if (self.prompt_tokens is None) != (self.completion_tokens is None):
+            raise ValueError("attempt usage must provide both token counts")
         if self.status is AttemptStatus.SUCCEEDED:
             if (
                 self.response is None
@@ -496,6 +498,8 @@ class RunAttempt(FrozenModel):
                 or self.error_response is not None
                 or self.output_text is None
                 or self.structured_output is None
+                or self.prompt_tokens is None
+                or self.completion_tokens is None
                 or self.retryable
             ):
                 raise ValueError("successful attempt requires response without error")

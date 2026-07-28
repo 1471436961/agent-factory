@@ -33,7 +33,9 @@ PILOT_PLAN_PATH = PILOT_ROOT / "execution-plan.json"
 FORMAL_PLAN_PATH = FORMAL_ROOT / "execution-plan.json"
 CANDIDATE_PATH = PILOT_ROOT / "freeze-candidate.json"
 EVIDENCE_ROOT = REPOSITORY_ROOT / "experiments" / "evidence" / "writer-pilot-v1"
-FINAL_MANIFEST_PATH = EVIDENCE_ROOT / "freeze-manifest.json"
+MOONSHOT_PRE_MFJS_MANIFEST_PATH = EVIDENCE_ROOT / (
+    "freeze-manifest-moonshot-pre-mfjs.json"
+)
 OPENAI_PRE_SWITCH_MANIFEST_PATH = EVIDENCE_ROOT / (
     "freeze-manifest-openai-pre-switch.json"
 )
@@ -269,10 +271,9 @@ def test_openai_pre_switch_manifest_retains_production_closure_identity() -> Non
     assert manifest["cost_budget"]["hard_cost_limit_usd_micros"] == 51_815
 
 
-def test_final_moonshot_manifest_binds_complete_production_source() -> None:
-    pilot_dataset, pilot_plan, _, _, _ = _inputs()
-    manifest_bytes = FINAL_MANIFEST_PATH.read_bytes()
-    manifest = load_frozen_experiment_manifest(FINAL_MANIFEST_PATH)
+def test_pre_mfjs_moonshot_manifest_retains_executed_pilot_identity() -> None:
+    manifest_bytes = MOONSHOT_PRE_MFJS_MANIFEST_PATH.read_bytes()
+    manifest = load_frozen_experiment_manifest(MOONSHOT_PRE_MFJS_MANIFEST_PATH)
 
     assert hashlib.sha256(manifest_bytes).hexdigest() == (
         "ae4c0727a2082bed55713147b3a28ec96fb4843d12fa96a074bebc03991c5cdd"
@@ -290,14 +291,7 @@ def test_final_moonshot_manifest_binds_complete_production_source() -> None:
     assert manifest.provider.model_is_immutable_snapshot is False
     assert manifest.cost_budget.currency == "CNY"
     assert manifest.cost_budget.hard_cost_limit_micros == 858_368
-    verify_freeze_manifest(
-        manifest,
-        repository_root=REPOSITORY_ROOT,
-        dataset=pilot_dataset,
-        plan=pilot_plan,
-        plan_path=PILOT_PLAN_PATH,
-        verify_environment=False,
-    )
+    assert not (EVIDENCE_ROOT / "freeze-manifest.json").exists()
 
 
 def test_pilot_preflight_rejects_formal_identity_overlap() -> None:

@@ -39,6 +39,32 @@ MOONSHOT_PROVIDER_OPTIONS = FrozenJsonObject(
 _MAX_RAW_RESPONSE_BYTES = 1024 * 1024
 _MAX_ERROR_RESPONSE_BYTES = 64 * 1024
 _INVOCATION_KEYS = {"instructions", "task_input", "output_schema"}
+_MFJS_TYPES = {"null", "boolean", "object", "array", "number", "integer", "string"}
+_MFJS_LOCAL_ONLY_CONSTRAINTS = {
+    "exclusiveMaximum",
+    "exclusiveMinimum",
+    "format",
+    "maxItems",
+    "maxLength",
+    "maxProperties",
+    "maximum",
+    "minItems",
+    "minLength",
+    "minProperties",
+    "minimum",
+    "multipleOf",
+    "pattern",
+    "uniqueItems",
+}
+_MFJS_IGNORED_ANNOTATIONS = {
+    "$comment",
+    "$schema",
+    "deprecated",
+    "examples",
+    "readOnly",
+    "title",
+    "writeOnly",
+}
 
 
 class _ChatCompletionsResource(Protocol):
@@ -102,6 +128,140 @@ def create_moonshot_experiment_gateway(*, api_key: str) -> MoonshotExperimentGat
     return MoonshotExperimentGateway(client=cast(_MoonshotClient, client))
 
 
+def _to_moonshot_mfjs(schema: Mapping[str, object]) -> dict[str, object]:
+    """Map a validated JSON Schema to Moonshot's supported provider subset."""
+
+    return _normalize_mfjs_node(schema, at_root=True)
+
+
+def _normalize_mfjs_node(
+    schema: Mapping[str, object],
+    *,
+    at_root: bool,
+) -> dict[str, object]:
+    normalized: dict[str, object] = {}
+    local_constraints: list[tuple[str, object]] = []
+    for key, value in schema.items():
+        if key in _MFJS_IGNORED_ANNOTATIONS:
+            continue
+        if key in _MFJS_LOCAL_ONLY_CONSTRAINTS:
+            local_constraints.append((key, value))
+            continue
+        if key == "type":
+            if not isinstance(value, str) or value not in _MFJS_TYPES:
+                raise ValueError("MFJS type is unsupported")
+            normalized[key] = value
+            continue
+        if key == "description":
+            if not isinstance(value, str) or not value:
+                raise ValueError("MFJS description is invalid")
+            normalized[key] = value
+            continue
+        if key == "default":
+            normalized[key] = value
+            continue
+        if key == "enum":
+            if not isinstance(value, list) or not value:
+                raise ValueError("MFJS enum is invalid")
+            enum_types = {type(item) for item in value if not isinstance(item, bool)}
+            if (
+                len(enum_types) != 1
+                or not enum_types <= {str, int, float}
+                or any(isinstance(item, bool) for item in value)
+            ):
+                raise ValueError("MFJS enum values are unsupported")
+            normalized[key] = value
+            continue
+        if key == "required":
+            if (
+                not isinstance(value, list)
+                or any(not isinstance(item, str) or not item for item in value)
+                or len(set(value)) != len(value)
+            ):
+                raise ValueError("MFJS required is invalid")
+            normalized[key] = value
+            continue
+        if key == "properties":
+            if not isinstance(value, Mapping):
+                raise ValueError("MFJS properties is invalid")
+            properties: dict[str, object] = {}
+            for property_name, property_schema in value.items():
+                if (
+                    not isinstance(property_name, str)
+                    or not property_name
+                    or not isinstance(property_schema, Mapping)
+                ):
+                    raise ValueError("MFJS property schema is invalid")
+                properties[property_name] = _normalize_mfjs_node(
+                    property_schema,
+                    at_root=False,
+                )
+            normalized[key] = properties
+            continue
+        if key == "additionalProperties":
+            if isinstance(value, bool):
+                normalized[key] = value
+            elif isinstance(value, Mapping):
+                normalized[key] = _normalize_mfjs_node(value, at_root=False)
+            else:
+                raise ValueError("MFJS additionalProperties is invalid")
+            continue
+        if key == "items":
+            if not isinstance(value, Mapping):
+                raise ValueError("MFJS items is invalid")
+            normalized[key] = _normalize_mfjs_node(value, at_root=False)
+            continue
+        if key == "anyOf":
+            if (
+                not isinstance(value, list)
+                or not value
+                or any(not isinstance(item, Mapping) for item in value)
+            ):
+                raise ValueError("MFJS anyOf is invalid")
+            normalized[key] = [
+                _normalize_mfjs_node(cast(Mapping[str, object], item), at_root=False)
+                for item in value
+            ]
+            continue
+        if key == "$defs":
+            if not at_root or not isinstance(value, Mapping):
+                raise ValueError("MFJS $defs is invalid")
+            definitions: dict[str, object] = {}
+            for definition_name, definition_schema in value.items():
+                if (
+                    not isinstance(definition_name, str)
+                    or not definition_name
+                    or not isinstance(definition_schema, Mapping)
+                ):
+                    raise ValueError("MFJS definition is invalid")
+                definitions[definition_name] = _normalize_mfjs_node(
+                    definition_schema,
+                    at_root=False,
+                )
+            normalized[key] = definitions
+            continue
+        if key == "$ref":
+            if not isinstance(value, str) or not (
+                value == "#" or value.startswith("#/$defs/")
+            ):
+                raise ValueError("MFJS $ref is unsupported")
+            normalized[key] = value
+            continue
+        raise ValueError(f"unsupported MFJS keyword: {key}")
+
+    if local_constraints:
+        encoded = ", ".join(
+            f"{key}={json.dumps(value, ensure_ascii=True, separators=(',', ':'))}"
+            for key, value in sorted(local_constraints)
+        )
+        hint = f"Agent Factory post-validates these constraints: {encoded}."
+        description = normalized.get("description")
+        normalized["description"] = (
+            hint if description is None else f"{description} {hint}"
+        )
+    return normalized
+
+
 def _prepare_request(request: GatewayRequest) -> dict[str, object] | GatewayFailure:
     generation = request.generation
     if generation.provider != "moonshot":
@@ -147,11 +307,18 @@ def _prepare_request(request: GatewayRequest) -> dict[str, object] | GatewayFail
     if output_schema is None:
         response_format: dict[str, object] = {"type": "json_object"}
     else:
+        try:
+            provider_schema = _to_moonshot_mfjs(expected_schema)
+        except ValueError:
+            return _failure(
+                GatewayFailureKind.CLIENT_ERROR,
+                "MOONSHOT_OUTPUT_SCHEMA_UNSUPPORTED",
+            )
         response_format = {
             "type": "json_schema",
             "json_schema": {
                 "name": "agent_factory_writer_output",
-                "schema": expected_schema,
+                "schema": provider_schema,
                 "strict": True,
             },
         }
@@ -204,6 +371,7 @@ async def _normalize_stream(
             return _failure(
                 GatewayFailureKind.INVALID_RESPONSE,
                 "MOONSHOT_RESPONSE_TOO_LARGE",
+                usage=usage,
             )
 
         chunk_id = builtin.get("id")
@@ -267,6 +435,7 @@ async def _normalize_stream(
             "MOONSHOT_CONTENT_FILTERED",
             provider_request_id=request_id,
             raw_response=raw_response,
+            usage=usage,
         )
     if finish_reason != "stop":
         return _failure(
@@ -274,6 +443,7 @@ async def _normalize_stream(
             "MOONSHOT_RESPONSE_INCOMPLETE",
             provider_request_id=request_id,
             raw_response=raw_response,
+            usage=usage,
         )
     output_text = "".join(output_parts)
     if not output_text:
@@ -346,6 +516,41 @@ def _usage(value: object) -> tuple[int, int] | None:
     return cast(int, prompt_tokens), cast(int, completion_tokens)
 
 
+def _stable_usage_from_raw_response(
+    raw_response: Mapping[str, object],
+) -> tuple[int, int] | None:
+    chunks = raw_response.get("chunks")
+    if not isinstance(chunks, list):
+        return None
+    observed: list[tuple[int, int]] = []
+    for chunk in chunks:
+        if not isinstance(chunk, Mapping):
+            continue
+        for candidate in (chunk.get("usage"),):
+            if candidate is None:
+                continue
+            parsed = _usage(candidate)
+            if parsed is None:
+                return None
+            observed.append(parsed)
+        choices = chunk.get("choices")
+        if not isinstance(choices, list):
+            continue
+        for choice in choices:
+            if not isinstance(choice, Mapping):
+                continue
+            candidate = choice.get("usage")
+            if candidate is None:
+                continue
+            parsed = _usage(candidate)
+            if parsed is None:
+                return None
+            observed.append(parsed)
+    if not observed or any(candidate != observed[0] for candidate in observed[1:]):
+        return None
+    return observed[0]
+
+
 def _classify_exception(exc: Exception) -> GatewayFailure:
     name = type(exc).__name__
     request_id = _exception_request_id(exc)
@@ -407,6 +612,7 @@ def _invalid_response(
         code,
         provider_request_id=provider_request_id,
         raw_response=raw_response,
+        usage=_stable_usage_from_raw_response(raw_response),
     )
 
 
@@ -416,6 +622,7 @@ def _failure(
     *,
     provider_request_id: str | None = None,
     raw_response: Mapping[str, object] | None = None,
+    usage: tuple[int, int] | None = None,
 ) -> GatewayFailure:
     if provider_request_id is not None and not 1 <= len(provider_request_id) <= 256:
         provider_request_id = None
@@ -429,6 +636,8 @@ def _failure(
         error_code=code,
         provider_request_id=provider_request_id,
         raw_response=bounded_raw,
+        prompt_tokens=None if usage is None else usage[0],
+        completion_tokens=None if usage is None else usage[1],
     )
 
 

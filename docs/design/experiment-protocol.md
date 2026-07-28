@@ -570,7 +570,7 @@ Pilot fixture + experiments package
        153-item frozen inventory
 ```
 
-修正后的 candidate 包含原 62 项输入和 91 项生产文件。新 canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 绑定 source commit `e76adc778300b73b5973920fbaaa72275501db8d`，内部 checksum 为 `58afac123924e0604ec4067f0492781e7115a97b6c14900aee5bcff8fcd05713`，文件 SHA-256 为 `9758d465b44663baf18ced7f06ef51292d57037e1840c7dc17ba63fb94a1cecf`。该文件在任何 tracked 归档变化前通过环境级和 content-only 验证；归档后日常只做 content-only，环境级复核必须 checkout source commit。
+修正后的 candidate 包含原 62 项输入和 91 项生产文件。当时的 OpenAI canonical Manifest 绑定 source commit `e76adc778300b73b5973920fbaaa72275501db8d`，内部 checksum 为 `58afac123924e0604ec4067f0492781e7115a97b6c14900aee5bcff8fcd05713`，文件 SHA-256 为 `9758d465b44663baf18ced7f06ef51292d57037e1840c7dc17ba63fb94a1cecf`。该文件在任何 tracked 归档变化前通过环境级和 content-only 验证；供应商切换后原字节保留为 [`freeze-manifest-openai-pre-switch.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-openai-pre-switch.json)。
 
 这次修正不新增 M5.5 子里程碑编号。真实运行使用 E 盘 detached worktree checkout `e76adc7`，Manifest 从归档提交以绝对路径只读加载，运行证据写到 worktree 与主仓库之外。该环境已通过 content-and-environment verifier；省略 `--allow-live` 的拒绝性预检没有创建输出目录。真实 Pilot 前仍需独立确认 snapshot、完整 8-run 和 51,815 微美元本地硬上限；Manifest 是审批前置证据，不是 provider 账单上限，也不是 Pilot 结果。最终离线门禁为 `227 passed`、实验 package 分支覆盖率 `92.34%`，全仓回归为 `636 passed`；Ruff、mypy strict、契约快照、预算预检和 canonical content-only verifier 均通过。
 
@@ -611,4 +611,29 @@ hard max = ceil(64,000 × 6.50 / 1,000,000)
 
 Kimi 文档当前没有为 `kimi-k2.6` 提供带日期的不可变模型 snapshot，因此预检明确要求 `model_is_immutable_snapshot=false`，同时拒绝把该别名伪装成固定 snapshot。源码、请求参数、输入、输出与 usage 仍可由 Manifest 和 journal 复核，但供应商在同一别名下更新模型是无法由本仓库控制的外部复现风险。若未来出现官方不可变版本，必须生成新 candidate 和新 experiment freeze，不能原地修改旧 Manifest。
 
-原 OpenAI production-closure Manifest 已原样归档为 [`freeze-manifest-openai-pre-switch.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-openai-pre-switch.json)。新的 Moonshot canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 从 clean source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 生成，绑定 154 项输入；内部 checksum 为 `edd5cf3f304742398cc9d6ec4fa7be4c6cd14f90769393b589d67616a6eec5ac`，文件 SHA-256 为 `ae4c0727a2082bed55713147b3a28ec96fb4843d12fa96a074bebc03991c5cdd`。原始字节在复制前已通过环境级与 content-only 验证；launcher 测试使用明确标记的临时 `v1.1` Manifest，不把测试 fixture 描述为正式冻结。旧 OpenAI 费用批准已经失效，新真实调用必须逐字确认 provider/model/profile、完整 8-run、最多 16 次 attempt 和 `CNY 858368 micros` 硬上限。
+原 OpenAI production-closure Manifest 已原样归档为 [`freeze-manifest-openai-pre-switch.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-openai-pre-switch.json)。当时的 Moonshot canonical Manifest 从 clean source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 生成，绑定 154 项输入；内部 checksum 为 `edd5cf3f304742398cc9d6ec4fa7be4c6cd14f90769393b589d67616a6eec5ac`，文件 SHA-256 为 `ae4c0727a2082bed55713147b3a28ec96fb4843d12fa96a074bebc03991c5cdd`。两次真实 Pilot 后，原始字节降级归档为 [`freeze-manifest-moonshot-pre-mfjs.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-moonshot-pre-mfjs.json)；当前 `freeze-manifest.json` 槽位为空，直到修正代码进入 clean commit 并重新冻结。旧 OpenAI 费用批准已经失效，任何新调用都必须逐字确认 provider/model/profile、完整 8-run、最多 16 次 attempt 和新的 Manifest 费用上限。
+
+## 29. M5.5 Moonshot Pilot 实证纠偏
+
+项目 owner 先后批准两次真实 Moonshot Pilot，二者都使用 frozen source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 和相同 8-run 计划。第一次因本地凭据设置错误得到 8 个 `provider-failed`，证据保留在 `E:\Agent-Factory-Kimi-Pilot-Evidence`。第二次使用有效开放平台凭据，证据保留在 `E:\Agent-Factory-Kimi-Pilot-Evidence-Retry-20260726`；MANUAL 4/4 成功，FACTORY 4/4 为 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`，全部 run 都在第一次 attempt 终止。
+
+第二次执行的旧 journal 只记录成功侧 1,416 input + 612 output token，对应 `CNY 25728 micros`。四个 FACTORY 失败的有界原始 chunk 仍包含一致 usage，合计 872 input + 49 output；完整可观察 usage 是 2,288 input + 661 output，按冻结价格重算为 `CNY 32719 micros`。executor 的调用前 reservation 仍按最多 16 次 attempt 和最坏 token 上限阻断超支，因此硬预算机制没有失效；需要修正的是失败 usage 的证据模型和观测成本汇总。
+
+两组差异定位到 provider Structured Output 边界。MANUAL 使用 `json_object` 且 prompt 文本包含完整 Schema；FACTORY 将完整 Draft 2020-12 Schema 直接放入 `response_format.json_schema`。Moonshot [Structured Output 文档](https://platform.kimi.com/docs/api/chat) 只承诺 MFJS，[MFJS 规范](https://github.com/MoonshotAI/walle/blob/main/docs/mfjs-spec.zh.md) 不包含 Pilot Schema 使用的 `$schema`、`minLength`、`minItems` 和 `maxItems` 等关键字，也不保证对未知关键字稳定报错。四次 FACTORY 都返回短小非 JSON 内容，而非 API 参数错误，说明 mock 调用签名通过不能替代真实 provider 子集验证。
+
+修正后的边界如下：
+
+```text
+完整 Draft 2020-12 Schema
+        │
+        ├─ deterministic MFJS projection ─► Moonshot response_format
+        │      ├─ 保留受支持结构关键字
+        │      ├─ 本地约束转为稳定 description hint
+        │      └─ 未知结构关键字在网络调用前拒绝
+        │
+        └─ 原始 Schema ───────────────────► MANUAL/FACTORY 本地共同终验
+```
+
+失败结果的 usage 契约同步修正：`GatewayFailure` 可以携带成对的 input/output token；executor 原样写入失败 `RunAttempt`；Pydantic 拒绝半组 usage，成功 attempt 仍必须具有完整 usage。该变化不修改 reservation 算法，但使 launcher 的 observed cost 能覆盖已计费的无效响应。
+
+本次实证和修正不新增 M5.5 子里程碑编号。旧 canonical Manifest 继续绑定并解释两次已执行请求，但修正改变 FACTORY provider-visible Schema 和 journal 行为，不能授权再次调用。后续必须通过离线质量门禁、提交源码、在 clean commit 上重新冻结，并取得项目 owner 对新 Manifest 和费用上限的独立批准；当前没有第三次真实调用授权，也没有 M5.6 正式实验授权。完整证据表见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。

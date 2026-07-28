@@ -344,6 +344,8 @@ class ExperimentExecutor:
             status=status,
             provider_request_id=outcome.provider_request_id,
             error_response=outcome.raw_response,
+            prompt_tokens=outcome.prompt_tokens,
+            completion_tokens=outcome.completion_tokens,
             error_code=outcome.error_code,
             retryable=retryable,
             started_at=intent.started_at,

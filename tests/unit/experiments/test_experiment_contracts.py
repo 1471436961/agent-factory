@@ -319,6 +319,14 @@ def test_execution_plan_rejects_gaps_and_duplicate_coordinates() -> None:
             "started_at": NOW,
             "completed_at": NOW - timedelta(seconds=1),
         },
+        {
+            "attempt_number": 1,
+            "status": AttemptStatus.INVALID_RESPONSE,
+            "error_code": "INVALID_RESPONSE",
+            "prompt_tokens": 10,
+            "started_at": NOW,
+            "completed_at": NOW,
+        },
     ],
 )
 def test_attempt_rejects_inconsistent_terminal_evidence(

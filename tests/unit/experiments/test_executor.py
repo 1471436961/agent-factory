@@ -257,6 +257,8 @@ async def test_retry_matrix_preserves_every_attempt(
             kind=GatewayFailureKind.INVALID_RESPONSE,
             error_code="INVALID_RESPONSE",
             raw_response={"unparsed": "provider output"},
+            prompt_tokens=125,
+            completion_tokens=48,
         ),
     }
     sleeper = RecordingSleeper()
@@ -280,6 +282,8 @@ async def test_retry_matrix_preserves_every_attempt(
     ]
     assert sleeper.delays == [1.0, 1.0, 2.0]
     assert runs[4].attempts[0].error_response == {"unparsed": "provider output"}
+    assert runs[4].attempts[0].prompt_tokens == 125
+    assert runs[4].attempts[0].completion_tokens == 48
 
 
 @pytest.mark.asyncio

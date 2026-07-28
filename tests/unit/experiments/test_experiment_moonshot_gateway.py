@@ -37,8 +37,42 @@ OUTPUT_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
             "minItems": 2,
+            "maxItems": 6,
         },
         "next_action": {"type": "string", "minLength": 1},
+    },
+    "required": ["title", "summary", "key_points", "next_action"],
+    "additionalProperties": False,
+}
+MFJS_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": (
+                "Agent Factory post-validates these constraints: minLength=1."
+            ),
+        },
+        "summary": {
+            "type": "string",
+            "description": (
+                "Agent Factory post-validates these constraints: minLength=1."
+            ),
+        },
+        "key_points": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Agent Factory post-validates these constraints: "
+                "maxItems=6, minItems=2."
+            ),
+        },
+        "next_action": {
+            "type": "string",
+            "description": (
+                "Agent Factory post-validates these constraints: minLength=1."
+            ),
+        },
     },
     "required": ["title", "summary", "key_points", "next_action"],
     "additionalProperties": False,
@@ -224,7 +258,7 @@ async def test_gateway_maps_frozen_profile_and_normalizes_stream(
             "type": "json_schema",
             "json_schema": {
                 "name": "agent_factory_writer_output",
-                "schema": OUTPUT_SCHEMA,
+                "schema": MFJS_OUTPUT_SCHEMA,
                 "strict": True,
             },
         }
@@ -245,6 +279,38 @@ async def test_gateway_accepts_kimi_choice_level_stream_usage() -> None:
     assert isinstance(outcome, GatewaySuccess)
     assert outcome.prompt_tokens == 125
     assert outcome.completion_tokens == 48
+
+
+@pytest.mark.asyncio
+async def test_gateway_rejects_unmapped_schema_keyword_before_sdk_call() -> None:
+    client = _FakeClient([])
+    schema = {
+        "type": "object",
+        "oneOf": [
+            {"properties": {"title": {"type": "string"}}},
+            {"properties": {"summary": {"type": "string"}}},
+        ],
+    }
+    invocation = {
+        "instructions": "Use only current supplied knowledge.",
+        "task_input": "Write the current routing reference.",
+        "output_schema": schema,
+    }
+    request = _request(factory=True).model_copy(
+        update={
+            "invocation": invocation,
+            "expected_output_schema": schema,
+            "prompt_hash": hashlib.sha256(canonical_json_bytes(invocation)).hexdigest(),
+        }
+    )
+
+    outcome = await MoonshotExperimentGateway(client=client).generate(request)
+
+    assert _failure_identity(outcome) == (
+        GatewayFailureKind.CLIENT_ERROR,
+        "MOONSHOT_OUTPUT_SCHEMA_UNSUPPORTED",
+    )
+    assert client.chat.completions.calls == []
 
 
 @pytest.mark.asyncio
@@ -343,6 +409,30 @@ async def test_gateway_rejects_invalid_or_incomplete_stream(
     )
 
     assert _failure_identity(outcome) == (kind, code)
+
+
+@pytest.mark.asyncio
+async def test_invalid_output_preserves_provider_usage_for_cost_accounting() -> None:
+    outcome = await MoonshotExperimentGateway(
+        client=_FakeClient([_FakeStream(_chunks(output_text="- [ ]"))])
+    ).generate(_request(factory=True))
+
+    assert _failure_identity(outcome) == (
+        GatewayFailureKind.INVALID_RESPONSE,
+        "MOONSHOT_OUTPUT_NOT_JSON_OBJECT",
+    )
+    assert isinstance(outcome, GatewayFailure)
+    assert outcome.prompt_tokens == 125
+    assert outcome.completion_tokens == 48
+
+
+def test_gateway_failure_rejects_partial_usage() -> None:
+    with pytest.raises(ValueError, match="both token counts"):
+        GatewayFailure(
+            kind=GatewayFailureKind.INVALID_RESPONSE,
+            error_code="INVALID_RESPONSE",
+            prompt_tokens=125,
+        )
 
 
 @pytest.mark.asyncio

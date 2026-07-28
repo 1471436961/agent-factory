@@ -229,3 +229,14 @@
    - 最终修正：冻结 schema 升级为 `1.1`，价格和预算显式携带 `currency`，规范字段改为货币中立的 integer micros；新增 OpenAI-compatible `MoonshotExperimentGateway`，固定 Chat Completions 流式调用、`temperature=0.6`、`top_p=0.95`、`n=1`、MANUAL JSON mode、FACTORY strict JSON Schema 与本地共同校验。候选记录 `model_is_immutable_snapshot=false`，预算按未缓存输入计算为预期 `¥0.429184`、硬上限 `¥0.858368`。OpenAI canonical Manifest 原样转为切换前历史证据。
    - 证据：[Kimi API 概览](https://platform.kimi.com/docs/api/overview)、[Kimi K2.6 使用说明](https://platform.kimi.com/docs/guide/kimi-k2-6-quickstart)、[Chat Completions 结构化输出说明](https://platform.kimi.com/docs/api/chat)、[Kimi 开放平台价格](https://platform.kimi.com/)；`experiments/moonshot_gateway.py`、`experiments/definitions/writer-pilot-v1/freeze-candidate.json`、对应 fake-stream 单元测试，以及绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的 canonical `freeze-manifest.json`。
    - 对后续路线的影响：所有实验费用确认都必须同时匹配 currency 与 integer micros；provider 切换必须生成新 schema-compatible Manifest，不能复用旧费用批准。M5.5 在新的 Moonshot clean-commit Manifest 生成和 owner 二次批准前仍未达到真实执行条件；正式报告必须披露 provider alias 可能漂移的外部复现限制。
+
+1. **Moonshot Structured Output 从完整 Draft 透传修正为 MFJS 边界适配**
+
+   - 日期：2026-07-26
+   - 里程碑：M5.5 真实 Pilot 评审
+   - 原判断：Moonshot OpenAI-compatible Chat Completions 能直接接收 Pilot 的完整 Draft 2020-12 Schema；若响应无效，失败 attempt 可以不记录 token usage，因为预算上限已经按调用前 reservation 控制。
+   - 原判断的不足：真实 8-run 中 MANUAL 4/4 成功，FACTORY 4/4 返回 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。Moonshot 只承诺 MFJS 子集，而冻结 Schema 包含 `$schema`、`minLength`、`minItems` 和 `maxItems` 等非 MFJS 关键字。四个无效响应的原始 chunk 仍带有 872 input + 49 output token，旧 journal 将其记为 null，导致观测成本从实际可见的 `CNY 32719 micros` 少报为 `CNY 25728 micros`。调用前硬预算没有失效，但事后证据账本不完整。
+   - 人工 review 结论：项目 owner 批准按建议修正。不能静默删除未知 Schema 约束，也不能覆盖或美化两次失败 Pilot；修正后请求身份变化，必须重新冻结和重新审批。
+   - 最终修正：`MoonshotExperimentGateway` 在网络调用前执行确定性 MFJS projection，保留支持的结构关键字，把本地专属约束转换为稳定 description hint，对未知结构关键字返回 `MOONSHOT_OUTPUT_SCHEMA_UNSUPPORTED`；完整 Draft 2020-12 Schema 继续对两组执行共同本地终验。`GatewayFailure` 和失败 `RunAttempt` 可以保存成对 usage，executor 与 launcher 将其纳入观测成本；成功 attempt 仍强制具有完整 usage，半组 usage 被 Pydantic 拒绝。
+   - 证据：[`M5.5 Moonshot Pilot 执行与纠偏报告`](docs/reports/m5.5-moonshot-pilot-review.md)、[`experiments/moonshot_gateway.py`](experiments/moonshot_gateway.py)、[`experiments/gateway.py`](experiments/gateway.py)、executor/contract/gateway/launcher 定向回归测试，以及 [Moonshot Structured Output 文档](https://platform.kimi.com/docs/api/chat) 与 [MFJS 规范](https://github.com/MoonshotAI/walle/blob/main/docs/mfjs-spec.zh.md)。
+   - 对后续路线的影响：source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的 Manifest 继续解释已执行证据，但不能授权修正后的第三次调用。代码提交并通过全量门禁后必须生成新的 clean-commit Manifest，再由 owner 明确批准费用；M5.6 在修正后 Pilot review 和正式冻结完成前保持阻断。

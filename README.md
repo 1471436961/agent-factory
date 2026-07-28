@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.5 Pilot 与正式冻结阶段，执行前生产依赖闭环已完成**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。M5.5 已实现独立 8-run Pilot、预算预检、OpenAI Responses gateway 和受控 live CLI；收尾审计进一步把真实 `FactoryController` 所依赖的 85 个生产 Python 文件与 6 个 migration SQL 纳入冻结。当前 canonical Manifest 绑定 source commit `e76adc778300b73b5973920fbaaa72275501db8d` 和 153 项输入，M5.5.5、M5.5.7 Manifest 只作为历史检查点保留。仓库尚未读取真实 API key、调用模型或产生费用，也没有 Pilot/正式实验质量结论；真实 Pilot 仍需要项目 owner 对固定模型和最多 `$0.051815` 费用作独立批准。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.5 Moonshot Pilot 兼容性纠偏阶段**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。项目 owner 已批准并执行两次真实 8-run Pilot：第一次因本地凭据设置错误留下 8 个失败终态；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Moonshot MFJS 兼容边界返回 `invalid-response`。原始失败证据均保留，尚不存在 H1-H5 或正式实验质量结论。MFJS provider Schema 适配和失败 usage 计量修正已通过 `666` 项全仓回归及 `experiments` 90% 分支覆盖率门禁；该修正会改变请求字节，因此绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的既有 Manifest 已成为历史执行身份。当前等待提交修正并从 clean commit 重新冻结，不能自动发起第三次调用。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 
@@ -118,7 +118,7 @@ uv run python -m experiments analyze \
   --output-root .tmp/m5-fake-replay/derived
 ```
 
-尚不存在正式实验结果。`run-fake` 只产生合成响应，即使随后通过 `analyze` 生成完整评分和报告，也不能用于 H1-H5。当前 technical manifest 只锁定数据集、计划、条件渲染、生成参数和 token/request 上限，不替代 M5.5 对 source commit、SDK、模型、价格和成本上限的正式冻结。pilot 与正式数据必须隔离，真实模型调用仍须项目 owner 再次明确批准。
+尚不存在正式实验结果。`run-fake` 只产生合成响应，即使随后通过 `analyze` 生成完整评分和报告，也不能用于 H1-H5。真实 Moonshot Pilot 已暴露 FACTORY Structured Output 与 MFJS 子集不兼容，以及失败响应 usage 未进入观测成本的问题；详见 [M5.5 Moonshot Pilot 执行与纠偏报告](docs/reports/m5.5-moonshot-pilot-review.md)。历史 Pilot 与正式数据严格隔离，修正后的任何真实调用仍须先生成新的 clean-commit Manifest，并由项目 owner 再次明确批准。
 
 `python -m experiments freeze-candidate` 从规范 JSON spec 生成 write-once 冻结候选；`verify-freeze` 默认同时复核文件内容和当前 Git/Python/SDK 环境，`--content-only` 只做可移植内容校验并明确不声称环境可执行。两个命令都不接收 API key、live switch 或网络配置；候选生成成功也不代表模型、价格、预算或正式执行已经获得项目 owner 批准。
 
@@ -164,6 +164,7 @@ async with AgentFactoryClient(
 - [Alpha 安全、回归与发布门禁设计说明](docs/design/security-regression-gates.md)
 - [M4.4 事务与并发故障证据](docs/design/transaction-fault-evidence.md)
 - [M5 实验协议设计说明](docs/design/experiment-protocol.md)
+- [M5.5 Moonshot Pilot 执行与纠偏报告](docs/reports/m5.5-moonshot-pilot-review.md)
 - [本地 Alpha 部署说明](docs/deployment/local-alpha.md)
 - [学习日志](LEARNING_LOG.md)
 - [设计纠偏记录](DECISION_CORRECTIONS.md)

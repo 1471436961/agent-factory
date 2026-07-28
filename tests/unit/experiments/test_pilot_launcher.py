@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from tests.experiment_fixtures import write_current_pilot_test_manifest
@@ -14,6 +16,8 @@ from experiments.executor import InvocationProvider
 from experiments.freezing import FreezeError, load_frozen_experiment_manifest
 from experiments.gateway import (
     FakeExperimentGateway,
+    GatewayFailure,
+    GatewayFailureKind,
     GatewayOutcome,
     GatewayRequest,
 )
@@ -69,8 +73,13 @@ class _RecordingKeySource:
 class _LiveFakeGateway(FakeExperimentGateway):
     is_live = True
 
-    def __init__(self, *, fail: bool = False) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        *,
+        fail: bool = False,
+        script: Mapping[tuple[UUID, int], GatewayOutcome] | None = None,
+    ) -> None:
+        super().__init__(script)
         self.closed = 0
         self._fail = fail
 
@@ -86,12 +95,13 @@ class _LiveFakeGateway(FakeExperimentGateway):
 @dataclass(slots=True)
 class _RecordingGatewayFactory:
     fail: bool = False
+    script: Mapping[tuple[UUID, int], GatewayOutcome] | None = None
     keys: list[str] = field(default_factory=list)
     gateways: list[_LiveFakeGateway] = field(default_factory=list)
 
     def __call__(self, *, api_key: str) -> ManagedExperimentGateway:
         self.keys.append(api_key)
-        gateway = _LiveFakeGateway(fail=self.fail)
+        gateway = _LiveFakeGateway(fail=self.fail, script=self.script)
         self.gateways.append(gateway)
         return gateway
 
@@ -206,6 +216,46 @@ async def test_live_pilot_executes_all_coordinates_and_resumes_without_calls(
     assert SECRET.encode() not in b"".join(
         path.read_bytes() for path in output_root.rglob("*.json")
     )
+
+
+@pytest.mark.asyncio
+async def test_live_pilot_summary_counts_usage_from_invalid_responses(
+    tmp_path: Path,
+    launch_manifest_path: Path,
+) -> None:
+    dataset = load_experiment_dataset(PILOT_ROOT)
+    plan = load_execution_plan(PILOT_ROOT / "execution-plan.json", dataset)
+    script = {
+        (item.run_id, 1): GatewayFailure(
+            kind=GatewayFailureKind.INVALID_RESPONSE,
+            error_code="INVALID_RESPONSE",
+            raw_response={"provider": "fake", "invalid": True},
+            prompt_tokens=25,
+            completion_tokens=5,
+        )
+        for item in plan.items
+        if item.condition.value == "factory-agent"
+    }
+    gateway_factory = _RecordingGatewayFactory(script=script)
+
+    summary = await run_live_pilot(
+        _request(tmp_path / "pilot-runs", manifest_path=launch_manifest_path),
+        repository_root=REPOSITORY_ROOT,
+        dependencies=PilotLauncherDependencies(
+            freeze_verifier=_NoOpFreezeVerifier(),
+            api_key_source=_RecordingKeySource(),
+            gateway_factory=gateway_factory,
+        ),
+    )
+
+    assert dict(summary.status_counts) == {
+        "invalid-response": 4,
+        "succeeded": 4,
+    }
+    assert summary.provider_attempts == 8
+    assert summary.observed_prompt_tokens == 500
+    assert summary.observed_completion_tokens == 180
+    assert summary.observed_cost_micros == 8_110
 
 
 @pytest.mark.asyncio

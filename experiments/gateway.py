@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Protocol, TypeAlias
+from typing import Protocol, Self, TypeAlias
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from agent_factory.domain.common import (
     FrozenJsonObject,
@@ -55,6 +55,14 @@ class GatewayFailure(FrozenModel):
     )
     provider_request_id: str | None = Field(default=None, min_length=1, max_length=256)
     raw_response: JsonObject | None = None
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    completion_tokens: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def usage_must_be_complete_when_present(self) -> Self:
+        if (self.prompt_tokens is None) != (self.completion_tokens is None):
+            raise ValueError("gateway failure usage must provide both token counts")
+        return self
 
 
 GatewayOutcome: TypeAlias = GatewaySuccess | GatewayFailure
