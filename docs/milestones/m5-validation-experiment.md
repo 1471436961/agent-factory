@@ -2,11 +2,11 @@
 
 ## 1. 阶段状态
 
-- 状态：进行中；M5.1-M5.4 已实现，M5.5 已执行三次经批准的 Moonshot 8-run Pilot；第三次 FACTORY 4/4 成功，MFJS 兼容性复验通过，等待正式配置、预算和 Manifest 的 owner 冻结批准。
+- 状态：进行中；M5.1-M5.4 已实现，M5.5 已执行三次经批准的 Moonshot 8-run Pilot；第三次 FACTORY 4/4 成功，MFJS 兼容性复验通过。Pilot 证据 seal、正式 preflight/launcher 和盲评工具已完成，等待 clean-commit 正式 Manifest 与 owner 冻结批准。
 - 开始时间：2026-07-25。
 - 进入依据：M4 已由项目 owner 验收并封存；退出候选提交 `4a55d73` 的 GitHub Actions CI #25 通过，M4 封存提交 `346e2fd` 的 CI #26 通过。
 - 规划依据：项目 owner 已确认 M5 的证据拆分、工作包、已知风险、备选方案和真实模型调用审批边界。
-- 当前限制：绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的旧 Moonshot Manifest 只解释前两次历史执行；绑定 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 的新 Manifest 只解释第三次兼容性复验。M5.6 的正式 Manifest 和费用尚未冻结或批准。
+- 当前限制：绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的旧 Moonshot Manifest 只解释前两次历史执行；绑定 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 的新 Manifest 只解释第三次兼容性复验。正式配置的保守估算为 `CNY 12875520 micros`、硬上限为 `CNY 25751040 micros`；M5.6 的正式 Manifest 和费用尚未由 owner 批准。
 
 ## 2. 阶段目标
 
@@ -163,7 +163,7 @@ H1、H2、H4 比较的是“手写 Agent 工作流”和“工厂 Agent 工作�
 
 ## 9. 当前结论
 
-M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5 的三次真实 Moonshot Pilot 只形成兼容性证据：第一次 8-run 因凭据设置失败；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Structured Output 与 MFJS 子集不兼容而失败；第三次在 MFJS projection 后得到 FACTORY 4/4 成功、MANUAL 3/4 成功和 1 个非 JSON 无效响应。该结果支持“修正后的 FACTORY 请求与当前 Moonshot 接口兼容”，不能用于 H1-H5，也不能解释为框架质量优于或劣于 MANUAL。下一步是冻结并审批 M5.6 的正式配置、预算和 Manifest；在此之前 M5.5 未结束，M5.6 仍保持阻断。
+M5.1-M5.4 已建立从冻结 Writer fixture、可恢复执行到离线评分和报告复算的完整工程链。M5.5 的三次真实 Moonshot Pilot 只形成兼容性证据：第一次 8-run 因凭据设置失败；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Structured Output 与 MFJS 子集不兼容而失败；第三次在 MFJS projection 后得到 FACTORY 4/4 成功、MANUAL 3/4 成功和 1 个非 JSON 无效响应。该结果支持“修正后的 FACTORY 请求与当前 Moonshot 接口兼容”，不能用于 H1-H5，也不能解释为框架质量优于或劣于 MANUAL。第三次 35 项外部证据已由 `9cb5965cbd76cdec0728b29ec91f45da2a178a52d633030bbae51cc4e073114d` seal 绑定；正式 preflight、launcher 和盲评分离已通过完整 240-run fake 验证。下一步是在 clean commit 上生成并审批正式 Manifest；在 owner 批准前 M5.5 未结束，M5.6 仍保持阻断。
 
 ## 10. M5.2 实现证据
 
@@ -366,3 +366,17 @@ M5.5.7 没有读取 API key、创建 provider client、调用模型或产生费�
 第三次 Pilot 在 detached worktree `e010b535` 上通过环境级 Manifest 校验后执行，证据根为 `E:\\Agent-Factory-Kimi-Pilot-Evidence-MFJS-20260728`，执行窗口为 `2026-07-28T06:49:19.809042Z` 至 `2026-07-28T06:50:55.890361Z`。8 个 run 均在第一次 attempt 进入终态：FACTORY 4/4 `succeeded`；MANUAL 3/4 `succeeded`，`brivane-recovery-brief` 因 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT` 成为 `invalid-response`。全部 attempt 均有 provider request ID，`ExperimentEvidenceLoader` 对 8 request、8 attempt 和 8 terminal 的完整 journal 校验通过。
 
 第三次观测 usage 为 2,288 input + 1,840 output，对应 `CNY 64552 micros`，低于 `CNY 858368 micros` 硬上限；失败 MANUAL attempt 的 362 input + 181 output 已正确写入 journal 和成本汇总。该失败的 raw stream 超过 64 KiB 错误证据上限，因而没有保留精确非 JSON 正文。FACTORY 从纠偏前 0/4 提升为修正后 4/4，满足本次 Structured Output 兼容性门禁；MANUAL 单次失败和 `kimi-k2.6` 可变别名仍作为限制保留。当前仍不存在正式实验质量结论。
+
+## 27. M5.5 正式冻结前置闭环
+
+正式冻结审计发现，仓库当时只有 `run-pilot-live`，正式 240-run launcher 和盲评包尚未实现。若先生成正式 Manifest、再在 M5.6 增加这两条路径，冻结 source commit 将不包含实际执行代码。owner 因此确认先补齐执行与证据工具、再冻结，不新增 M5.5.8 等子里程碑编号，也不提前进行真实 provider 调用。
+
+- 第三次 Pilot 外部根通过完整 journal 复核后生成 35 项 SHA-256 seal；seal checksum 为 `9cb5965cbd76cdec0728b29ec91f45da2a178a52d633030bbae51cc4e073114d`。正式候选必须同时冻结 Pilot Manifest、评审报告和 seal，builder 会机器核对三者身份。
+- `validate_formal_preflight()` 强制 24 tasks、5 repetitions、MANUAL/FACTORY 120/120、240 次预期请求、480 次最大 attempt、单并发和既有 Moonshot 非思考 profile。
+- 官方价格在 2026-07-28 复核后仍为标准输入 ¥6.50、缓存输入 ¥1.10、输出 ¥27.00 / MTok；正式保守估算为 `CNY 12875520 micros`，硬上限为 `CNY 25751040 micros`。
+- `run-formal-live` 与 Pilot 共用 Factory preparation、完整 invocation 校验、密钥延迟读取、write-once executor、恢复和成本汇总。CLI 不提供部分运行、API key 或模型参数覆盖。
+- 盲评生成器发布 240 个不含 condition/run ID/Prompt/AgentSpec 的公开 item，并把可恢复来源映射保存到独立、不可嵌套的私有根。完整 fake journal 的生成、重放和篡改拒绝测试通过。
+
+这些能力只使正式冻结具备工程前提。正式 Manifest 和 `CNY 25751040 micros` 上限仍须 owner 精确批准；批准前 M5.6 保持阻断。
+
+2026-07-28 正式冻结前门禁从空覆盖数据独立执行：CI 同构 experiment 集合为 `280 passed`，`experiments` 分支覆盖率 `90.03%`；全仓回归为 `689 passed`，生产代码总分支覆盖率 `92%`，其中 domain `96%`、application `95%`。Ruff format、Ruff lint、全量 mypy strict（`205` 个源文件）以及 OpenAPI、Writer AgentSpec、审计时间线三项契约快照检查均通过。全部门禁只使用 fake client 与本地历史证据，没有读取 API key、创建真实 provider client 或产生模型费用。

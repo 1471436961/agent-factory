@@ -240,3 +240,14 @@
    - 最终修正：`MoonshotExperimentGateway` 在网络调用前执行确定性 MFJS projection，保留支持的结构关键字，把本地专属约束转换为稳定 description hint，对未知结构关键字返回 `MOONSHOT_OUTPUT_SCHEMA_UNSUPPORTED`；完整 Draft 2020-12 Schema 继续对两组执行共同本地终验。`GatewayFailure` 和失败 `RunAttempt` 可以保存成对 usage，executor 与 launcher 将其纳入观测成本；成功 attempt 仍强制具有完整 usage，半组 usage 被 Pydantic 拒绝。
    - 证据：[`M5.5 Moonshot Pilot 执行与纠偏报告`](docs/reports/m5.5-moonshot-pilot-review.md)、[`experiments/moonshot_gateway.py`](experiments/moonshot_gateway.py)、[`experiments/gateway.py`](experiments/gateway.py)、executor/contract/gateway/launcher 定向回归测试，[Moonshot Structured Output 文档](https://platform.kimi.com/docs/api/chat) 与 [MFJS 规范](https://github.com/MoonshotAI/walle/blob/main/docs/mfjs-spec.zh.md)，以及绑定 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 的新 canonical Manifest。
    - 对后续路线的影响：source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的 Manifest 继续解释已执行证据，但不能授权修正后的第三次调用。新 Manifest 已从修正源码 clean commit 生成；仍须由 owner 明确批准费用。M5.6 在修正后 Pilot review 和正式冻结完成前保持阻断。
+
+1. **正式实验从先冻结再补执行工具修正为执行链完备后冻结**
+
+   - 日期：2026-07-28
+   - 里程碑：M5.5 正式冻结收尾
+   - 原判断：Pilot review 完成后即可直接生成正式 Manifest；正式 240-run launcher 和盲评包可以进入 M5.6 时再实现。
+   - 原判断的不足：Manifest 会冻结一个尚不能执行正式计划、也不能生成盲评证据的 source commit。M5.6 再增加 launcher 或盲评代码会改变 provider-visible 请求和证据路径，使实际执行程序脱离已批准 source identity。
+   - 人工 review 结论：owner 确认在 M5.5 结束前连续完成 Pilot 证据封存、正式执行入口、盲评包、正式候选和全量门禁；这些是 M5.5 原退出任务，不新增子里程碑编号，也不授权真实正式调用。
+   - 最终修正：先生成逐文件 `PilotEvidenceSeal` 并加强 `PilotEvidenceRef`；再实现强制 24×2×5 设计、240/480 请求与精确人民币预算的 formal preflight，复用受控 live executor，并实现 condition-free review item 与私有 mapping 的分离生成。上述代码和协议进入 clean source commit 后，才派生正式 Manifest。
+   - 证据：`experiments/evidence_sealing.py`、`experiments/formal.py`、`experiments/formal_freezing.py`、`experiments/blind_review.py`、`experiments/pilot_launcher.py` 及对应完整 240-run fake gateway 测试；[`M5 实验协议`](docs/design/experiment-protocol.md) 第 31 节。
+   - 对后续路线的影响：M5.6 只负责在 owner 精确批准后执行已冻结的 240-run 计划并生成实际盲评产物，不再修改冻结请求或证据生成逻辑。任何正式执行工具变化都必须重新生成 Manifest 和重新审批。

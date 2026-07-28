@@ -249,8 +249,14 @@ def test_formal_manifest_requires_distinct_pilot_evidence() -> None:
 
     evidence = PilotEvidenceRef(
         experiment_id="writer-pilot-v1",
+        freeze_manifest_path=(
+            "experiments/evidence/writer-pilot-v1/freeze-manifest.json"
+        ),
         freeze_manifest_checksum="a" * 64,
+        report_path="docs/reports/m5.5-moonshot-pilot-review.md",
         report_checksum="b" * 64,
+        evidence_seal_path=("experiments/evidence/writer-pilot-v1/evidence-seal.json"),
+        evidence_seal_checksum="c" * 64,
     )
     payload["pilot_evidence"] = evidence
     with pytest.raises(ValidationError, match="IDs must differ"):

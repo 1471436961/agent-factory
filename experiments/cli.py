@@ -15,15 +15,27 @@ from agent_factory.domain.errors import FactoryError
 from agent_factory.domain.models import AgentSpec, KnowledgeRef, PrototypeRef
 from agent_factory.domain.services.spec import checksum_agent_spec
 from experiments.artifacts import ArtifactStore, ArtifactStoreError
+from experiments.blind_review import build_blind_review_package
 from experiments.contracts import (
     AnalysisConfig,
     ExecutionLimits,
     ExperimentCondition,
+    ExperimentPurpose,
     ExperimentTask,
     GenerationConfig,
     RenderedInvocation,
 )
+from experiments.evidence_sealing import (
+    build_pilot_evidence_seal,
+    publish_pilot_evidence_seal,
+)
 from experiments.executor import ExperimentExecutor
+from experiments.formal import FormalPreflightError, validate_formal_preflight
+from experiments.formal_freezing import (
+    FormalCandidateDraftRequest,
+    build_formal_freeze_candidate,
+    publish_formal_freeze_candidate,
+)
 from experiments.freezing import (
     FreezeCandidateBuilder,
     FreezeError,
@@ -40,8 +52,10 @@ from experiments.loader import (
 )
 from experiments.pilot import PilotPreflightError, validate_pilot_preflight
 from experiments.pilot_launcher import (
+    FormalLaunchRequest,
     PilotLaunchError,
     PilotLaunchRequest,
+    run_live_formal,
     run_live_pilot,
 )
 from experiments.pipeline import OfflineAnalysisPipeline
@@ -133,6 +147,55 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--bootstrap-seed", type=int)
     analyze.add_argument("--bootstrap-iterations", type=int, default=10_000)
 
+    blind_review = subcommands.add_parser(
+        "build-blind-review",
+        help="publish condition-free review items and a separate private mapping",
+    )
+    _add_definition_root(blind_review)
+    blind_review.add_argument("--plan", type=Path)
+    blind_review.add_argument("--runs-root", type=Path, required=True)
+    blind_review.add_argument("--review-root", type=Path, required=True)
+    blind_review.add_argument("--mapping-root", type=Path, required=True)
+
+    formal_candidate = subcommands.add_parser(
+        "draft-formal-candidate",
+        help="derive the reviewed formal candidate before clean-commit freezing",
+    )
+    _add_definition_root(formal_candidate)
+    formal_candidate.add_argument("--plan", type=Path)
+    formal_candidate.add_argument(
+        "--pilot-manifest",
+        type=Path,
+        default=(
+            REPOSITORY_ROOT
+            / "experiments/evidence/writer-pilot-v1/freeze-manifest.json"
+        ),
+    )
+    formal_candidate.add_argument(
+        "--pilot-report",
+        type=Path,
+        default=REPOSITORY_ROOT / "docs/reports/m5.5-moonshot-pilot-review.md",
+    )
+    formal_candidate.add_argument(
+        "--pilot-evidence-seal",
+        type=Path,
+        default=(
+            REPOSITORY_ROOT
+            / "experiments/evidence/writer-pilot-v1/evidence-seal-mfjs-20260728.json"
+        ),
+    )
+    formal_candidate.add_argument(
+        "--pricing-source-url",
+        default="https://platform.kimi.com/docs/pricing/chat-k26",
+    )
+    formal_candidate.add_argument(
+        "--pricing-captured-at", type=datetime.fromisoformat, required=True
+    )
+    formal_candidate.add_argument(
+        "--created-at", type=datetime.fromisoformat, required=True
+    )
+    formal_candidate.add_argument("--output", type=Path)
+
     pilot = subcommands.add_parser(
         "verify-pilot",
         help="verify Pilot isolation and reviewed offline budget bounds",
@@ -146,6 +209,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_DEFINITION_ROOT,
     )
     pilot.add_argument("--formal-plan", type=Path)
+
+    formal_verify = subcommands.add_parser(
+        "verify-formal",
+        help="verify exact formal design, provider profile, Pilot lineage and budget",
+    )
+    _add_definition_root(formal_verify)
+    formal_verify.add_argument("--plan", type=Path)
+    formal_verify.add_argument("--spec", type=Path, required=True)
 
     freeze = subcommands.add_parser(
         "freeze-candidate",
@@ -169,6 +240,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="verify portable content evidence without claiming environment readiness",
     )
 
+    seal_evidence = subcommands.add_parser(
+        "seal-pilot-evidence",
+        help="validate and hash one externally retained Pilot evidence tree",
+    )
+    _add_definition_root(seal_evidence, default=DEFAULT_PILOT_DEFINITION_ROOT)
+    seal_evidence.add_argument("--plan", type=Path)
+    seal_evidence.add_argument("--manifest", type=Path, required=True)
+    seal_evidence.add_argument("--evidence-root", type=Path, required=True)
+    seal_evidence.add_argument("--root-label", required=True)
+    seal_evidence.add_argument("--output", type=Path, required=True)
+
     live = subcommands.add_parser(
         "run-pilot-live",
         help="execute every run in one fully verified Pilot Manifest",
@@ -187,48 +269,81 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument("--confirm-experiment-id", required=True)
     live.add_argument("--confirm-currency", required=True, choices=("USD", "CNY"))
     live.add_argument("--confirm-hard-cost-micros", type=int, required=True)
+
+    formal_live = subcommands.add_parser(
+        "run-formal-live",
+        help="execute all 240 runs in one fully verified formal Manifest",
+    )
+    _add_definition_root(formal_live)
+    formal_live.add_argument("--plan", type=Path)
+    formal_live.add_argument("--manifest", type=Path, required=True)
+    formal_live.add_argument("--output-root", type=Path, required=True)
+    formal_live.add_argument("--allow-live", action="store_true")
+    formal_live.add_argument("--confirm-experiment-id", required=True)
+    formal_live.add_argument(
+        "--confirm-currency", required=True, choices=("USD", "CNY")
+    )
+    formal_live.add_argument("--confirm-hard-cost-micros", type=int, required=True)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     definition_root = args.definition_root.resolve()
-    if args.command == "run-pilot-live":
+    if args.command in {"run-pilot-live", "run-formal-live"}:
         plan_path = (args.plan or definition_root / "execution-plan.json").resolve()
-        formal_root = args.formal_definition_root.resolve()
-        formal_plan = (
-            args.formal_plan or formal_root / "execution-plan.json"
-        ).resolve()
         try:
-            summary = asyncio.run(
-                run_live_pilot(
-                    PilotLaunchRequest(
-                        definition_root=definition_root,
-                        plan_path=plan_path,
-                        manifest_path=args.manifest,
-                        formal_definition_root=formal_root,
-                        formal_plan_path=formal_plan,
-                        output_root=args.output_root,
-                        allow_live=args.allow_live,
-                        confirmed_experiment_id=args.confirm_experiment_id,
-                        confirmed_currency=args.confirm_currency,
-                        confirmed_hard_cost_micros=args.confirm_hard_cost_micros,
-                    ),
-                    repository_root=REPOSITORY_ROOT,
+            if args.command == "run-pilot-live":
+                formal_root = args.formal_definition_root.resolve()
+                formal_plan = (
+                    args.formal_plan or formal_root / "execution-plan.json"
+                ).resolve()
+                summary = asyncio.run(
+                    run_live_pilot(
+                        PilotLaunchRequest(
+                            definition_root=definition_root,
+                            plan_path=plan_path,
+                            manifest_path=args.manifest,
+                            formal_definition_root=formal_root,
+                            formal_plan_path=formal_plan,
+                            output_root=args.output_root,
+                            allow_live=args.allow_live,
+                            confirmed_experiment_id=args.confirm_experiment_id,
+                            confirmed_currency=args.confirm_currency,
+                            confirmed_hard_cost_micros=args.confirm_hard_cost_micros,
+                        ),
+                        repository_root=REPOSITORY_ROOT,
+                    )
                 )
-            )
+            else:
+                summary = asyncio.run(
+                    run_live_formal(
+                        FormalLaunchRequest(
+                            definition_root=definition_root,
+                            plan_path=plan_path,
+                            manifest_path=args.manifest,
+                            output_root=args.output_root,
+                            allow_live=args.allow_live,
+                            confirmed_experiment_id=args.confirm_experiment_id,
+                            confirmed_currency=args.confirm_currency,
+                            confirmed_hard_cost_micros=args.confirm_hard_cost_micros,
+                        ),
+                        repository_root=REPOSITORY_ROOT,
+                    )
+                )
         except (
             ArtifactStoreError,
             ExperimentFixtureError,
             FactoryError,
+            FormalPreflightError,
             FreezeError,
             PilotLaunchError,
             PilotPreflightError,
         ) as exc:
-            print(f"Pilot launch aborted: {exc}", file=sys.stderr)
+            print(f"Live launch aborted: {exc}", file=sys.stderr)
             return 2
         print(
-            "Pilot execution complete: "
+            "Live execution complete: "
             f"experiment={summary.experiment_id} runs={summary.run_count} "
             f"statuses={dict(summary.status_counts)} "
             f"attempts={summary.provider_attempts}/"
@@ -251,9 +366,76 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     plan_path = (args.plan or definition_root / "execution-plan.json").resolve()
     plan = load_execution_plan(plan_path, dataset)
+    if args.command == "draft-formal-candidate":
+        output = (args.output or definition_root / "freeze-candidate.json").resolve()
+        candidate = build_formal_freeze_candidate(
+            request=FormalCandidateDraftRequest(
+                repository_root=REPOSITORY_ROOT,
+                candidate_path=output,
+                pilot_manifest_path=args.pilot_manifest.resolve(),
+                pilot_report_path=args.pilot_report.resolve(),
+                pilot_evidence_seal_path=args.pilot_evidence_seal.resolve(),
+                pricing_source_url=args.pricing_source_url,
+                pricing_captured_at=args.pricing_captured_at,
+                created_at=args.created_at,
+            ),
+            dataset=dataset,
+            plan=plan,
+        )
+        created = publish_formal_freeze_candidate(candidate, output)
+        action = "created" if created else "verified"
+        print(
+            f"{action} formal candidate {output} "
+            f"runs={len(plan.items)} requests="
+            f"{candidate.cost_budget.estimated_provider_requests}/"
+            f"{candidate.execution_manifest.limits.max_provider_requests} "
+            f"currency={candidate.cost_budget.currency} cost_micros="
+            f"{candidate.cost_budget.estimated_cost_micros}/"
+            f"{candidate.cost_budget.hard_cost_limit_micros}"
+        )
+        return 0
+    if args.command == "seal-pilot-evidence":
+        manifest = load_frozen_experiment_manifest(args.manifest.resolve())
+        if manifest.purpose is not ExperimentPurpose.PILOT:
+            raise FreezeError("Pilot evidence requires a Pilot freeze Manifest")
+        if manifest.experiment_id != dataset.definition.experiment_id:
+            raise FreezeError("Pilot freeze Manifest does not match definition root")
+        seal = build_pilot_evidence_seal(
+            dataset=dataset,
+            plan=plan,
+            evidence_root=args.evidence_root,
+            evidence_root_label=args.root_label,
+            freeze_manifest_checksum=manifest.manifest_checksum,
+            expected_execution_manifest_checksum=(
+                manifest.execution_manifest.manifest_checksum
+            ),
+        )
+        created = publish_pilot_evidence_seal(seal, args.output)
+        action = "created" if created else "verified"
+        print(
+            f"{action} Pilot evidence seal {args.output.resolve()} "
+            f"files={len(seal.files)} runs={seal.run_count} "
+            f"attempts={seal.attempt_count} sha256={seal.seal_checksum}"
+        )
+        return 0
     if args.command == "verify-plan":
         print(
             f"verified {plan_path} runs={len(plan.items)} sha256={plan.plan_checksum}"
+        )
+        return 0
+    if args.command == "build-blind-review":
+        blind_result = build_blind_review_package(
+            dataset=dataset,
+            plan=plan,
+            run_store=ArtifactStore(args.runs_root),
+            review_root=args.review_root,
+            mapping_root=args.mapping_root,
+        )
+        print(
+            "blind review package published: "
+            f"items={blind_result.package.item_count} "
+            f"package_sha256={blind_result.package.package_checksum} "
+            f"mapping_sha256={blind_result.mapping.mapping_checksum}"
         )
         return 0
     if args.command == "analyze":
@@ -265,7 +447,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             bootstrap_iterations=args.bootstrap_iterations,
         )
-        result = OfflineAnalysisPipeline(
+        analysis_result = OfflineAnalysisPipeline(
             dataset=dataset,
             plan=plan,
             run_store=ArtifactStore(args.runs_root),
@@ -274,9 +456,9 @@ def main(argv: list[str] | None = None) -> int:
         ).run()
         print(
             "offline analysis published: "
-            f"runs={result.score_manifest.run_count} "
-            f"score_set_sha256={result.score_manifest.score_set_checksum} "
-            f"analysis_sha256={result.analysis_manifest.analysis_checksum}"
+            f"runs={analysis_result.score_manifest.run_count} "
+            f"score_set_sha256={analysis_result.score_manifest.score_set_checksum} "
+            f"analysis_sha256={analysis_result.analysis_manifest.analysis_checksum}"
         )
         return 0
     if args.command == "verify-pilot":
@@ -287,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
             args.formal_plan or formal_root / "execution-plan.json"
         ).resolve()
         formal_plan = load_execution_plan(formal_plan_path, formal_dataset)
-        report = validate_pilot_preflight(
+        pilot_report = validate_pilot_preflight(
             pilot_dataset=dataset,
             pilot_plan=plan,
             candidate=candidate,
@@ -296,13 +478,35 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "verified Pilot preflight: "
-            f"experiment={report.pilot_experiment_id} "
-            f"tasks={report.task_count} runs={report.run_count} "
-            f"requests={report.estimated_provider_requests}/"
-            f"{report.max_provider_requests} "
-            f"currency={report.currency} "
-            f"cost_micros={report.estimated_cost_micros}/"
-            f"{report.hard_cost_limit_micros}"
+            f"experiment={pilot_report.pilot_experiment_id} "
+            f"tasks={pilot_report.task_count} runs={pilot_report.run_count} "
+            f"requests={pilot_report.estimated_provider_requests}/"
+            f"{pilot_report.max_provider_requests} "
+            f"currency={pilot_report.currency} "
+            f"cost_micros={pilot_report.estimated_cost_micros}/"
+            f"{pilot_report.hard_cost_limit_micros}"
+        )
+        return 0
+    if args.command == "verify-formal":
+        candidate = load_freeze_candidate_spec(args.spec.resolve())
+        formal_report = validate_formal_preflight(
+            dataset=dataset,
+            plan=plan,
+            candidate=candidate,
+        )
+        print(
+            "verified formal preflight: "
+            f"experiment={formal_report.experiment_id} "
+            f"pilot={formal_report.pilot_experiment_id} "
+            f"tasks={formal_report.task_count} "
+            f"repetitions={formal_report.repetitions} "
+            f"runs={formal_report.manual_run_count}+"
+            f"{formal_report.factory_run_count} "
+            f"requests={formal_report.estimated_provider_requests}/"
+            f"{formal_report.max_provider_requests} "
+            f"currency={formal_report.currency} "
+            f"cost_micros={formal_report.estimated_cost_micros}/"
+            f"{formal_report.hard_cost_limit_micros}"
         )
         return 0
     if args.command == "freeze-candidate":

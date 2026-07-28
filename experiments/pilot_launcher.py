@@ -55,6 +55,7 @@ from experiments.contracts import (
     calculate_conservative_cost_micros,
 )
 from experiments.executor import ExperimentExecutor, InvocationProvider
+from experiments.formal import validate_formal_preflight
 from experiments.freezing import (
     load_freeze_candidate_spec,
     load_frozen_experiment_manifest,
@@ -131,6 +132,44 @@ class PilotLaunchRequest:
     confirmed_experiment_id: str
     confirmed_currency: CurrencyCode
     confirmed_hard_cost_micros: int
+
+
+@dataclass(frozen=True, slots=True)
+class FormalLaunchRequest:
+    definition_root: Path
+    plan_path: Path
+    manifest_path: Path
+    output_root: Path
+    allow_live: bool
+    confirmed_experiment_id: str
+    confirmed_currency: CurrencyCode
+    confirmed_hard_cost_micros: int
+
+
+class LiveLaunchRequest(Protocol):
+    @property
+    def definition_root(self) -> Path: ...
+
+    @property
+    def plan_path(self) -> Path: ...
+
+    @property
+    def manifest_path(self) -> Path: ...
+
+    @property
+    def output_root(self) -> Path: ...
+
+    @property
+    def allow_live(self) -> bool: ...
+
+    @property
+    def confirmed_experiment_id(self) -> str: ...
+
+    @property
+    def confirmed_currency(self) -> CurrencyCode: ...
+
+    @property
+    def confirmed_hard_cost_micros(self) -> int: ...
 
 
 class ManagedExperimentGateway(ExperimentGateway, Protocol):
@@ -264,10 +303,65 @@ async def run_live_pilot(
         formal_dataset=formal_dataset,
         formal_plan=formal_plan,
     )
-    _validate_approval(request, manifest)
-    output_root = validate_live_output_root(request.output_root, root)
+    return await _run_verified_live_experiment(
+        request=request,
+        repository_root=root,
+        dataset=dataset,
+        plan=plan,
+        manifest=manifest,
+        dependencies=deps,
+        expected_purpose=ExperimentPurpose.PILOT,
+    )
+
+
+async def run_live_formal(
+    request: FormalLaunchRequest,
+    *,
+    repository_root: Path,
+    dependencies: PilotLauncherDependencies | None = None,
+) -> PilotLaunchSummary:
+    """Run all 240 formal coordinates after exact frozen preflight succeeds."""
+
+    deps = dependencies or PilotLauncherDependencies()
+    root, dataset, plan_path, plan, manifest = _load_launch_inputs(
+        request,
+        repository_root,
+    )
+    deps.freeze_verifier(
+        manifest,
+        repository_root=root,
+        dataset=dataset,
+        plan=plan,
+        plan_path=plan_path,
+        verify_environment=True,
+    )
+    candidate = load_freeze_candidate_spec(root / manifest.candidate_spec_path)
+    validate_formal_preflight(dataset=dataset, plan=plan, candidate=candidate)
+    return await _run_verified_live_experiment(
+        request=request,
+        repository_root=root,
+        dataset=dataset,
+        plan=plan,
+        manifest=manifest,
+        dependencies=deps,
+        expected_purpose=ExperimentPurpose.FORMAL,
+    )
+
+
+async def _run_verified_live_experiment(
+    *,
+    request: LiveLaunchRequest,
+    repository_root: Path,
+    dataset: LoadedExperimentDataset,
+    plan: ExecutionPlan,
+    manifest: FrozenExperimentManifest,
+    dependencies: PilotLauncherDependencies,
+    expected_purpose: ExperimentPurpose,
+) -> PilotLaunchSummary:
+    _validate_approval(request, manifest, expected_purpose=expected_purpose)
+    output_root = validate_live_output_root(request.output_root, repository_root)
     store = ArtifactStore(output_root)
-    provider = await deps.invocation_preparer(
+    provider = await dependencies.invocation_preparer(
         dataset=dataset,
         plan=plan,
         manifest=manifest,
@@ -275,11 +369,11 @@ async def run_live_pilot(
     )
     _validate_all_plan_invocations(dataset, plan, provider)
 
-    api_key = deps.api_key_source.read()
+    api_key = dependencies.api_key_source.read()
     if api_key is None or not api_key.strip():
         raise PilotLaunchError("MOONSHOT_API_KEY is not set or is empty")
     try:
-        gateway = deps.gateway_factory(api_key=api_key)
+        gateway = dependencies.gateway_factory(api_key=api_key)
     except Exception:
         raise PilotLaunchError("Moonshot experiment client cannot be created") from None
     if not gateway.is_live:
@@ -326,7 +420,7 @@ async def prepare_pilot_invocation_provider(
     factory_root = store.root / _PREPARATION_ROOT / dataset.definition.experiment_id
     settings = Settings.model_validate(
         {
-            "environment": "experiment-pilot",
+            "environment": "experiment-evidence",
             "database_url": (
                 f"sqlite+aiosqlite:///{(factory_root / 'factory.db').as_posix()}"
             ),
@@ -393,7 +487,7 @@ async def prepare_pilot_invocation_provider(
                         ),
                         mime_type="text/markdown",
                         checksum=fixture.content_checksum,
-                        tags=frozenset({"synthetic", "pilot"}),
+                        tags=frozenset({"synthetic", "experiment"}),
                     ),
                     actor=_ACTOR,
                     idempotency_key=_idempotency_key(fixture.domain_id, "knowledge"),
@@ -480,13 +574,15 @@ def validate_live_output_root(output_root: Path, repository_root: Path) -> Path:
 
 
 def _validate_approval(
-    request: PilotLaunchRequest,
+    request: LiveLaunchRequest,
     manifest: FrozenExperimentManifest,
+    *,
+    expected_purpose: ExperimentPurpose,
 ) -> None:
-    if manifest.purpose is not ExperimentPurpose.PILOT:
-        raise PilotLaunchError("live Pilot requires a Pilot freeze manifest")
+    if manifest.purpose is not expected_purpose:
+        raise PilotLaunchError("live execution purpose does not match freeze Manifest")
     if not request.allow_live:
-        raise PilotLaunchError("live Pilot requires --allow-live")
+        raise PilotLaunchError("live execution requires --allow-live")
     if request.confirmed_experiment_id != manifest.experiment_id:
         raise PilotLaunchError("confirmed experiment ID does not match Manifest")
     if request.confirmed_currency != manifest.cost_budget.currency:
@@ -641,7 +737,7 @@ def _build_provider(
 
 
 def _load_launch_inputs(
-    request: PilotLaunchRequest,
+    request: LiveLaunchRequest,
     repository_root: Path,
 ) -> tuple[
     Path,

@@ -38,6 +38,14 @@ ArtifactPath = Annotated[
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$",
     ),
 ]
+EvidenceArtifactPath = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=256,
+        pattern=r"^[A-Za-z0-9_][A-Za-z0-9._/-]*$",
+    ),
+]
 FreezeArtifactPath = Annotated[
     str,
     Field(
@@ -932,10 +940,161 @@ class CostBudget(FrozenModel):
         return self
 
 
+class PilotEvidenceArtifact(FrozenModel):
+    path: EvidenceArtifactPath
+    byte_size: PositiveInt
+    content_checksum: Sha256
+
+
+class PilotEvidenceStatusCount(FrozenModel):
+    status: RunStatus
+    count: PositiveInt
+
+
+class PilotEvidenceSeal(FrozenModel):
+    """Content identity for one validated, externally retained Pilot journal."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    experiment_id: Slug
+    evidence_root_label: Slug
+    freeze_manifest_checksum: Sha256
+    execution_manifest_checksum: Sha256
+    plan_checksum: Sha256
+    run_count: PositiveInt
+    attempt_count: PositiveInt
+    status_counts: Annotated[
+        tuple[PilotEvidenceStatusCount, ...],
+        Field(min_length=1),
+    ]
+    files: Annotated[
+        tuple[PilotEvidenceArtifact, ...],
+        Field(min_length=1, max_length=10_000),
+    ]
+    total_bytes: PositiveInt
+    seal_checksum: Sha256
+
+    @model_validator(mode="after")
+    def evidence_identity_must_be_canonical(self) -> Self:
+        statuses = [item.status for item in self.status_counts]
+        if statuses != sorted(statuses) or len(statuses) != len(set(statuses)):
+            raise ValueError("Pilot evidence statuses must be unique and sorted")
+        if sum(item.count for item in self.status_counts) != self.run_count:
+            raise ValueError("Pilot evidence status counts must cover every run")
+        paths = [item.path for item in self.files]
+        if paths != sorted(paths) or len(paths) != len(set(paths)):
+            raise ValueError("Pilot evidence files must be unique and sorted")
+        if sum(item.byte_size for item in self.files) != self.total_bytes:
+            raise ValueError("Pilot evidence byte total does not match file inventory")
+        return self
+
+
 class PilotEvidenceRef(FrozenModel):
     experiment_id: Slug
+    freeze_manifest_path: FreezeArtifactPath
     freeze_manifest_checksum: Sha256
+    report_path: FreezeArtifactPath
     report_checksum: Sha256
+    evidence_seal_path: FreezeArtifactPath
+    evidence_seal_checksum: Sha256
+
+
+class BlindReviewItem(FrozenModel):
+    """Condition-free material delivered to a human reviewer."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    review_item_id: UUID
+    task_id: Slug
+    scenario: ExperimentScenario
+    instruction: str = Field(min_length=1, max_length=8_000)
+    reader_profile: str = Field(min_length=1, max_length=1_000)
+    run_status: RunStatus
+    output_text: str | None = Field(default=None, max_length=256_000)
+    structured_output: JsonObject | None = None
+    required_facts: Annotated[tuple[FactDefinition, ...], Field(min_length=1)]
+    rubric: RubricDefinition
+
+    @model_validator(mode="after")
+    def review_material_must_match_task_and_status(self) -> Self:
+        if self.rubric.task_id != self.task_id:
+            raise ValueError("blind review rubric does not match task")
+        fact_ids = {fact.fact_id for fact in self.required_facts}
+        if fact_ids != set(self.rubric.required_fact_ids):
+            raise ValueError("blind review facts do not match rubric")
+        if self.run_status is RunStatus.SUCCEEDED:
+            if self.output_text is None or self.structured_output is None:
+                raise ValueError("successful blind review item requires model output")
+        elif self.output_text is not None or self.structured_output is not None:
+            raise ValueError("failed blind review item cannot contain model output")
+        return self
+
+
+class BlindReviewMappingRecord(FrozenModel):
+    review_item_id: UUID
+    review_item_checksum: Sha256
+    run_id: UUID
+    run_checksum: Sha256
+    condition: ExperimentCondition
+    task_id: Slug
+    repetition: int = Field(ge=1, le=20)
+    execution_order: PositiveInt
+
+
+class BlindReviewMapping(FrozenModel):
+    schema_version: Literal["1.0"] = "1.0"
+    experiment_id: Slug
+    execution_manifest_checksum: Sha256
+    plan_checksum: Sha256
+    records: Annotated[
+        tuple[BlindReviewMappingRecord, ...],
+        Field(min_length=1, max_length=10_000),
+    ]
+    mapping_checksum: Sha256
+
+    @model_validator(mode="after")
+    def mapping_must_cover_unique_plan_order(self) -> Self:
+        review_ids = [item.review_item_id for item in self.records]
+        run_ids = [item.run_id for item in self.records]
+        orders = [item.execution_order for item in self.records]
+        if len(review_ids) != len(set(review_ids)):
+            raise ValueError("blind review IDs must be unique")
+        if len(run_ids) != len(set(run_ids)):
+            raise ValueError("blind review run IDs must be unique")
+        if orders != list(range(1, len(orders) + 1)):
+            raise ValueError("blind review mapping must use complete plan order")
+        return self
+
+
+class BlindReviewArtifact(FrozenModel):
+    review_item_id: UUID
+    path: ArtifactPath
+    byte_size: PositiveInt
+    content_checksum: Sha256
+
+
+class BlindReviewPackageManifest(FrozenModel):
+    schema_version: Literal["1.0"] = "1.0"
+    experiment_id: Slug
+    execution_manifest_checksum: Sha256
+    plan_checksum: Sha256
+    mapping_checksum: Sha256
+    item_count: PositiveInt
+    files: Annotated[
+        tuple[BlindReviewArtifact, ...],
+        Field(min_length=1, max_length=10_000),
+    ]
+    package_checksum: Sha256
+
+    @model_validator(mode="after")
+    def package_files_must_be_unique_and_complete(self) -> Self:
+        ids = [item.review_item_id for item in self.files]
+        paths = [item.path for item in self.files]
+        if self.item_count != len(self.files):
+            raise ValueError("blind review item count does not match files")
+        if len(ids) != len(set(ids)) or len(paths) != len(set(paths)):
+            raise ValueError("blind review files must be unique")
+        if paths != sorted(paths):
+            raise ValueError("blind review files must be sorted")
+        return self
 
 
 class FreezeCandidateSpec(FrozenModel):
@@ -983,6 +1142,12 @@ class FreezeCandidateSpec(FrozenModel):
             raise ValueError("formal candidate requires pilot evidence")
         elif self.pilot_evidence.experiment_id == self.experiment_id:
             raise ValueError("pilot and formal experiment IDs must differ")
+        elif not {
+            self.pilot_evidence.freeze_manifest_path,
+            self.pilot_evidence.report_path,
+            self.pilot_evidence.evidence_seal_path,
+        }.issubset(paths):
+            raise ValueError("formal candidate inventory must include Pilot evidence")
         return self
 
 

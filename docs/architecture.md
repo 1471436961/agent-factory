@@ -3,7 +3,7 @@
 **项目名称**：Agent工厂 —— Agent 工程化生产与治理框架<br>
 **核心定位**：向运行时交付标准化 `AgentSpec`，负责 Agent 的定义、复制、知识绑定、能力评级与审计追溯<br>
 **核心组件**：`FactoryController`，一个不依赖 LLM 做内部决策的确定性应用服务<br>
-**当前阶段**：Alpha / M5.5 正式实验冻结审批阶段；MFJS 修正后的第三次 Pilot 已通过 FACTORY Structured Output 兼容性门禁，M5.6 尚未授权
+**当前阶段**：Alpha / M5.5 正式实验冻结审批阶段；第三次 Pilot 证据已封存，正式 launcher 与盲评工具已通过离线 240-run 门禁，M5.6 尚未授权
 
 本文是编码规格，不是概念说明。字段、方法、状态、错误码和路由均作为 Alpha 实现基线；实现发生偏离时，应先修改本文再修改代码。
 
@@ -4179,7 +4179,7 @@ M5.5 收尾将 `src/agent_factory` 下 85 个 Python 文件和 6 个 migration S
 
 根因是旧 gateway 将完整 Draft 2020-12 Schema 直接透传给 Moonshot Structured Output，而供应商只承诺 [MFJS 子集](https://github.com/MoonshotAI/walle/blob/main/docs/mfjs-spec.zh.md)。修正后的 `_to_moonshot_mfjs()` 只保留 MFJS 支持的结构关键字，把 `minLength`、`minItems`、`maxItems` 等本地约束转换为稳定 description hint，并对未知结构关键字在 SDK 调用前返回 `MOONSHOT_OUTPUT_SCHEMA_UNSUPPORTED`。完整 Draft Schema 不变，仍在响应后对两组执行相同本地校验。`GatewayFailure` 可携带成对 usage，executor 将其写入失败 `RunAttempt` 并纳入成本汇总。
 
-第三次真实 Pilot 在 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 上执行完整 8-run，FACTORY 4/4 成功，MANUAL 3/4 成功；唯一 MANUAL 失败为 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。8 个 run 共 8 次 attempt，无重试，全部保存 provider request ID；总 usage 为 2,288 input + 1,840 output，观测费用 `CNY 64552 micros`。失败 attempt 的 usage 已进入 journal 和成本汇总，证明计量修正生效。FACTORY 从修正前 0/4 变为修正后 4/4，因而通过当前 Moonshot 接口的 Structured Output 兼容性门禁；该窄结论不构成 H1-H5 或条件优劣证据。M5.5 仍需冻结并由 owner 批准正式配置、预算和 Manifest。完整复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](reports/m5.5-moonshot-pilot-review.md)。
+第三次真实 Pilot 在 source commit `e010b5356019e29aa4a89b4a10722671073589d5` 上执行完整 8-run，FACTORY 4/4 成功，MANUAL 3/4 成功；唯一 MANUAL 失败为 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。8 个 run 共 8 次 attempt，无重试，全部保存 provider request ID；总 usage 为 2,288 input + 1,840 output，观测费用 `CNY 64552 micros`。失败 attempt 的 usage 已进入 journal 和成本汇总，证明计量修正生效。FACTORY 从修正前 0/4 变为修正后 4/4，因而通过当前 Moonshot 接口的 Structured Output 兼容性门禁；该窄结论不构成 H1-H5 或条件优劣证据。第三次外部证据的 35 项文件由 `PilotEvidenceSeal` 逐文件绑定；正式 preflight 强制 24 tasks、5 repetitions、120/120 条件平衡、240/480 请求边界和人民币预算。`run-formal-live` 与 Pilot 共享 Factory preparation、完整计划校验、密钥读取顺序和 executor；盲评生成器把 240 个 condition-free item 与私有映射写入两个不可嵌套根。M5.5 仍需由 owner 批准 clean-commit 正式 Manifest 与 `CNY 25751040 micros` 硬上限。完整复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](reports/m5.5-moonshot-pilot-review.md)。
 
 ### 13.5 指标计算
 

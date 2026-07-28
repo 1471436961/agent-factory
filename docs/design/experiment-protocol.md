@@ -647,3 +647,15 @@ Kimi 文档当前没有为 `kimi-k2.6` 提供带日期的不可变模型 snapsho
 FACTORY usage 为 872 input + 1,171 output，MANUAL usage 为 1,416 input + 669 output；总计 2,288 input + 1,840 output，对应 `CNY 64552 micros`。失败 MANUAL attempt 的 362 input + 181 output 已按新契约写入 journal 并计费。该 attempt 的 raw stream 超过 64 KiB 错误证据上限，因此稳定错误码、request ID、usage 和终态可审计，但精确非 JSON 正文不可恢复。
 
 本轮只评审 MFJS 修正所针对的 provider 兼容性。FACTORY 从修正前 0/4 成功变为修正后 4/4 成功，故该门禁通过；MANUAL 单次失败说明 JSON mode 本身不提供逐次结构保证。协议没有预注册 8/8 成功阈值，本结果不能转化为 H1-H5、整体质量或条件优劣结论。M5.5 仍需冻结正式模型配置、预算和 Manifest，并由项目 owner 明确批准后才能进入 M5.6。
+
+## 31. M5.5 正式冻结前置闭环
+
+正式 Manifest 不能先于正式执行路径冻结。此前 M5.6 才实现正式 launcher 与盲评包的顺序，会迫使项目在冻结后修改 provider-visible 请求与证据生成代码，使 source commit 不再代表实际执行程序。owner review 后修正为：先在 M5.5 完成正式 preflight、launcher、盲评包和 Pilot 证据引用校验，再在 clean commit 上生成正式 Manifest；这只是原 M5.5 退出任务，不新增 M5.5 子里程碑编号。
+
+`PilotEvidenceSeal` 先用 `ExperimentEvidenceLoader` 验证完整 journal，再递归拒绝 symlink/非普通文件，并为外部证据根的每个文件记录相对路径、字节数和 SHA-256。第三次 Pilot seal 覆盖 35 个文件和 1,523,930 bytes，包含 factory database/preparation、execution manifest、8 request、16 attempt journal 文件和 8 terminal；其 checksum 为 `9cb5965cbd76cdec0728b29ec91f45da2a178a52d633030bbae51cc4e073114d`。formal `PilotEvidenceRef` 还必须显式携带 Pilot Manifest、评审报告和 seal 的仓库路径与 checksum，三者进入正式 inventory 并由 `FreezeCandidateBuilder` 重新核对。该机制检测非同步修改，不把本地磁盘描述为第三方不可篡改存储。
+
+`validate_formal_preflight()` 把预注册设计固定为 24 tasks、5 repetitions、MANUAL/FACTORY 各 120 run、单并发和最多 2 次 attempt；模型固定为 `moonshot/kimi-k2.6` 非思考 profile。2026-07-28 再次核对 [Kimi K2.6 官方定价页](https://platform.kimi.com/docs/pricing/chat-k26)，中国区价格仍为缓存输入 ¥1.10、标准输入 ¥6.50、输出 ¥27.00 / MTok。按未缓存输入保守计算，240 次一次成功的预算为 960,000 input + 245,760 output token，即 `CNY 12875520 micros`；480 次最大 attempt 的硬上限为 1,920,000 input + 491,520 output token，即 `CNY 25751040 micros`。
+
+`run-formal-live` 不提供 API key、部分计划、模型或 generation override 参数。它先执行环境级 Freeze verifier 和正式 preflight，再验证全部 MANUAL/FACTORY 渲染 pair，之后才读取 `MOONSHOT_API_KEY`；Factory preparation、write-once executor、恢复、usage 和预算语义与 Pilot 共享。离线 launcher 测试使用 live 标记的 fake gateway 完整执行 240 个坐标并生成 961 个 journal 文件，不访问网络。
+
+盲评生成器只接受完整且已验证的 terminal evidence。公开 `BlindReviewItem` 没有 condition、run ID、repetition、execution order、Prompt hash 或 AgentSpec 字段，只包含随机 review ID、任务/读者材料、rubric 所需事实、终态和可用模型输出；私有 `BlindReviewMapping` 单独保存 review ID 到 run/condition 的来源链。两个 ArtifactStore 根必须彼此独立且不能嵌套。首次生成先 write-once 保存映射，随后发布逐 item 文件和 package Manifest；中断重放复用原随机 ID，篡改 run checksum、item checksum 或映射都会阻断。

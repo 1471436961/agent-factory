@@ -28,9 +28,9 @@
 
 ## 4. 当前状态
 
-当前状态：M5.1-M5.4 已实现，M5.5 已完成 Moonshot 迁移、生产依赖冻结和三次经批准的真实 8-run Pilot。第一次执行因本地凭据设置错误留下 8 个 `provider-failed`；第二次 MANUAL 4/4 成功，FACTORY 4/4 因把完整 Draft 2020-12 Schema 直接交给只承诺 MFJS 子集的 Structured Output 而成为 `invalid-response`；第三次使用修正后的 canonical Manifest，FACTORY 4/4 成功，MANUAL 3/4 成功并保留 1 个 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`。第三次 journal 完整记录 2,288 input + 1,840 output 和 `CNY 64552 micros`，失败 usage 已进入成本汇总。该结果通过 FACTORY 兼容性门禁，不形成 H1-H5 结论。正式数据集/计划 checksum 仍为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e` / `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)，实证复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。
+当前状态：M5.1-M5.4 已实现，M5.5 已完成 Moonshot 迁移、生产依赖冻结和三次经批准的真实 8-run Pilot。第三次使用修正后的 canonical Manifest，FACTORY 4/4 成功，MANUAL 3/4 成功并保留 1 个 `MOONSHOT_OUTPUT_NOT_JSON_OBJECT`；journal 完整记录 2,288 input + 1,840 output 和 `CNY 64552 micros`。该结果通过 FACTORY 兼容性门禁，不形成 H1-H5 结论。第三次外部证据已形成 35 项逐文件 SHA-256 seal；正式 24-task、5-repetition、120/120 preflight，完整 240-run launcher 和条件分离盲评包均已通过 fake gateway 验证。正式数据集/计划 checksum 仍为 `e8305386e305e39623ab1e852059148ed319ae63fc180a58288f1ac0a3e14a8e` / `8e8ad93a8cb1b3207580c89917e4af9a6ac0c32c6ab47d83e04c6f04b233e920`。阶段范围见 [`docs/milestones/m5-validation-experiment.md`](../milestones/m5-validation-experiment.md)，执行约束见 [`docs/design/experiment-protocol.md`](../design/experiment-protocol.md)，实证复核见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。
 
-执行边界：第三次 Pilot 的批准只覆盖对应 Pilot Manifest 和最多 `CNY 858368 micros`，不延伸到 M5.6。由于 `kimi-k2.6` 不是不可变 snapshot，正式报告必须把 provider 别名漂移列为复现限制。只有正式配置、预算和 Manifest 经项目 owner 冻结并明确批准后，M5.5 才能结束，240-run 才能开始。
+执行边界：第三次 Pilot 的批准只覆盖对应 Pilot Manifest 和最多 `CNY 858368 micros`，不延伸到 M5.6。当前正式配置按 240 次预期请求、480 次最大 attempt 计算，保守估算 `CNY 12875520 micros`，绝对硬上限 `CNY 25751040 micros`。由于 `kimi-k2.6` 不是不可变 snapshot，正式报告必须把 provider 别名漂移列为复现限制。只有正式 Manifest 与该费用上限经项目 owner 明确批准后，M5.5 才能结束，240-run 才能开始。
 
 ## 5. 最终展示物
 

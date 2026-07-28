@@ -17,10 +17,15 @@ from agent_factory.domain.common import sha256_model
 from experiments.artifacts import ArtifactStore, canonical_model_bytes
 from experiments.contracts import (
     ExecutionPlan,
+    ExperimentPurpose,
     FreezeCandidateSpec,
     FrozenArtifact,
     FrozenExperimentManifest,
     SourceSnapshot,
+)
+from experiments.evidence_sealing import (
+    PilotEvidenceSealError,
+    load_pilot_evidence_seal,
 )
 from experiments.loader import LoadedExperimentDataset
 from experiments.planning import (
@@ -162,6 +167,7 @@ class FreezeCandidateBuilder:
         snapshot = self._git_reader.snapshot(self._repository_root)
         self._validate_git_snapshot(snapshot)
         files = self._read_inventory(candidate.inventory_paths)
+        self._validate_pilot_evidence(candidate, files)
         expected_spec_bytes = canonical_model_bytes(candidate)
         candidate_artifact = next(
             item for item in files if item.path == candidate_spec_relative
@@ -284,6 +290,43 @@ class FreezeCandidateBuilder:
             )
         except ValidationError as exc:
             raise FreezeError("Git source commit or Python runtime is invalid") from exc
+
+    def _validate_pilot_evidence(
+        self,
+        candidate: FreezeCandidateSpec,
+        files: tuple[FrozenArtifact, ...],
+    ) -> None:
+        reference = candidate.pilot_evidence
+        if reference is None:
+            return
+        artifacts = {item.path: item for item in files}
+        report = artifacts[reference.report_path]
+        if report.content_checksum != reference.report_checksum:
+            raise FreezeError("Pilot review report checksum does not match reference")
+
+        pilot_manifest = load_frozen_experiment_manifest(
+            self._repository_root / reference.freeze_manifest_path
+        )
+        if (
+            pilot_manifest.purpose is not ExperimentPurpose.PILOT
+            or pilot_manifest.experiment_id != reference.experiment_id
+            or pilot_manifest.manifest_checksum != reference.freeze_manifest_checksum
+        ):
+            raise FreezeError("Pilot freeze Manifest does not match reference")
+        try:
+            seal = load_pilot_evidence_seal(
+                self._repository_root / reference.evidence_seal_path
+            )
+        except PilotEvidenceSealError as exc:
+            raise FreezeError("Pilot evidence seal cannot be verified") from exc
+        if (
+            seal.experiment_id != reference.experiment_id
+            or seal.freeze_manifest_checksum != reference.freeze_manifest_checksum
+            or seal.execution_manifest_checksum
+            != pilot_manifest.execution_manifest.manifest_checksum
+            or seal.seal_checksum != reference.evidence_seal_checksum
+        ):
+            raise FreezeError("Pilot evidence seal does not match reference")
 
     def _read_inventory(
         self,
