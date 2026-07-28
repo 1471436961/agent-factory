@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,7 @@ from experiments.freezing import (
     GitSnapshot,
     GitSnapshotReader,
     load_freeze_candidate_spec,
+    load_frozen_experiment_manifest,
 )
 from experiments.loader import load_experiment_dataset
 from experiments.planning import load_execution_plan
@@ -43,6 +45,9 @@ PILOT_MANIFEST = (
 )
 PILOT_SEAL = PILOT_MANIFEST.with_name("evidence-seal-mfjs-20260728.json")
 PILOT_REPORT = REPOSITORY_ROOT / "docs" / "reports" / "m5.5-moonshot-pilot-review.md"
+FORMAL_MANIFEST = (
+    REPOSITORY_ROOT / "experiments" / "evidence" / "writer-v1" / "freeze-manifest.json"
+)
 NOW = datetime.fromisoformat("2026-07-28T15:53:55+08:00")
 
 
@@ -211,3 +216,24 @@ def test_formal_candidate_rejects_empty_report_and_pilot_seal_drift(
             dataset=dataset,
             plan=plan,
         )
+
+
+def test_archived_formal_manifest_retains_reviewed_identity() -> None:
+    manifest_bytes = FORMAL_MANIFEST.read_bytes()
+    manifest = load_frozen_experiment_manifest(FORMAL_MANIFEST)
+
+    assert hashlib.sha256(manifest_bytes).hexdigest() == (
+        "d4d2d390467f47097db67540bcafaffc51c98152cd176b730855ebd8f1277ff1"
+    )
+    assert manifest.manifest_checksum == (
+        "211275d9312207fef02a8f15ee3f3a86bfe6f31c52337361b9f2666260fb7e1f"
+    )
+    assert manifest.source.source_commit == ("f0c75655bd3f8ccd1ce4e662e687fe0d50edc026")
+    assert len(manifest.files) == 152
+    assert manifest.pilot_evidence is not None
+    assert manifest.pilot_evidence.evidence_seal_checksum == (
+        "9cb5965cbd76cdec0728b29ec91f45da2a178a52d633030bbae51cc4e073114d"
+    )
+    assert manifest.cost_budget.currency == "CNY"
+    assert manifest.cost_budget.estimated_cost_micros == 12_875_520
+    assert manifest.cost_budget.hard_cost_limit_micros == 25_751_040
