@@ -33,6 +33,7 @@ PILOT_PLAN_PATH = PILOT_ROOT / "execution-plan.json"
 FORMAL_PLAN_PATH = FORMAL_ROOT / "execution-plan.json"
 CANDIDATE_PATH = PILOT_ROOT / "freeze-candidate.json"
 EVIDENCE_ROOT = REPOSITORY_ROOT / "experiments" / "evidence" / "writer-pilot-v1"
+FINAL_MANIFEST_PATH = EVIDENCE_ROOT / "freeze-manifest.json"
 MOONSHOT_PRE_MFJS_MANIFEST_PATH = EVIDENCE_ROOT / (
     "freeze-manifest-moonshot-pre-mfjs.json"
 )
@@ -291,7 +292,37 @@ def test_pre_mfjs_moonshot_manifest_retains_executed_pilot_identity() -> None:
     assert manifest.provider.model_is_immutable_snapshot is False
     assert manifest.cost_budget.currency == "CNY"
     assert manifest.cost_budget.hard_cost_limit_micros == 858_368
-    assert not (EVIDENCE_ROOT / "freeze-manifest.json").exists()
+
+
+def test_final_moonshot_manifest_binds_mfjs_correction_source() -> None:
+    pilot_dataset, pilot_plan, _, _, _ = _inputs()
+    manifest_bytes = FINAL_MANIFEST_PATH.read_bytes()
+    manifest = load_frozen_experiment_manifest(FINAL_MANIFEST_PATH)
+
+    assert hashlib.sha256(manifest_bytes).hexdigest() == (
+        "75c0494161095dc64f566920b7fe232480237eef97bb8f8c40a24600ad02493d"
+    )
+    assert manifest.manifest_checksum == (
+        "8b92ee21ce97611d9887ad5b2117f9f724c6ecd2c0609be26cf01c643302e17f"
+    )
+    assert manifest.source.source_commit == ("e010b5356019e29aa4a89b4a10722671073589d5")
+    assert len(manifest.files) == 154
+    frozen_paths = {artifact.path for artifact in manifest.files}
+    assert _production_runtime_sources() <= frozen_paths
+    assert "experiments/moonshot_gateway.py" in frozen_paths
+    assert manifest.provider.provider == "moonshot"
+    assert manifest.provider.model == "kimi-k2.6"
+    assert manifest.provider.model_is_immutable_snapshot is False
+    assert manifest.cost_budget.currency == "CNY"
+    assert manifest.cost_budget.hard_cost_limit_micros == 858_368
+    verify_freeze_manifest(
+        manifest,
+        repository_root=REPOSITORY_ROOT,
+        dataset=pilot_dataset,
+        plan=pilot_plan,
+        plan_path=PILOT_PLAN_PATH,
+        verify_environment=False,
+    )
 
 
 def test_pilot_preflight_rejects_formal_identity_overlap() -> None:

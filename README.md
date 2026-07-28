@@ -2,7 +2,7 @@
 
 Agent Factory 是一个实验性的 AI Agent 生产治理框架。它位于模型和运行时的上游，将 Agent 的定义、原型、知识绑定、工具权限、技能评级和审计记录表示为可验证、可追溯的工程对象。
 
-当前仓库处于 **Alpha / M5.5 Moonshot Pilot 兼容性纠偏阶段**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。项目 owner 已批准并执行两次真实 8-run Pilot：第一次因本地凭据设置错误留下 8 个失败终态；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Moonshot MFJS 兼容边界返回 `invalid-response`。原始失败证据均保留，尚不存在 H1-H5 或正式实验质量结论。MFJS provider Schema 适配和失败 usage 计量修正已通过 `666` 项全仓回归及 `experiments` 90% 分支覆盖率门禁；该修正会改变请求字节，因此绑定 source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 的既有 Manifest 已成为历史执行身份。当前等待提交修正并从 clean commit 重新冻结，不能自动发起第三次调用。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
+当前仓库处于 **Alpha / M5.5 Moonshot Pilot 兼容性复验审批阶段**。M1-M4 已由项目 owner 验收；M5 已具备冻结 Writer fixture、240 项正式计划、可恢复 journal、确定性评分分析和可验证报告链。项目 owner 已批准并执行两次真实 8-run Pilot：第一次因本地凭据设置错误留下 8 个失败终态；第二次 MANUAL 4/4 成功、FACTORY 4/4 因 Moonshot MFJS 兼容边界返回 `invalid-response`。原始失败证据均保留，尚不存在 H1-H5 或正式实验质量结论。MFJS provider Schema 适配和失败 usage 计量修正已通过 `666` 项全仓回归及 `experiments` 90% 分支覆盖率门禁，并从 clean source commit `e010b5356019e29aa4a89b4a10722671073589d5` 重新冻结。新 Manifest 尚未获得第三次真实 Pilot 的费用批准，不能自动发起调用。M4 仍不包含公网生产部署能力，当前唯一受支持的部署形态继续是单机、单 Uvicorn、文件型 SQLite 和 loopback。
 
 ## 核心边界
 

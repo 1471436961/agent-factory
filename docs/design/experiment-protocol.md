@@ -611,7 +611,7 @@ hard max = ceil(64,000 × 6.50 / 1,000,000)
 
 Kimi 文档当前没有为 `kimi-k2.6` 提供带日期的不可变模型 snapshot，因此预检明确要求 `model_is_immutable_snapshot=false`，同时拒绝把该别名伪装成固定 snapshot。源码、请求参数、输入、输出与 usage 仍可由 Manifest 和 journal 复核，但供应商在同一别名下更新模型是无法由本仓库控制的外部复现风险。若未来出现官方不可变版本，必须生成新 candidate 和新 experiment freeze，不能原地修改旧 Manifest。
 
-原 OpenAI production-closure Manifest 已原样归档为 [`freeze-manifest-openai-pre-switch.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-openai-pre-switch.json)。当时的 Moonshot canonical Manifest 从 clean source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 生成，绑定 154 项输入；内部 checksum 为 `edd5cf3f304742398cc9d6ec4fa7be4c6cd14f90769393b589d67616a6eec5ac`，文件 SHA-256 为 `ae4c0727a2082bed55713147b3a28ec96fb4843d12fa96a074bebc03991c5cdd`。两次真实 Pilot 后，原始字节降级归档为 [`freeze-manifest-moonshot-pre-mfjs.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-moonshot-pre-mfjs.json)；当前 `freeze-manifest.json` 槽位为空，直到修正代码进入 clean commit 并重新冻结。旧 OpenAI 费用批准已经失效，任何新调用都必须逐字确认 provider/model/profile、完整 8-run、最多 16 次 attempt 和新的 Manifest 费用上限。
+原 OpenAI production-closure Manifest 已原样归档为 [`freeze-manifest-openai-pre-switch.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-openai-pre-switch.json)。两次真实 Pilot 使用的 Moonshot Manifest 从 clean source commit `889807a15b3d1cff9fe5df51f077de2110f6464a` 生成，现已原字节归档为 [`freeze-manifest-moonshot-pre-mfjs.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest-moonshot-pre-mfjs.json)。MFJS 修正后的新 canonical [`freeze-manifest.json`](../../experiments/evidence/writer-pilot-v1/freeze-manifest.json) 绑定 clean source commit `e010b5356019e29aa4a89b4a10722671073589d5` 和 154 项输入；内部 checksum 为 `8b92ee21ce97611d9887ad5b2117f9f724c6ecd2c0609be26cf01c643302e17f`，文件 SHA-256 为 `75c0494161095dc64f566920b7fe232480237eef97bb8f8c40a24600ad02493d`。旧 OpenAI 费用批准已经失效，任何新调用都必须逐字确认 provider/model/profile、完整 8-run、最多 16 次 attempt 和新 Manifest 的费用上限。
 
 ## 29. M5.5 Moonshot Pilot 实证纠偏
 
@@ -636,4 +636,4 @@ Kimi 文档当前没有为 `kimi-k2.6` 提供带日期的不可变模型 snapsho
 
 失败结果的 usage 契约同步修正：`GatewayFailure` 可以携带成对的 input/output token；executor 原样写入失败 `RunAttempt`；Pydantic 拒绝半组 usage，成功 attempt 仍必须具有完整 usage。该变化不修改 reservation 算法，但使 launcher 的 observed cost 能覆盖已计费的无效响应。
 
-本次实证和修正不新增 M5.5 子里程碑编号。旧 canonical Manifest 继续绑定并解释两次已执行请求，但修正改变 FACTORY provider-visible Schema 和 journal 行为，不能授权再次调用。后续必须通过离线质量门禁、提交源码、在 clean commit 上重新冻结，并取得项目 owner 对新 Manifest 和费用上限的独立批准；当前没有第三次真实调用授权，也没有 M5.6 正式实验授权。完整证据表见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。
+本次实证和修正不新增 M5.5 子里程碑编号。旧 Manifest 继续绑定并解释两次已执行请求；修正源码已通过离线门禁并从 clean commit 重新冻结。新 Manifest 只建立执行前身份，不自动继承旧批准；当前没有第三次真实调用授权，也没有 M5.6 正式实验授权。完整证据表见 [`M5.5 Moonshot Pilot 执行与纠偏报告`](../reports/m5.5-moonshot-pilot-review.md)。
